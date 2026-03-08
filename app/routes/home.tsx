@@ -1,21 +1,21 @@
 import { useEffect } from "react";
 import { useRevalidator, useLoaderData } from "react-router";
 import { Show, useAuth } from "@clerk/react-router";
-import { getAuth } from "@clerk/react-router/ssr.server";
+import { getAuth } from "@clerk/react-router/server";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import type { Route } from "./+types/home";
 
-import Navbar from "../components/navbar";
-import Hero from "../components/hero";
-import DashboardPreview from "../components/dashboardpreview";
-import Features from "../components/features";
-import HowItWorks from "../components/howitworks";
-import Testimonials from "../components/testimonials";
-import Pricing from "../components/pricing";
-import CtaBanner from "../components/ctabanner";
-import Footer from "../components/footer";
-import Dashboard from "../components/dashboard";
+import Navbar from "../components/home/navbar";
+import Hero from "../components/home/hero";
+import DashboardPreview from "../components/home/dashboardpreview";
+import Features from "../components/home/features";
+import HowItWorks from "../components/home/howitworks";
+import Testimonials from "../components/home/testimonials";
+import Pricing from "../components/home/pricing";
+import CtaBanner from "../components/home/ctabanner";
+import Footer from "../components/home/footer";
+import Dashboard from "../components/home/dashboard";
 
 import { getStoresByUser, deleteStore, verifyStoreOwner } from "../lib/queries";
 
