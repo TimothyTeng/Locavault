@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { PRESET_COLORS, type Block } from "./types";
+import { PRESET_COLORS, type Block } from "../../../types/BlockTypes";
 
 type Props = {
   onAdd: (b: Omit<Block, "id">) => void;

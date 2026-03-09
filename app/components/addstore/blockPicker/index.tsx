@@ -1,14 +1,14 @@
 import { useState } from "react";
 import { AddBlockModal } from "./AddBlockModal";
 import { BlockItem } from "./BlockItem";
-import { DEFAULT_BLOCKS, type Block } from "./types";
+import { DEFAULT_BLOCKS, type Block } from "../../../types/BlockTypes";
 
 interface BlockPickerProps {
   onChange?: (blocks: Block[]) => void;
   onBlockClick?: (block: Block) => void;
 }
 
-export { type Block } from "./types"; // re-export so parent imports still work
+export { type Block } from "../../../types/BlockTypes"; // re-export so parent imports still work
 
 export const BlockPicker = ({ onChange, onBlockClick }: BlockPickerProps) => {
   const [blocks, setBlocks] = useState<Block[]>(DEFAULT_BLOCKS);

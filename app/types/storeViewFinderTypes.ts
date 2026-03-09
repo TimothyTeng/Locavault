@@ -1,0 +1,1 @@
+export type BlockStyle = { bg: string; border: string; label: string };
