@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { LayoutItem } from "react-grid-layout";
 import { BlockPicker, type Block } from "../blockPicker/index";
 import { GridCanvas } from "./GridCanvas";
@@ -8,6 +8,7 @@ import { ModeToggle, handlesForMode } from "./ModeToggle";
 import { useZoom } from "../../../utils/useZoom";
 import { findNextFreeCell } from "../../../utils/GridHelper";
 import type { BlockStyle } from "../../../types/storeViewFinderTypes";
+import { FieldLabel, StoreForm } from "./StoreForm";
 
 type Mode = "select" | "size";
 
@@ -19,13 +20,58 @@ export default function StoreViewFinder({ sidePanel }: Props) {
   const [ROWS, setROWS] = useState(10);
   const [COLS, setCOLS] = useState(10);
   const [mode, setMode] = useState<Mode>("size");
+  const [currentSelection, setCurrentSelection] = useState<string | null>(null);
   const [blockStyles, setBlockStyles] = useState<Record<string, BlockStyle>>(
     {},
   );
   const [layout, setLayout] = useState<LayoutItem[]>([]);
-  const { zoom, setZoom, containerRef } = useZoom(0.5, 3);
+  const { zoom, setZoom } = useZoom(0.5, 3);
 
   const handles = handlesForMode(mode);
+
+  const selectedBlock = (e: React.MouseEvent<HTMLDivElement>, id: string) => {
+    e.stopPropagation(); // prevent deselect from firing
+    setCurrentSelection(id);
+  };
+
+  const submitForm = (
+    name: string,
+    tags: string[],
+    description: string,
+    rows: number,
+    cols: number,
+    blocks: Record<string, BlockStyle>,
+    layout: LayoutItem[],
+  ) => {
+    console.log("Form submitted:", {
+      name,
+      tags,
+      description,
+      rows,
+      cols,
+      blocks,
+      layout,
+    });
+    // Here you would typically send the data to your backend or update your state
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      if (!currentSelection) return;
+
+      setLayout((prev) => prev.filter((item) => item.i !== currentSelection));
+      setBlockStyles((prev) => {
+        const next = { ...prev };
+        delete next[currentSelection];
+        return next;
+      });
+      setCurrentSelection(null);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [currentSelection]);
 
   const handleColsChange = (newCols: number) => {
     setCOLS(newCols);
@@ -84,7 +130,7 @@ export default function StoreViewFinder({ sidePanel }: Props) {
         {/* Scrollable grid */}
         <div
           className="flex-1 overflow-auto p-4 min-h-0 overscroll-none"
-          ref={containerRef}
+          onClick={() => setCurrentSelection(null)}
         >
           <div style={{ width: `${zoom * 100}%` }}>
             <GridCanvas
@@ -94,6 +140,8 @@ export default function StoreViewFinder({ sidePanel }: Props) {
               layout={layout}
               blockStyles={blockStyles}
               handles={handles}
+              selectedId={currentSelection}
+              onClick={(e, id) => selectedBlock(e, id)}
             />
           </div>
         </div>
@@ -112,10 +160,9 @@ export default function StoreViewFinder({ sidePanel }: Props) {
         </div>
 
         {/* Grid size controls */}
-        <div className="px-6 py-6 border-b border-slate-100">
-          <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-3">
-            Grid Size
-          </p>
+        <div className="!my-2" />
+        <FieldLabel>Grid Size</FieldLabel>
+        <div className="!px-6 !py-4 !border-b !border-slate-100">
           <GridControls
             cols={COLS}
             rows={ROWS}
@@ -126,16 +173,26 @@ export default function StoreViewFinder({ sidePanel }: Props) {
 
         {/* Block picker */}
         <div className="px-6 py-6 border-b border-slate-100">
-          <p className="text-[9px] uppercase tracking-widest text-slate-400 mb-3">
-            Blocks
-          </p>
+          <FieldLabel>Blocks</FieldLabel>
           <BlockPicker onBlockClick={handleBlockClick} />
         </div>
 
         {/* Injected form fields */}
-        {sidePanel && (
-          <div className="px-6 py-6 flex-1 min-h-0">{sidePanel}</div>
-        )}
+        <div className="px-6 py-6 flex-1 min-h-0 !my-6">
+          <StoreForm
+            onSubmit={(name, tag, description) =>
+              submitForm(
+                name,
+                tag,
+                description,
+                ROWS,
+                COLS,
+                blockStyles,
+                layout,
+              )
+            }
+          />
+        </div>
       </div>
     </div>
   );
