@@ -6,79 +6,19 @@ import { useUser } from "@clerk/react-router";
 export type Store = {
   id: string;
   name: string;
-  width: number;
-  height: number;
-  grid: string;
-  createdAt?: string;
-  updatedAt?: string;
-  itemCount?: number;
+  tags: string;
+  description: string | null;
+  rows: number;
+  cols: number;
+  userId: string;
+  createdAt: Date | null;
 };
 
-type SortOption = "name" | "created" | "updated";
+type SortOption = "name" | "created";
 
 type Props = {
   stores: Store[];
 };
-
-// ── Store Grid Preview ─────────────────────────────────────
-function StoreGridPreview({
-  grid,
-  width,
-  height,
-}: {
-  grid: string;
-  width: number;
-  height: number;
-}) {
-  let parsed: number[][] = [];
-  try {
-    parsed = JSON.parse(grid);
-  } catch {
-    parsed = Array.from({ length: height }, () => Array(width).fill(0));
-  }
-
-  const displayHeight = Math.min(height, 8);
-  const displayWidth = Math.min(width, 12);
-
-  const cellColors: Record<number, string> = {
-    0: "transparent",
-    1: "#2d6b44",
-    2: "#1f4d30",
-    3: "#b8821e",
-    4: "#6d7d72",
-  };
-
-  return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: `repeat(${displayWidth}, 1fr)`,
-        gap: "2px",
-        width: "100%",
-        aspectRatio: `${displayWidth} / ${displayHeight}`,
-      }}
-    >
-      {Array.from({ length: displayHeight }, (_, y) =>
-        Array.from({ length: displayWidth }, (_, x) => {
-          const val = parsed[y]?.[x] ?? 0;
-          return (
-            <div
-              key={`${x}-${y}`}
-              style={{
-                borderRadius: "2px",
-                background:
-                  val === 0
-                    ? "rgba(45,90,61,0.06)"
-                    : (cellColors[val] ?? cellColors[1]),
-                border: val === 0 ? "1px solid rgba(45,90,61,0.08)" : "none",
-              }}
-            />
-          );
-        }),
-      )}
-    </div>
-  );
-}
 
 // ── Store Card ─────────────────────────────────────────────
 function StoreCard({
@@ -104,35 +44,22 @@ function StoreCard({
     setDeleting(false);
   };
 
+  const tags: string[] = JSON.parse(store.tags ?? "[]");
+
   return (
     <div className="store-card" onClick={() => navigate(`/store/${store.id}`)}>
-      {/* Grid preview image */}
-      <div className="store-card-preview">
-        <StoreGridPreview
-          grid={store.grid}
-          width={store.width}
-          height={store.height}
-        />
-        <div className="store-card-preview-overlay">
-          <span className="store-card-preview-label">View store →</span>
-        </div>
-      </div>
-
-      {/* Card body */}
       <div className="store-card-body">
         <div className="store-card-info">
           <div className="store-card-name">{store.name}</div>
-          <div className="store-card-meta">
-            {store.width}×{store.height} grid
-            {store.itemCount !== undefined && (
-              <span className="store-card-items">
-                · {store.itemCount} items
+          <div className="store-card-tags">
+            {tags.map((tag) => (
+              <span key={tag} className="store-card-tag">
+                {tag}
               </span>
-            )}
+            ))}
           </div>
         </div>
 
-        {/* Delete button */}
         <button
           className={`store-card-delete${confirmDelete ? " confirming" : ""}`}
           onClick={handleDelete}
@@ -190,15 +117,14 @@ export default function Dashboard({ stores: initialStores }: Props) {
       let cmp = 0;
       if (sort === "name") cmp = a.name.localeCompare(b.name);
       if (sort === "created")
-        cmp = (a.createdAt ?? "").localeCompare(b.createdAt ?? "");
-      if (sort === "updated")
-        cmp = (a.updatedAt ?? "").localeCompare(b.updatedAt ?? "");
+        cmp = (a.createdAt?.toString() ?? "").localeCompare(
+          b.createdAt?.toString() ?? "",
+        );
       return sortDir === "asc" ? cmp : -cmp;
     });
     return result;
   }, [stores, search, sort, sortDir]);
 
-  // Delete via React Router action — optimistically removes from UI
   const handleDelete = (id: string) => {
     fetcher.submit(
       { storeId: id, _action: "deleteStore" },
@@ -291,7 +217,6 @@ export default function Dashboard({ stores: initialStores }: Props) {
           >
             <option value="name">Name</option>
             <option value="created">Date created</option>
-            <option value="updated">Last edited</option>
           </select>
           <button
             className="dash-sort-dir"

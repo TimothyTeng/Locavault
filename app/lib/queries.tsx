@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "./db";
-import { stores, items } from "./schema";
+import { stores, items, blocks } from "./schema";
+import type { CreateStoreInput } from "~/types/storeViewFinderTypes";
 
 // ─── STORES ────────────────────────────────────────────────
 
@@ -9,7 +10,7 @@ export async function getStoresByUser(userId: string) {
   return db.select().from(stores).where(eq(stores.userId, userId));
 }
 
-/** Fetch a single store by ID */
+/** Fetch a single store by ID, including its blocks */
 export async function getStoreById(id: string) {
   const result = await db.select().from(stores).where(eq(stores.id, id));
   return result[0] ?? null;
@@ -19,28 +20,69 @@ export async function getStoreById(id: string) {
 export async function createStore(data: {
   name: string;
   userId: string;
-  width?: number;
-  height?: number;
-  grid?: string;
+  tags?: string;
+  description?: string;
+  rows?: number;
+  cols?: number;
 }) {
   return db.insert(stores).values({
     name: data.name,
     userId: data.userId,
-    width: data.width ?? 10,
-    height: data.height ?? 10,
-    grid: data.grid ?? "[]",
+    tags: data.tags ?? "[]",
+    description: data.description ?? null,
+    rows: data.rows ?? 10,
+    cols: data.cols ?? 10,
+  });
+}
+
+export async function createStoreWithBlocks(data: CreateStoreInput) {
+  return db.transaction(async (tx) => {
+    const id = crypto.randomUUID();
+
+    await tx.insert(stores).values({
+      id,
+      name: data.name,
+      userId: data.userId,
+      tags: data.tags ?? "[]",
+      description: data.description ?? null,
+      rows: data.rows ?? 10,
+      cols: data.cols ?? 10,
+    });
+
+    if (data.blocks?.length) {
+      await tx.insert(blocks).values(
+        data.blocks.map((block) => ({
+          storeId: id,
+          background: block.background ?? "#000000",
+          border: block.border ?? "#000000",
+          label: block.label ?? "",
+          height: block.height ?? 1,
+          width: block.width ?? 1,
+          x: block.x ?? 0,
+          y: block.y ?? 0,
+        })),
+      );
+    }
+
+    return id;
   });
 }
 
 /** Update a store's details */
 export async function updateStore(
   id: string,
-  data: Partial<{ name: string; width: number; height: number; grid: string }>,
+  data: Partial<{
+    name: string;
+    tags: string;
+    description: string;
+    rows: number;
+    cols: number;
+  }>,
 ) {
   return db.update(stores).set(data).where(eq(stores.id, id));
 }
 
-/** Delete a store (cascades to items via FK) */
+/** Delete a store (cascades to items and blocks via FK) */
 export async function deleteStore(id: string) {
   return db.delete(stores).where(eq(stores.id, id));
 }
@@ -52,6 +94,57 @@ export async function verifyStoreOwner(storeId: string, userId: string) {
   if (store.userId !== userId)
     throw new Response("Unauthorized", { status: 403 });
   return store;
+}
+
+// ─── BLOCKS ────────────────────────────────────────────────
+
+/** Fetch all blocks in a store */
+export async function getBlocksByStore(storeId: string) {
+  return db.select().from(blocks).where(eq(blocks.storeId, storeId));
+}
+
+/** Create a new block */
+export async function createBlock(data: {
+  storeId: string;
+  background?: string;
+  border?: string;
+  label?: string;
+  height?: number;
+  width?: number;
+  x?: number;
+  y?: number;
+}) {
+  return db.insert(blocks).values({
+    storeId: data.storeId,
+    background: data.background ?? "#000000",
+    border: data.border ?? "#000000",
+    label: data.label ?? "",
+    height: data.height ?? 1,
+    width: data.width ?? 1,
+    x: data.x ?? 0,
+    y: data.y ?? 0,
+  });
+}
+
+/** Update a block */
+export async function updateBlock(
+  blockId: string,
+  data: Partial<{
+    background: string;
+    border: string;
+    label: string;
+    height: number;
+    width: number;
+    x: number;
+    y: number;
+  }>,
+) {
+  return db.update(blocks).set(data).where(eq(blocks.block_id, blockId));
+}
+
+/** Delete a block */
+export async function deleteBlock(blockId: string) {
+  return db.delete(blocks).where(eq(blocks.block_id, blockId));
 }
 
 // ─── ITEMS ─────────────────────────────────────────────────

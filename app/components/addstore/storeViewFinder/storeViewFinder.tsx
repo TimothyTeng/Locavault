@@ -7,8 +7,13 @@ import { ZoomControls } from "./ZoomControl";
 import { ModeToggle, handlesForMode } from "./ModeToggle";
 import { useZoom } from "../../../utils/useZoom";
 import { findNextFreeCell } from "../../../utils/GridHelper";
-import type { BlockStyle } from "../../../types/storeViewFinderTypes";
+import type {
+  BlockDetails,
+  BlockStyle,
+  CreateStoreInput,
+} from "../../../types/storeViewFinderTypes";
 import { FieldLabel, StoreForm } from "./StoreForm";
+import { useFetcher, useLoaderData, useNavigate } from "react-router";
 
 type Mode = "select" | "size";
 
@@ -17,6 +22,10 @@ type Props = {
 };
 
 export default function StoreViewFinder({ sidePanel }: Props) {
+  const { userId } = useLoaderData();
+  const fetcher = useFetcher();
+  const navigate = useNavigate();
+
   const [ROWS, setROWS] = useState(10);
   const [COLS, setCOLS] = useState(10);
   const [mode, setMode] = useState<Mode>("size");
@@ -34,7 +43,7 @@ export default function StoreViewFinder({ sidePanel }: Props) {
     setCurrentSelection(id);
   };
 
-  const submitForm = (
+  const submitForm = async (
     name: string,
     tags: string[],
     description: string,
@@ -43,16 +52,44 @@ export default function StoreViewFinder({ sidePanel }: Props) {
     blocks: Record<string, BlockStyle>,
     layout: LayoutItem[],
   ) => {
-    console.log("Form submitted:", {
+    const id = crypto.randomUUID();
+
+    // Build block array from blockStyles + layout
+    const blockArr: BlockDetails[] = [];
+    for (const key in blocks) {
+      const block = blocks[key];
+      const layoutItem = layout.find((item) => item.i === key);
+      const b: BlockDetails = {
+        background: block.bg,
+        border: block.border,
+        label: block.label,
+        height: layoutItem?.h ?? 1,
+        width: layoutItem?.w ?? 1,
+        x: layoutItem?.x ?? 0,
+        y: layoutItem?.y ?? 0,
+      };
+      blockArr.push(b);
+    }
+
+    const data: CreateStoreInput = {
+      id,
       name,
-      tags,
+      userId,
+      tags: JSON.stringify(tags),
       description,
       rows,
       cols,
-      blocks,
-      layout,
+      blocks: blockArr,
+    };
+
+    // Fire to action server-side, don't await
+    fetcher.submit(data, {
+      method: "POST",
+      encType: "application/json",
     });
-    // Here you would typically send the data to your backend or update your state
+
+    // Redirect immediately with state for instant render
+    navigate(`/store/${id}`, { state: { storeData: data } });
   };
 
   useEffect(() => {
