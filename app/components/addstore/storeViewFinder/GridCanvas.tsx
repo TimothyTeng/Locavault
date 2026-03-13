@@ -5,6 +5,7 @@ import {
   getCompactor,
   type LayoutItem,
   type ResizeHandleAxis,
+  type Layout,
 } from "react-grid-layout";
 import { GridBackground } from "react-grid-layout/extras";
 import "react-grid-layout/css/styles.css";
@@ -20,6 +21,7 @@ type Props = {
   blockStyles: Record<string, BlockStyle>;
   handles: ResizeHandleAxis[];
   onClick: (element: React.MouseEvent<HTMLDivElement>, id: string) => void;
+  changeLayout?: (layout: Layout) => void;
   selectedId?: string | null;
 };
 
@@ -30,6 +32,7 @@ export function GridCanvas({
   blockStyles,
   handles,
   onClick,
+  changeLayout,
   selectedId,
 }: Props) {
   const { width, containerRef, mounted } = useContainerWidth();
@@ -60,6 +63,7 @@ export function GridCanvas({
             layout={responsiveLayout}
             width={width}
             compactor={getCompactor(null, false, true)}
+            onLayoutChange={(newLayout) => changeLayout?.(newLayout)}
             resizeConfig={{
               enabled: true,
               handles: handles,
@@ -92,7 +96,10 @@ export function GridCanvas({
                           : style.bg, // default — original (border + "22")
                     borderColor: style.border,
                   }}
-                  onClick={(e) => onClick(e, item.i)}
+                  onClick={(e) => {
+                    onClick(e, item.i);
+                    console.log(layout);
+                  }}
                 >
                   <span
                     className="text-center px-1 font-mono font-medium uppercase tracking-wide leading-tight break-words"

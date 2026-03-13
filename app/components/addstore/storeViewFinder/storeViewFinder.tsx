@@ -68,6 +68,7 @@ export default function StoreViewFinder({ sidePanel }: Props) {
         x: layoutItem?.x ?? 0,
         y: layoutItem?.y ?? 0,
       };
+      console.log(layout, b);
       blockArr.push(b);
     }
 
@@ -179,6 +180,7 @@ export default function StoreViewFinder({ sidePanel }: Props) {
               handles={handles}
               selectedId={currentSelection}
               onClick={(e, id) => selectedBlock(e, id)}
+              changeLayout={(newLayout) => setLayout([...newLayout])}
             />
           </div>
         </div>

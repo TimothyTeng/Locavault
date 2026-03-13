@@ -1,7 +1,10 @@
 import { eq } from "drizzle-orm";
 import { db } from "./db";
 import { stores, items, blocks } from "./schema";
-import type { CreateStoreInput } from "~/types/storeViewFinderTypes";
+import type {
+  CreateStoreInput,
+  BlockDetails,
+} from "~/types/storeViewFinderTypes";
 
 // ─── STORES ────────────────────────────────────────────────
 
@@ -12,8 +15,41 @@ export async function getStoresByUser(userId: string) {
 
 /** Fetch a single store by ID, including its blocks */
 export async function getStoreById(id: string) {
-  const result = await db.select().from(stores).where(eq(stores.id, id));
-  return result[0] ?? null;
+  return db.transaction(async (tx) => {
+    const storeResult = await tx.select().from(stores).where(eq(stores.id, id));
+    const store = storeResult[0];
+    if (!store) return null;
+
+    const blocksResult = await tx
+      .select()
+      .from(blocks)
+      .where(eq(blocks.storeId, id));
+
+    if (!blocksResult) return null;
+
+    // map all blocksResult rows into BlockDetails array
+    const blkDetails: BlockDetails[] = blocksResult.map((block) => ({
+      background: block.background,
+      border: block.border,
+      label: block.label,
+      height: block.height,
+      width: block.width,
+      x: block.x,
+      y: block.y,
+    }));
+
+    const res: CreateStoreInput = {
+      id: store.id,
+      name: store.name,
+      userId: store.userId,
+      tags: store.tags,
+      description: store.description ?? undefined,
+      rows: store.rows,
+      cols: store.cols,
+      blocks: blkDetails.length ? blkDetails : [],
+    };
+    return res;
+  });
 }
 
 /** Create a new store */
