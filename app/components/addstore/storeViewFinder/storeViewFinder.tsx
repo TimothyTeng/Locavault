@@ -39,7 +39,7 @@ export default function StoreViewFinder({ sidePanel }: Props) {
   const handles = handlesForMode(mode);
 
   const selectedBlock = (e: React.MouseEvent<HTMLDivElement>, id: string) => {
-    e.stopPropagation(); // prevent deselect from firing
+    e.stopPropagation();
     setCurrentSelection(id);
   };
 
@@ -54,7 +54,6 @@ export default function StoreViewFinder({ sidePanel }: Props) {
   ) => {
     const id = crypto.randomUUID();
 
-    // Build block array from blockStyles + layout
     const blockArr: BlockDetails[] = [];
     for (const key in blocks) {
       const block = blocks[key];
@@ -68,7 +67,6 @@ export default function StoreViewFinder({ sidePanel }: Props) {
         x: layoutItem?.x ?? 0,
         y: layoutItem?.y ?? 0,
       };
-      console.log(layout, b);
       blockArr.push(b);
     }
 
@@ -83,13 +81,11 @@ export default function StoreViewFinder({ sidePanel }: Props) {
       blocks: blockArr,
     };
 
-    // Fire to action server-side, don't await
     fetcher.submit(data, {
       method: "POST",
       encType: "application/json",
     });
 
-    // Redirect immediately with state for instant render
     navigate(`/store/${id}`, { state: { storeData: data } });
   };
 
@@ -147,7 +143,7 @@ export default function StoreViewFinder({ sidePanel }: Props) {
   };
 
   return (
-    <div className="flex flex-col lg:flex-row h-full w-full overflow-hidden bg-slate-50 font-mono !p-6 !pt-20 gap-4">
+    <div className="flex flex-col lg:flex-row h-full w-full overflow-hidden bg-slate-50 font-mono p-6 gap-4">
       {/* ── Left: Canvas ─────────────────────────────────────── */}
       <div className="flex flex-col lg:w-1/2 min-w-0 min-h-0 overflow-hidden">
         {/* Canvas toolbar */}
@@ -187,7 +183,7 @@ export default function StoreViewFinder({ sidePanel }: Props) {
       </div>
 
       {/* ── Right: Controls + Form ────────────────────────────── */}
-      <div className="flex flex-col lg:w-1/2 shrink-0 bg-white border-t lg:border-t-0 lg:border-l border-slate-200 overflow-y-auto max-h-64 lg:max-h-none !px-5">
+      <div className="flex flex-col lg:w-1/2 shrink-0 bg-white border-t lg:border-t-0 lg:border-l border-slate-200 overflow-y-auto max-h-64 lg:max-h-none px-5">
         {/* Panel header */}
         <div className="flex items-center justify-between px-6 h-14 shrink-0 border-b border-slate-200">
           <span className="text-[10px] font-bold uppercase tracking-widest text-slate-800">
@@ -199,25 +195,28 @@ export default function StoreViewFinder({ sidePanel }: Props) {
         </div>
 
         {/* Grid size controls */}
-        <div className="!my-2" />
-        <FieldLabel>Grid Size</FieldLabel>
-        <div className="!px-6 !py-4 !border-b !border-slate-100">
-          <GridControls
-            cols={COLS}
-            rows={ROWS}
-            onColsChange={handleColsChange}
-            onRowsChange={handleRowsChange}
-          />
+        <div className="mt-4 px-6 pb-4 border-b border-slate-100">
+          <FieldLabel>Grid Size</FieldLabel>
+          <div className="mt-2">
+            <GridControls
+              cols={COLS}
+              rows={ROWS}
+              onColsChange={handleColsChange}
+              onRowsChange={handleRowsChange}
+            />
+          </div>
         </div>
 
         {/* Block picker */}
-        <div className="px-6 py-6 border-b border-slate-100">
+        <div className="px-6 py-5 border-b border-slate-100">
           <FieldLabel>Blocks</FieldLabel>
-          <BlockPicker onBlockClick={handleBlockClick} />
+          <div className="mt-2">
+            <BlockPicker onBlockClick={handleBlockClick} />
+          </div>
         </div>
 
         {/* Injected form fields */}
-        <div className="px-6 py-6 flex-1 min-h-0 !my-6">
+        <div className="px-6 py-5 flex-1 min-h-0 pb-8">
           <StoreForm
             onSubmit={(name, tag, description) =>
               submitForm(

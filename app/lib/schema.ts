@@ -34,8 +34,9 @@ export const items = sqliteTable("items", {
   storeId:     text("store_id").notNull().references(() => stores.id, {
     onDelete: "cascade",
   }),
-  xCord:     integer("x_coord").notNull().default(0),
-  yCord:     integer("y_coord").notNull().default(0),
+  blockId:     text("block_id").references(() => blocks.block_id, {
+    onDelete: "set null",
+  }),
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
 });
 

@@ -12,7 +12,6 @@ import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 import type { BlockStyle } from "../../../types/storeViewFinderTypes";
 import { useState } from "react";
-import { darkenColor } from "../../../utils/GridHelper";
 
 type Props = {
   cols: number;
@@ -98,7 +97,6 @@ export function GridCanvas({
                   }}
                   onClick={(e) => {
                     onClick(e, item.i);
-                    console.log(layout);
                   }}
                 >
                   <span

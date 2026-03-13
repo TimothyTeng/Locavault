@@ -1,14 +1,20 @@
 import { useLocation, useParams, useLoaderData } from "react-router";
 import type { CreateStoreInput } from "../types/storeViewFinderTypes";
 import type { Route } from "./+types/home";
-import { GridCanvas } from "~/components/addstore/storeViewFinder/GridCanvas";
 import type { LayoutItem } from "react-grid-layout";
-import { useState, useEffect } from "react";
-import { useZoom } from "~/utils/useZoom";
-import { handlesForMode } from "~/components/addstore/storeViewFinder/ModeToggle";
-import { getStoreById } from "~/lib/queries";
+import { useState, useEffect, useMemo } from "react";
 import type { LoaderFunctionArgs } from "react-router";
 import { requireAuth } from "~/lib/auth";
+import { getStoreById, getItemsByStore } from "~/lib/queries";
+import { StoreHeader } from "~/components/store/storeHeader";
+import { StoreLoading } from "~/components/store/storeLoading";
+import { StoreToolbar } from "~/components/store/storeToolbar";
+import { StoreTable, type Item } from "~/components/store/storeTable";
+import { ItemEditModal } from "~/components/store/itemEditModal";
+import { handlesForMode } from "~/components/addstore/storeViewFinder/ModeToggle";
+import { useZoom } from "~/utils/useZoom";
+import { GridCanvas } from "~/components/addstore/storeViewFinder/GridCanvas";
+import Navbar from "~/components/home/navbar";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -20,14 +26,16 @@ export function meta({}: Route.MetaArgs) {
 export const loader = async (args: LoaderFunctionArgs) => {
   const userId = await requireAuth(args);
   const { params } = args;
-  const store = await getStoreById(params.id!);
-  return { userId, store };
+  const [store, items] = await Promise.all([
+    getStoreById(params.id!),
+    getItemsByStore(params.id!),
+  ]);
+  return { userId, store, items };
 };
 
 function blocksToLayoutAndStyles(blocks: CreateStoreInput["blocks"]) {
   const layout: LayoutItem[] = [];
   const blockStyles: Record<string, any> = {};
-
   blocks.forEach((block, i) => {
     const key = `block-${i}`;
     layout.push({
@@ -45,174 +53,154 @@ function blocksToLayoutAndStyles(blocks: CreateStoreInput["blocks"]) {
       label: block.label,
     };
   });
-
   return { layout, blockStyles };
 }
 
 export default function StorePage() {
-  const { store: dbStore } = useLoaderData<typeof loader>();
+  const { store: dbStore, items: dbItems } = useLoaderData<typeof loader>();
   const { state } = useLocation();
+  const { id } = useParams();
+  const [mounted, setMounted] = useState(false);
   const navStore: CreateStoreInput | null = state?.storeData ?? null;
-
   const initial = navStore ?? dbStore;
 
   const [store, setStore] = useState<CreateStoreInput | null>(initial);
-  const [isLoading, setIsLoading] = useState(!navStore);
+  const [isLoading, setIsLoading] = useState(false); // always false on server
 
-  const [layout, setLayout] = useState<LayoutItem[]>(() => {
-    if (!initial) return [];
-    return blocksToLayoutAndStyles(initial.blocks).layout;
-  });
+  const [layout, setLayout] = useState<LayoutItem[]>(() =>
+    initial ? blocksToLayoutAndStyles(initial.blocks).layout : [],
+  );
+  const [blockStyles, setBlockStyles] = useState<Record<string, any>>(() =>
+    initial ? blocksToLayoutAndStyles(initial.blocks).blockStyles : {},
+  );
 
-  const [blockStyles, setBlockStyles] = useState<Record<string, any>>(() => {
-    if (!initial) return {};
-    return blocksToLayoutAndStyles(initial.blocks).blockStyles;
-  });
+  const [items, setItems] = useState<Item[]>(dbItems ?? []);
+  const [search, setSearch] = useState("");
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [editingItem, setEditingItem] = useState<Item | null>(null);
+  const [highlightedCell, setHighlightedCell] = useState<string | null>(null);
 
-  const { zoom, setZoom } = useZoom(0.5, 3);
-  const [currentSelection, setCurrentSelection] = useState<string | null>(null);
+  const { zoom } = useZoom(0.5, 3);
   const handles = handlesForMode("select");
 
   useEffect(() => {
+    setMounted(true);
+    if (!navStore && !dbStore) {
+      setIsLoading(true);
+    }
+  }, []);
+  useEffect(() => {
     if (!dbStore) return;
-
     setStore(dbStore);
     setIsLoading(false);
-
     const { layout: dbLayout, blockStyles: dbStyles } = blocksToLayoutAndStyles(
       dbStore.blocks,
     );
-
-    setLayout((prev) => {
-      const prevStr = JSON.stringify(prev);
-      const nextStr = JSON.stringify(dbLayout);
-      return prevStr === nextStr ? prev : dbLayout;
-    });
-
-    setBlockStyles((prev) => {
-      const prevStr = JSON.stringify(prev);
-      const nextStr = JSON.stringify(dbStyles);
-      return prevStr === nextStr ? prev : dbStyles;
-    });
+    setLayout((prev) =>
+      JSON.stringify(prev) === JSON.stringify(dbLayout) ? prev : dbLayout,
+    );
+    setBlockStyles((prev) =>
+      JSON.stringify(prev) === JSON.stringify(dbStyles) ? prev : dbStyles,
+    );
   }, [dbStore]);
 
-  const selectedBlock = (e: React.MouseEvent<HTMLDivElement>, id: string) => {
-    e.stopPropagation();
-    setCurrentSelection(id);
+  const filteredItems = useMemo(() => {
+    if (!search.trim()) return items;
+    return items.filter((item) =>
+      item.name.toLowerCase().includes(search.toLowerCase()),
+    );
+  }, [items, search]);
+
+  const handleSelectItem = (item: Item) => {
+    setSelectedItemId(item.id);
+    setHighlightedCell(item.blockId);
   };
 
-  const { id } = useParams();
+  const handleSaveItem = (updated: Item) => {
+    setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+    setEditingItem(null);
+    // TODO: persist via fetcher action
+  };
 
-  if (isLoading) {
+  if (!mounted) {
+    // Return same structure server and client agree on
     return (
-      <div className="flex flex-col items-center justify-center h-full w-full gap-4">
-        <div
-          className="w-10 h-10 rounded-full border-2 border-slate-200 border-t-slate-600"
-          style={{ animation: "spin 0.8s linear infinite" }}
-        />
-        <p className="text-slate-400 font-mono text-[11px] uppercase tracking-widest">
-          Loading store...
-        </p>
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      <div className="flex flex-col h-screen w-full bg-slate-50 font-mono pt-16 overflow-hidden">
+        <div className="flex items-center gap-3 px-6 h-14 shrink-0 border-b border-slate-200 bg-white" />
       </div>
     );
   }
+  if (isLoading) return <StoreLoading />;
 
   if (!store) {
     return (
-      <div className="flex flex-col items-center justify-center h-full w-full gap-2">
-        <p className="text-slate-400 font-mono text-[11px] uppercase tracking-widest">
-          Store not found
-        </p>
+      <div>
+        <Navbar />
+        <div className="flex flex-col items-center justify-center h-full w-full gap-2">
+          <p className="text-slate-400 font-mono text-[11px] uppercase tracking-widest">
+            Store not found
+          </p>
+        </div>
       </div>
     );
   }
 
-  const tags: string[] = JSON.parse(store.tags ?? "[]");
-
   return (
-    <div className="flex flex-col h-full w-full bg-slate-50 font-mono !p-6 !pt-20 gap-6">
-      {/* ── Header ── */}
-      <div className="bg-white border border-slate-200 rounded-lg p-6 flex flex-col gap-3">
-        <div className="flex items-start justify-between">
-          <div className="flex flex-col gap-1">
-            <h1 className="text-xl font-bold text-slate-800">{store.name}</h1>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-              {store.cols} × {store.rows} grid · {store.blocks.length} block
-              {store.blocks.length !== 1 ? "s" : ""}
-            </p>
-          </div>
-          <span className="text-[10px] font-mono text-slate-300">{id}</span>
-        </div>
+    <div>
+      <Navbar />
+      <div className="flex flex-col h-screen w-full bg-slate-50 font-mono pt-16 overflow-hidden">
+        <StoreToolbar
+          storeId={id!}
+          search={search}
+          onSearchChange={setSearch}
+        />
 
-        {/* Grid Canvas */}
-        <div style={{ width: `${zoom * 100}%` }}>
-          <GridCanvas
-            cols={store.cols}
-            rows={store.rows}
-            layout={layout}
-            blockStyles={blockStyles}
-            handles={handles}
-            selectedId={currentSelection}
-            onClick={(e, id) => selectedBlock(e, id)}
-          />
-        </div>
-
-        {/* Tags */}
-        {tags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
-            {tags.map((tag) => (
-              <span
-                key={tag}
-                className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest border bg-slate-100 border-slate-300 text-slate-600"
-              >
-                {tag}
+        <div className="flex flex-1 min-h-0 overflow-hidden">
+          {/* ── Left: Canvas ── */}
+          <div className="flex flex-col w-1/2 border-r border-slate-200 bg-white overflow-hidden">
+            <div className="px-4 h-10 flex items-center border-b border-slate-100 shrink-0">
+              <span className="text-[9px] font-bold uppercase tracking-widest text-slate-300">
+                Floor Plan
               </span>
-            ))}
-          </div>
-        )}
-
-        {/* Description */}
-        {store.description && (
-          <p className="text-[12px] text-slate-500 leading-relaxed">
-            {store.description}
-          </p>
-        )}
-      </div>
-
-      {/* ── Blocks ── */}
-      <div className="bg-white border border-slate-200 rounded-lg p-6 flex flex-col gap-4">
-        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          Blocks
-        </span>
-        {store.blocks.length === 0 ? (
-          <p className="text-[12px] text-slate-300">No blocks added.</p>
-        ) : (
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-            {store.blocks.map((block, i) => (
-              <div
-                key={i}
-                className="flex items-center gap-3 p-3 rounded-md border border-slate-100 bg-slate-50"
-              >
-                <div
-                  className="w-6 h-6 rounded shrink-0 border"
-                  style={{
-                    background: block.background,
-                    borderColor: block.border,
-                  }}
+            </div>
+            <div className="flex-1 overflow-auto p-4">
+              <StoreHeader store={store} id={id} />
+              <div className="mt-4" style={{ width: `${zoom * 100}%` }}>
+                <GridCanvas
+                  cols={store.cols}
+                  rows={store.rows}
+                  layout={layout}
+                  blockStyles={blockStyles}
+                  handles={handles}
+                  selectedId={highlightedCell}
+                  onClick={() => {}}
                 />
-                <div className="flex flex-col gap-0.5 min-w-0">
-                  <span className="text-[11px] font-bold text-slate-700 truncate">
-                    {block.label || "Untitled"}
-                  </span>
-                  <span className="text-[10px] text-slate-400">
-                    {block.width}w × {block.height}h · ({block.x}, {block.y})
-                  </span>
-                </div>
               </div>
-            ))}
+            </div>
           </div>
-        )}
+
+          {/* ── Right: Table ── */}
+          <div className="flex flex-col w-1/2 overflow-hidden">
+            <div className="px-4 h-10 flex items-center border-b border-slate-100 bg-white shrink-0">
+              <span className="text-[9px] font-bold uppercase tracking-widest text-slate-300">
+                Inventory · {filteredItems.length} item
+                {filteredItems.length !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <StoreTable
+              items={filteredItems}
+              selectedItemId={selectedItemId}
+              onSelect={handleSelectItem}
+              onDoubleClick={setEditingItem}
+            />
+          </div>
+        </div>
+
+        <ItemEditModal
+          item={editingItem}
+          onClose={() => setEditingItem(null)}
+          onSave={handleSaveItem}
+        />
       </div>
     </div>
   );

@@ -41,8 +41,8 @@ type Props = {
 
 export function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <label className="!flex !items-center !gap-2 !text-[10px] !font-bold !uppercase !tracking-widest !text-slate-600">
-      <span className="!inline-block !w-1 !h-3.5 !rounded-full !bg-gradient-to-b !from-slate-400 !to-slate-300" />
+    <label className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-slate-600">
+      <span className="inline-block w-1 h-3.5 rounded-full bg-gradient-to-b from-slate-400 to-slate-300" />
       {children}
     </label>
   );
@@ -85,7 +85,7 @@ export function StoreForm({ onChange, onSubmit }: Props) {
   };
 
   const inputClass =
-    "!w-full !rounded-md !border !border-slate-300 !bg-white !px-3 !py-2.5 !text-[12px] !font-mono !text-slate-800 !placeholder-slate-300 !shadow-sm !outline-none !transition-all !duration-150 !focus:border-slate-500 !focus:ring-2 !focus:ring-slate-100";
+    "w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-[12px] font-mono text-slate-800 placeholder-slate-300 shadow-sm outline-none transition-all duration-150 focus:border-slate-500 focus:ring-2 focus:ring-slate-100";
 
   return (
     <form
@@ -98,10 +98,10 @@ export function StoreForm({ onChange, onSubmit }: Props) {
         setNameError(false);
         onSubmit(name, tags, description);
       }}
-      className="!flex !flex-col !gap-6"
+      className="flex flex-col gap-6 pb-10"
     >
       {/* Store Name */}
-      <div className="!flex !flex-col !gap-2">
+      <div className="flex flex-col gap-2">
         <FieldLabel>Store Name</FieldLabel>
         <input
           type="text"
@@ -113,20 +113,20 @@ export function StoreForm({ onChange, onSubmit }: Props) {
             if (nameError) setNameError(false);
             onChange?.({ name: e.target.value, tags, description });
           }}
-          className={`${inputClass} ${nameError ? "!border-red-400 !ring-2 !ring-red-100" : ""}`}
+          className={`${inputClass} ${nameError ? "border-red-400 ring-2 ring-red-100" : ""}`}
         />
         {nameError && (
-          <p className="!text-[10px] !text-red-500 !font-medium !mt-0.5">
+          <p className="text-[10px] text-red-500 font-medium mt-0.5">
             Store name is required.
           </p>
         )}
       </div>
 
       {/* Tags */}
-      <div className="!flex !flex-col !gap-2">
+      <div className="flex flex-col gap-2">
         <FieldLabel>Tags</FieldLabel>
 
-        <div className="!flex !flex-wrap !gap-1.5">
+        <div className="flex flex-wrap gap-1.5">
           {allTags.map((tag) => {
             const isCustom = customTags.includes(tag);
             const isSelected = tags.includes(tag);
@@ -137,7 +137,7 @@ export function StoreForm({ onChange, onSubmit }: Props) {
                 key={tag}
                 onClick={() => toggleTag(tag)}
                 className={[
-                  "!inline-flex !items-center !gap-1 !cursor-pointer !select-none !rounded-full !px-2.5 !py-1 !text-[10px] !font-bold !uppercase !tracking-widest !border !transition-all !duration-150",
+                  "inline-flex items-center gap-1 cursor-pointer select-none rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest border transition-all duration-150",
                   isSelected ? colors.active : colors.idle,
                 ].join(" ")}
               >
@@ -149,7 +149,7 @@ export function StoreForm({ onChange, onSubmit }: Props) {
                       e.stopPropagation();
                       removeCustomTag(tag);
                     }}
-                    className="!ml-0.5 !opacity-50 !hover:opacity-100 !transition-opacity !text-[12px] !leading-none"
+                    className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity text-[12px] leading-none"
                     title="Remove tag"
                   >
                     ×
@@ -161,20 +161,20 @@ export function StoreForm({ onChange, onSubmit }: Props) {
         </div>
 
         {/* Custom tag input */}
-        <div className="!flex !gap-2 !mt-1">
+        <div className="flex gap-2 mt-1">
           <input
             type="text"
             value={customTagInput}
             maxLength={20}
             placeholder="Add custom tag…"
             onChange={(e) => setCustomTagInput(e.target.value)}
-            className="!flex-1 !rounded-md !border !border-slate-300 !bg-white !px-3 !py-2 !text-[11px] !font-mono !text-slate-800 !placeholder-slate-300 !shadow-sm !outline-none !transition-all !focus:border-slate-500 !focus:ring-2 !focus:ring-slate-100"
+            className="flex-1 rounded-md border border-slate-300 bg-white px-3 py-2 text-[11px] font-mono text-slate-800 placeholder-slate-300 shadow-sm outline-none transition-all focus:border-slate-500 focus:ring-2 focus:ring-slate-100"
           />
           <button
             type="button"
             onClick={addCustomTag}
             disabled={!customTagInput.trim()}
-            className="!rounded-md !border !border-slate-300 !bg-white !px-3 !py-2 !text-[10px] !font-bold !uppercase !tracking-widest !text-slate-600 !shadow-sm !transition-all !duration-150 !hover:bg-slate-800 !hover:text-white !hover:border-slate-800 !disabled:opacity-25 !disabled:cursor-not-allowed"
+            className="rounded-md border border-slate-300 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-600 shadow-sm transition-all duration-150 hover:bg-slate-800 hover:text-white hover:border-slate-800 disabled:opacity-25 disabled:cursor-not-allowed"
           >
             Add
           </button>
@@ -182,7 +182,7 @@ export function StoreForm({ onChange, onSubmit }: Props) {
       </div>
 
       {/* Description */}
-      <div className="!flex !flex-col !gap-2">
+      <div className="flex flex-col gap-2">
         <FieldLabel>Description</FieldLabel>
         <textarea
           value={description}
@@ -192,13 +192,13 @@ export function StoreForm({ onChange, onSubmit }: Props) {
             setDescription(e.target.value);
             onChange?.({ name, tags, description: e.target.value });
           }}
-          className="!w-full !resize-none !rounded-md !border !border-slate-300 !bg-white !px-3 !py-2.5 !text-[11px] !font-mono !text-slate-800 !placeholder-slate-300 !shadow-sm !outline-none !transition-all !duration-150 !focus:border-slate-500 !focus:ring-2 !focus:ring-slate-100 !leading-relaxed"
+          className="w-full resize-none rounded-md border border-slate-300 bg-white px-3 py-2.5 text-[11px] font-mono text-slate-800 placeholder-slate-300 shadow-sm outline-none transition-all duration-150 focus:border-slate-500 focus:ring-2 focus:ring-slate-100 leading-relaxed"
         />
       </div>
 
       <button
         type="submit"
-        className="!rounded-md !border !border-slate-300 !bg-white !px-3 !py-2 !text-[10px] !font-bold !uppercase !tracking-widest !text-slate-600 !shadow-sm !transition-all !duration-150 !hover:bg-slate-800 !hover:text-white !hover:border-slate-800"
+        className="rounded-md border border-slate-300 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-600 shadow-sm transition-all duration-150 hover:bg-slate-800 hover:text-white hover:border-slate-800"
       >
         Save
       </button>

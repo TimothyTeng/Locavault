@@ -202,16 +202,14 @@ export async function createItem(data: {
   storeId: string;
   quantity?: number;
   description?: string;
-  xCord?: number;
-  yCord?: number;
+  blockId?: string;
 }) {
   return db.insert(items).values({
     name: data.name,
     storeId: data.storeId,
     quantity: data.quantity ?? 0,
     description: data.description ?? null,
-    xCord: data.xCord ?? 0,
-    yCord: data.yCord ?? 0,
+    blockId: data.blockId,
   });
 }
 
