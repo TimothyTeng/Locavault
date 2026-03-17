@@ -10,7 +10,7 @@ import {
 import { GridBackground } from "react-grid-layout/extras";
 import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
-import type { BlockStyle } from "../../../types/storeViewFinderTypes";
+import type { BlockStyle } from "#types/storeViewFinderTypes";
 import { useState } from "react";
 
 type Props = {
@@ -47,7 +47,7 @@ export function GridCanvas({
 
   return (
     <div ref={containerRef} className="relative w-full">
-      {mounted && (
+      {mounted && width > 0 && (
         <>
           <GridBackground
             width={width}

@@ -29,6 +29,7 @@ export async function getStoreById(id: string) {
 
     // map all blocksResult rows into BlockDetails array
     const blkDetails: BlockDetails[] = blocksResult.map((block) => ({
+      block_id: block.block_id,
       background: block.background,
       border: block.border,
       label: block.label,

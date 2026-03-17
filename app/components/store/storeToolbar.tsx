@@ -4,9 +4,15 @@ type Props = {
   storeId: string;
   search: string;
   onSearchChange: (val: string) => void;
+  onAddItem: () => void;
 };
 
-export function StoreToolbar({ storeId, search, onSearchChange }: Props) {
+export function StoreToolbar({
+  storeId,
+  search,
+  onSearchChange,
+  onAddItem,
+}: Props) {
   const navigate = useNavigate();
 
   return (
@@ -30,7 +36,7 @@ export function StoreToolbar({ storeId, search, onSearchChange }: Props) {
 
       {/* Add Item */}
       <button
-        onClick={() => navigate(`/store/${storeId}/additem`)}
+        onClick={onAddItem}
         className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-300 text-[10px] font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-150"
       >
         <svg width="12" height="12" viewBox="0 0 12 12" fill="none">

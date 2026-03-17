@@ -1,4 +1,4 @@
-import { type Block } from "../../../types/BlockTypes";
+import { type Block } from "#types/BlockTypes";
 
 type Props = {
   block: Block;

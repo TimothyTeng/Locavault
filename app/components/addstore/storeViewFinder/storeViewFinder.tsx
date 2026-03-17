@@ -5,13 +5,13 @@ import { GridCanvas } from "./GridCanvas";
 import { GridControls } from "./GridControls";
 import { ZoomControls } from "./ZoomControl";
 import { ModeToggle, handlesForMode } from "./ModeToggle";
-import { useZoom } from "../../../utils/useZoom";
-import { findNextFreeCell } from "../../../utils/GridHelper";
+import { useZoom } from "#utils/useZoom";
+import { findNextFreeCell } from "#utils/GridHelper";
 import type {
   BlockDetails,
   BlockStyle,
   CreateStoreInput,
-} from "../../../types/storeViewFinderTypes";
+} from "#types/storeViewFinderTypes";
 import { FieldLabel, StoreForm } from "./StoreForm";
 import { useFetcher, useLoaderData, useNavigate } from "react-router";
 
@@ -59,6 +59,7 @@ export default function StoreViewFinder({ sidePanel }: Props) {
       const block = blocks[key];
       const layoutItem = layout.find((item) => item.i === key);
       const b: BlockDetails = {
+        block_id: key,
         background: block.bg,
         border: block.border,
         label: block.label,

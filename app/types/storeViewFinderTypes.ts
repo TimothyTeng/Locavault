@@ -1,6 +1,8 @@
 export type BlockStyle = { bg: string; border: string; label: string };
 
-export type BlockDetails = {background: string;
+export type BlockDetails = {
+    block_id:string;
+    background: string;
     border: string;
     label: string;
     height: number;
