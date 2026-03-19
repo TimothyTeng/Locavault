@@ -10,7 +10,12 @@ import type { LayoutItem } from "react-grid-layout";
 import { useState, useEffect, useMemo } from "react";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { requireAuth } from "~/lib/auth";
-import { getStoreById, getItemsByStore, createItem } from "~/lib/queries";
+import {
+  getStoreById,
+  getItemsByStore,
+  createItem,
+  updateItem,
+} from "~/lib/queries";
 import { StoreHeader } from "~/components/store/storeHeader";
 import { StoreLoading } from "~/components/store/storeLoading";
 import { StoreToolbar } from "~/components/store/storeToolbar";
@@ -52,6 +57,17 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
       quantity: data.quantity,
       description: data.description,
       blockId: data.blockId ?? undefined,
+    });
+    return { ok: true };
+  }
+
+  if (data._action === "updateItem") {
+    await updateItem(data.id, {
+      name: data.name,
+      quantity: data.quantity,
+      description: data.description,
+      storeId: data.storeId,
+      blockId: data.blockId,
     });
     return { ok: true };
   }
@@ -121,7 +137,6 @@ export default function StorePage() {
 
   useEffect(() => {
     if (!dbStore) return;
-    console.log(store, dbStore);
     setStore(dbStore);
     setIsLoading(false);
     const { layout: dbLayout, blockStyles: dbStyles } = blocksToLayoutAndStyles(
@@ -149,12 +164,24 @@ export default function StorePage() {
     setHighlightedCell(item.blockId);
   };
 
+  const fetcher = useFetcher();
+
   const handleSaveItem = (updated: Item) => {
     setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
     setEditingItem(null);
+    fetcher.submit(
+      {
+        _action: "updateItem",
+        id: updated.id,
+        name: updated.name,
+        storeId: updated.storeId,
+        description: updated.description,
+        quantity: updated.quantity,
+        blockId: updated.blockId,
+      },
+      { method: "POST", encType: "application/json" },
+    );
   };
-
-  const fetcher = useFetcher();
 
   const handleAddItem = (data: {
     name: string;

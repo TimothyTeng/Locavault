@@ -219,10 +219,10 @@ export async function updateItem(
   id: string,
   data: Partial<{
     name: string;
+    storeId: string;
     quantity: number;
     description: string;
-    xCord: number;
-    yCord: number;
+    blockId: string;
   }>,
 ) {
   return db.update(items).set(data).where(eq(items.id, id));

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import type { Item } from "./storeTable";
+import type { Item } from "#types/storeTypes";
 
 type Props = {
   item: Item | null;
