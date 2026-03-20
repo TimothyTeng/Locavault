@@ -342,3 +342,75 @@ export async function getItemCountByStore(storeId: string) {
   const result = await getItemsByStore(storeId);
   return result.length;
 }
+
+// ─── ADD THIS TO queries.ts ────────────────────────────────
+// Place alongside createStoreWithBlocks
+
+import { inArray } from "drizzle-orm";
+
+/**
+ * Replace all blocks for an existing store and null-out blockId
+ * on any items that referenced deleted blocks.
+ */
+export async function updateStoreWithBlocks(
+  storeId: string,
+  data: {
+    name: string;
+    tags: string;
+    description?: string;
+    rows: number;
+    cols: number;
+    blocks: BlockDetails[];
+  },
+) {
+  return db.transaction(async (tx) => {
+    // 1. Update store metadata
+    await tx
+      .update(stores)
+      .set({
+        name: data.name,
+        tags: data.tags,
+        description: data.description ?? null,
+        rows: data.rows,
+        cols: data.cols,
+      })
+      .where(eq(stores.id, storeId));
+
+    // 2. Find which block IDs are being removed
+    const existing = await tx
+      .select({ block_id: blocks.block_id })
+      .from(blocks)
+      .where(eq(blocks.storeId, storeId));
+
+    const existingIds = existing.map((b) => b.block_id);
+    const incomingIds = data.blocks.map((b) => b.block_id);
+    const removedIds = existingIds.filter((id) => !incomingIds.includes(id));
+
+    // 3. Null out blockId on items that referenced removed blocks
+    if (removedIds.length > 0) {
+      await tx
+        .update(items)
+        .set({ blockId: null })
+        .where(inArray(items.blockId, removedIds));
+    }
+
+    // 4. Delete all old blocks and re-insert the new set
+    await tx.delete(blocks).where(eq(blocks.storeId, storeId));
+
+    if (data.blocks.length > 0) {
+      await tx.insert(blocks).values(
+        data.blocks.map((block) => ({
+          block_id: block.block_id,
+          storeId,
+          background: block.background,
+          border: block.border,
+          label: block.label,
+          height: block.height,
+          width: block.width,
+          x: block.x,
+          y: block.y,
+        })),
+      );
+    }
+  });
+}

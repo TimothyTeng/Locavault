@@ -4,9 +4,11 @@ import {
   useLoaderData,
   useFetcher,
 } from "react-router";
-import type { CreateStoreInput } from "../types/storeViewFinderTypes";
+import type {
+  CreateStoreInput,
+  BlocksMap,
+} from "../types/storeViewFinderTypes";
 import type { Route } from "./+types/home";
-import type { LayoutItem } from "react-grid-layout";
 import { useState, useEffect, useMemo } from "react";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
 import { requireAuth } from "~/lib/auth";
@@ -74,30 +76,21 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 // ── Helpers ────────────────────────────────────────────────
-function blocksToLayoutAndStyles(blocks: CreateStoreInput["blocks"]) {
-  const layout: LayoutItem[] = [];
-  const blockStyles: Record<string, any> = {};
-
-  blocks.forEach((block) => {
-    layout.push({
-      i: block.block_id,
-      x: block.x,
-      y: block.y,
-      w: block.width,
-      h: block.height,
-      static: true,
-      minW: 1,
-      minH: 1,
-    });
-
-    blockStyles[block.block_id] = {
-      bg: block.background,
-      border: block.border,
-      label: block.label,
-    };
-  });
-
-  return { layout, blockStyles };
+function blocksToBlocksMap(blocks: CreateStoreInput["blocks"]): BlocksMap {
+  return Object.fromEntries(
+    blocks.map((block) => [
+      block.block_id,
+      {
+        x: block.x,
+        y: block.y,
+        w: block.width,
+        h: block.height,
+        bg: block.background,
+        border: block.border,
+        label: block.label,
+      },
+    ]),
+  );
 }
 
 // ── Page ───────────────────────────────────────────────────
@@ -113,11 +106,8 @@ export default function StorePage() {
   const [mounted, setMounted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [store, setStore] = useState<CreateStoreInput | null>(initial);
-  const [layout, setLayout] = useState<LayoutItem[]>(() =>
-    initial ? blocksToLayoutAndStyles(initial.blocks).layout : [],
-  );
-  const [blockStyles, setBlockStyles] = useState<Record<string, any>>(() =>
-    initial ? blocksToLayoutAndStyles(initial.blocks).blockStyles : {},
+  const [blocks, setBlocks] = useState<BlocksMap>(() =>
+    initial ? blocksToBlocksMap(initial.blocks) : {},
   );
   const [items, setItems] = useState<Item[]>(dbItems ?? []);
   const [search, setSearch] = useState("");
@@ -139,14 +129,9 @@ export default function StorePage() {
     if (!dbStore) return;
     setStore(dbStore);
     setIsLoading(false);
-    const { layout: dbLayout, blockStyles: dbStyles } = blocksToLayoutAndStyles(
-      dbStore.blocks,
-    );
-    setLayout((prev) =>
-      JSON.stringify(prev) === JSON.stringify(dbLayout) ? prev : dbLayout,
-    );
-    setBlockStyles((prev) =>
-      JSON.stringify(prev) === JSON.stringify(dbStyles) ? prev : dbStyles,
+    const mapped = blocksToBlocksMap(dbStore.blocks);
+    setBlocks((prev) =>
+      JSON.stringify(prev) === JSON.stringify(mapped) ? prev : mapped,
     );
   }, [dbStore]);
 
@@ -267,8 +252,7 @@ export default function StorePage() {
                 <GridCanvas
                   cols={store.cols}
                   rows={store.rows}
-                  layout={layout}
-                  blockStyles={blockStyles}
+                  blocks={blocks}
                   handles={handles}
                   selectedId={highlightedCell}
                   onClick={(_, blockId) => {
@@ -307,7 +291,7 @@ export default function StorePage() {
         onClose={() => setAddItemOpen(false)}
         onSubmit={handleAddItem}
         selectedBlockId={highlightedCell}
-        selectedBlockLabel={blockStyles[highlightedCell ?? ""]?.label ?? ""}
+        selectedBlockLabel={blocks[highlightedCell ?? ""]?.label ?? ""}
       />
     </div>
   );

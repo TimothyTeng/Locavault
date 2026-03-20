@@ -30,13 +30,21 @@ const CUSTOM_COLOR = {
   active: "bg-slate-700 border-slate-700 text-white",
 };
 
+type InitialValues = {
+  name?: string;
+  tags?: string[];
+  description?: string;
+};
+
 type Props = {
+  initialValues?: InitialValues;
   onChange?: (values: {
     name: string;
     tags: string[];
     description: string;
   }) => void;
   onSubmit: (name: string, tags: string[], description: string) => void;
+  submitLabel?: string;
 };
 
 export function FieldLabel({ children }: { children: React.ReactNode }) {
@@ -48,12 +56,21 @@ export function FieldLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
-export function StoreForm({ onChange, onSubmit }: Props) {
-  const [name, setName] = useState("");
-  const [tags, setTags] = useState<string[]>([]);
-  const [description, setDescription] = useState("");
+export function StoreForm({
+  onChange,
+  onSubmit,
+  initialValues,
+  submitLabel = "Save",
+}: Props) {
+  const [name, setName] = useState(initialValues?.name ?? "");
+  const [tags, setTags] = useState<string[]>(initialValues?.tags ?? []);
+  const [description, setDescription] = useState(
+    initialValues?.description ?? "",
+  );
   const [customTagInput, setCustomTagInput] = useState("");
-  const [customTags, setCustomTags] = useState<string[]>([]);
+  const [customTags, setCustomTags] = useState<string[]>(
+    (initialValues?.tags ?? []).filter((t) => !PRESET_TAGS.includes(t)),
+  );
   const [nameError, setNameError] = useState(false);
 
   const allTags = [...PRESET_TAGS, ...customTags];
