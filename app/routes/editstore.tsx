@@ -3,14 +3,9 @@ import type { Route } from "./+types/home";
 import { Show } from "@clerk/react-router";
 import Navbar from "~/components/home/navbar";
 import StoreViewFinder from "~/components/addstore/storeViewFinder/storeViewFinder";
-import { requireAuth } from "~/lib/auth";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import {
-  getStoreById,
-  updateStoreWithBlocks,
-  verifyStoreOwner,
-} from "~/lib/queries";
-import { redirect } from "react-router";
+import { getAuth } from "@clerk/react-router/server";
+import { updateStoreWithBlocks, verifyStoreAccess } from "~/lib/queries";
 import type { BlockDetails } from "~/types/storeViewFinderTypes";
 
 export function meta({}: Route.MetaArgs) {
@@ -23,16 +18,19 @@ export function meta({}: Route.MetaArgs) {
 // ── Loader ─────────────────────────────────────────────────
 
 export const loader = async (args: LoaderFunctionArgs) => {
-  const userId = await requireAuth(args);
+  const { userId } = await getAuth(args);
+  if (!userId) throw new Response("Unauthorized", { status: 401 });
+
   const { params } = args;
+  const result = await verifyStoreAccess(params.id!, userId);
 
-  const store = await getStoreById(params.id!);
-  if (!store) throw new Response("Store not found", { status: 404 });
+  if (!result) throw new Response("Store not found", { status: 404 });
+  if (!["owner", "editor"].includes(result.accessLevel)) {
+    throw new Response("Forbidden", { status: 403 });
+  }
 
-  // Only the owner can edit
-  await verifyStoreOwner(params.id!, userId);
+  const { store } = result;
 
-  // Convert DB blocks to BlocksMap for StoreViewFinder
   const blocksMap = Object.fromEntries(
     store.blocks.map((b) => [
       b.block_id,
@@ -64,7 +62,16 @@ export const loader = async (args: LoaderFunctionArgs) => {
 
 // ── Action ─────────────────────────────────────────────────
 
-export const action = async ({ request, params }: ActionFunctionArgs) => {
+export const action = async (args: ActionFunctionArgs) => {
+  const { request, params } = args;
+  const { userId } = await getAuth(args);
+  if (!userId) throw new Response("Unauthorized", { status: 401 });
+
+  const result = await verifyStoreAccess(params.id!, userId);
+  if (!result || !["owner", "editor"].includes(result.accessLevel)) {
+    throw new Response("Forbidden", { status: 403 });
+  }
+
   const data = await request.json();
 
   await updateStoreWithBlocks(params.id!, {

@@ -21,6 +21,7 @@ type Props = {
   onClick: (e: React.MouseEvent<HTMLDivElement>, id: string) => void;
   onLayoutChange?: (layout: Layout) => void;
   selectedId?: string | null;
+  readOnly?: boolean;
 };
 
 export function GridCanvas({
@@ -31,6 +32,7 @@ export function GridCanvas({
   onClick,
   onLayoutChange,
   selectedId,
+  readOnly = false,
 }: Props) {
   const { width, containerRef, mounted } = useContainerWidth();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -46,8 +48,9 @@ export function GridCanvas({
         h: b.h,
         minW: 1,
         minH: 1,
+        static: readOnly,
       })),
-    [blocks],
+    [blocks, readOnly],
   );
 
   const { layout: responsiveLayout } = useResponsiveLayout({
@@ -77,7 +80,7 @@ export function GridCanvas({
             width={width}
             compactor={getCompactor(null, false, true)}
             onLayoutChange={(newLayout) => onLayoutChange?.(newLayout)}
-            resizeConfig={{ enabled: true, handles }}
+            resizeConfig={{ enabled: !readOnly, handles }}
             gridConfig={{ cols, rowHeight, maxRows: rows, margin: [1, 1] }}
             style={{
               height: rowHeight * rows,

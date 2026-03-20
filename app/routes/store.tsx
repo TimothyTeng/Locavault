@@ -3,6 +3,7 @@ import {
   useParams,
   useLoaderData,
   useFetcher,
+  useRevalidator,
 } from "react-router";
 import type {
   CreateStoreInput,
@@ -36,6 +37,8 @@ import { GridCanvas } from "~/components/addstore/storeViewFinder/GridCanvas";
 import Navbar from "~/components/home/navbar";
 import { AddItemPanel } from "~/components/addItem/addItemPanel";
 import { MembersPanel } from "~/components/store/membersPanel";
+
+const POLL_INTERVAL_MS = 15_000;
 
 // ── Meta ───────────────────────────────────────────────────
 export function meta({}: Route.MetaArgs) {
@@ -178,6 +181,7 @@ export default function StorePage() {
 
   const { state } = useLocation();
   const { id } = useParams();
+  const { revalidate } = useRevalidator();
 
   const navStore: CreateStoreInput | null = state?.storeData ?? null;
   const initial = navStore ?? dbStore;
@@ -211,6 +215,20 @@ export default function StorePage() {
   const fetcher = useFetcher();
   const createFetcher = useFetcher();
 
+  // ── Polling ──
+  useEffect(() => {
+    const interval = setInterval(() => {
+      // Skip if tab is hidden or a create is in flight (avoid clobbering optimistic items)
+      if (
+        document.visibilityState !== "visible" ||
+        createFetcher.state !== "idle"
+      )
+        return;
+      revalidate();
+    }, POLL_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [revalidate, createFetcher.state]);
+
   // ── Effects ──
   useEffect(() => {
     setMounted(true);
@@ -226,6 +244,20 @@ export default function StorePage() {
       JSON.stringify(prev) === JSON.stringify(mapped) ? prev : mapped,
     );
   }, [dbStore]);
+
+  // Sync items from revalidation, but only when no create is in flight
+  useEffect(() => {
+    if (!dbItems || createFetcher.state !== "idle") return;
+    setItems(
+      (dbItems as Item[]).map((i) => ({ ...i, isPublic: i.isPublic ?? true })),
+    );
+  }, [dbItems]);
+
+  // Sync members from revalidation
+  useEffect(() => {
+    if (!dbMembers) return;
+    setMembers(dbMembers as StoreMember[]);
+  }, [dbMembers]);
 
   // Swap optimistic item ID with real server ID once createItem resolves
   useEffect(() => {
@@ -425,6 +457,7 @@ export default function StorePage() {
                   onClick={(_, blockId) => {
                     setHighlightedCell(blockId);
                   }}
+                  readOnly={true}
                 />
               </div>
             </div>
