@@ -19,6 +19,7 @@ import Dashboard from "../components/home/dashboard/dashboard";
 
 import {
   getStoresByUserWithDetails,
+  getStoresMemberOf,
   deleteStore,
   verifyStoreOwner,
 } from "../lib/queries";
@@ -29,7 +30,16 @@ export async function loader(args: Route.LoaderArgs) {
   const { userId } = await getAuth(args);
   if (!userId) return { stores: [] };
 
-  const stores = await getStoresByUserWithDetails(userId);
+  const [ownedStores, memberStores] = await Promise.all([
+    getStoresByUserWithDetails(userId),
+    getStoresMemberOf(userId),
+  ]);
+
+  const stores = [
+    ...ownedStores.map((s) => ({ ...s, role: "owner" as const })),
+    ...memberStores,
+  ];
+
   return { stores };
 }
 

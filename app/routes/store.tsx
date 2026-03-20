@@ -11,24 +11,31 @@ import type {
 import type { Route } from "./+types/home";
 import { useState, useEffect, useMemo } from "react";
 import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { requireAuth } from "~/lib/auth";
+import { getAuth } from "@clerk/react-router/server";
 import {
-  getStoreById,
+  verifyStoreAccess,
   getItemsByStore,
+  getMembersByStore,
   createItem,
   updateItem,
+  removeMember,
+  createInvite,
+  updateStoreVisibility,
+  updateItemVisibility,
 } from "~/lib/queries";
 import { StoreHeader } from "~/components/store/storeHeader";
 import { StoreLoading } from "~/components/store/storeLoading";
 import { StoreToolbar } from "~/components/store/storeToolbar";
 import { StoreTable } from "~/components/store/storeTable";
 import { type Item } from "~/types/storeTypes";
+import type { AccessLevel, StoreMember } from "~/types/memberTypes";
 import { ItemEditModal } from "~/components/store/itemEditModal";
 import { handlesForMode } from "~/components/addstore/storeViewFinder/ModeToggle";
 import { useZoom } from "~/utils/useZoom";
 import { GridCanvas } from "~/components/addstore/storeViewFinder/GridCanvas";
 import Navbar from "~/components/home/navbar";
 import { AddItemPanel } from "~/components/addItem/addItemPanel";
+import { MembersPanel } from "~/components/store/membersPanel";
 
 // ── Meta ───────────────────────────────────────────────────
 export function meta({}: Route.MetaArgs) {
@@ -40,16 +47,40 @@ export function meta({}: Route.MetaArgs) {
 
 // ── Loader ─────────────────────────────────────────────────
 export const loader = async (args: LoaderFunctionArgs) => {
-  const userId = await requireAuth(args);
+  const { userId } = await getAuth(args);
   const { params } = args;
-  const [store, items] = await Promise.all([
-    getStoreById(params.id!),
+
+  const access = await verifyStoreAccess(params.id!, userId ?? null);
+
+  if (!access) return { notFound: true, accessLevel: "none" as AccessLevel, store: null, items: [], members: [], userId };
+
+  const { store, accessLevel } = access;
+
+  // "none" = private store, not a member
+  if (accessLevel === "none") {
+    return { notFound: false, accessLevel, store: null, items: [], members: [], userId };
+  }
+
+  const [allItems, members] = await Promise.all([
     getItemsByStore(params.id!),
+    accessLevel === "owner" ? getMembersByStore(params.id!) : Promise.resolve([]),
   ]);
-  return { userId, store, items };
+
+  // Public/viewer: filter to only public items
+  const items =
+    accessLevel === "public" || accessLevel === "viewer"
+      ? allItems.filter((i) => i.isPublic)
+      : allItems;
+
+  return { notFound: false, accessLevel, store, items, members, userId };
 };
 
-export const action = async ({ request, params }: ActionFunctionArgs) => {
+// ── Action ─────────────────────────────────────────────────
+export const action = async (args: ActionFunctionArgs) => {
+  const { request, params } = args;
+  const { userId } = await getAuth(args);
+  if (!userId) throw new Response("Unauthorized", { status: 401 });
+
   const data = await request.json();
 
   if (data._action === "createItem") {
@@ -73,6 +104,31 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
     });
     return { ok: true };
   }
+
+  if (data._action === "removeMember") {
+    await removeMember(params.id!, data.userId);
+    return { ok: true };
+  }
+
+  if (data._action === "createInvite") {
+    const token = await createInvite(params.id!, data.role, userId);
+    return { ok: true, token };
+  }
+
+  if (data._action === "updateVisibility") {
+    await updateStoreVisibility(params.id!, {
+      isPublic: data.isPublic,
+      canvasVisible: data.canvasVisible,
+    });
+    return { ok: true };
+  }
+
+  if (data._action === "updateItemVisibility") {
+    await updateItemVisibility(data.itemId, data.isPublic);
+    return { ok: true };
+  }
+
+  return { ok: false };
 };
 
 // ── Helpers ────────────────────────────────────────────────
@@ -95,7 +151,15 @@ function blocksToBlocksMap(blocks: CreateStoreInput["blocks"]): BlocksMap {
 
 // ── Page ───────────────────────────────────────────────────
 export default function StorePage() {
-  const { store: dbStore, items: dbItems } = useLoaderData<typeof loader>();
+  const {
+    store: dbStore,
+    items: dbItems,
+    members: dbMembers,
+    accessLevel,
+    notFound,
+    userId,
+  } = useLoaderData<typeof loader>();
+
   const { state } = useLocation();
   const { id } = useParams();
 
@@ -109,15 +173,19 @@ export default function StorePage() {
   const [blocks, setBlocks] = useState<BlocksMap>(() =>
     initial ? blocksToBlocksMap(initial.blocks) : {},
   );
-  const [items, setItems] = useState<Item[]>(dbItems ?? []);
+  const [items, setItems] = useState<Item[]>((dbItems as Item[]) ?? []);
+  const [members, setMembers] = useState<StoreMember[]>((dbMembers as StoreMember[]) ?? []);
   const [search, setSearch] = useState("");
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [highlightedCell, setHighlightedCell] = useState<string | null>(null);
+  const [membersPanelOpen, setMembersPanelOpen] = useState(false);
 
   const { zoom } = useZoom(0.5, 3);
   const handles = handlesForMode("select");
   const [addItemOpen, setAddItemOpen] = useState(false);
+
+  const fetcher = useFetcher();
 
   // ── Effects ──
   useEffect(() => {
@@ -143,13 +211,14 @@ export default function StorePage() {
     );
   }, [items, search]);
 
+  const canEdit = accessLevel === "owner" || accessLevel === "editor";
+  const isOwner = accessLevel === "owner";
+
   // ── Handlers ──
   const handleSelectItem = (item: Item) => {
     setSelectedItemId(item.id);
     setHighlightedCell(item.blockId);
   };
-
-  const fetcher = useFetcher();
 
   const handleSaveItem = (updated: Item) => {
     setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
@@ -183,13 +252,10 @@ export default function StorePage() {
       storeId: id!,
       blockId: data.selectedBlockId ?? null,
       createdAt: new Date(),
+      isPublic: true,
     };
-
-    // Optimistically add to local state instantly
     setItems((prev) => [...prev, newItem]);
     setAddItemOpen(false);
-
-    // Persist to DB in background
     fetcher.submit(
       {
         _action: "createItem",
@@ -198,6 +264,36 @@ export default function StorePage() {
         quantity: data.quantity,
         blockId: data.selectedBlockId ?? null,
       },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
+  const handleRemoveMember = (memberId: string) => {
+    setMembers((prev) => prev.filter((m) => m.userId !== memberId));
+    fetcher.submit(
+      { _action: "removeMember", userId: memberId },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
+  const handleToggleStoreVisibility = (field: "isPublic" | "canvasVisible", value: boolean) => {
+    setStore((prev) => prev ? { ...prev, [field]: value } : prev);
+    fetcher.submit(
+      {
+        _action: "updateVisibility",
+        isPublic: field === "isPublic" ? value : store?.isPublic ?? false,
+        canvasVisible: field === "canvasVisible" ? value : store?.canvasVisible ?? false,
+      },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
+  const handleToggleItemVisibility = (itemId: string, isPublic: boolean) => {
+    setItems((prev) =>
+      prev.map((i) => (i.id === itemId ? { ...i, isPublic } : i)),
+    );
+    fetcher.submit(
+      { _action: "updateItemVisibility", itemId, isPublic },
       { method: "POST", encType: "application/json" },
     );
   };
@@ -213,7 +309,7 @@ export default function StorePage() {
 
   if (isLoading) return <StoreLoading />;
 
-  if (!store) {
+  if (notFound) {
     return (
       <div>
         <Navbar />
@@ -226,6 +322,26 @@ export default function StorePage() {
     );
   }
 
+  if (accessLevel === "none") {
+    return (
+      <div>
+        <Navbar />
+        <div className="flex flex-col items-center justify-center h-screen w-full gap-2">
+          <p className="text-slate-800 font-mono text-sm font-bold">This store is private</p>
+          <p className="text-slate-400 font-mono text-[11px]">
+            You need an invite to view this store.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const showCanvas =
+    isOwner ||
+    accessLevel === "editor" ||
+    accessLevel === "viewer" ||
+    (accessLevel === "public" && store?.canvasVisible);
+
   // ── Render ──
   return (
     <div>
@@ -236,22 +352,30 @@ export default function StorePage() {
           search={search}
           onSearchChange={setSearch}
           onAddItem={() => setAddItemOpen(true)}
+          onMembersToggle={() => setMembersPanelOpen((v) => !v)}
+          accessLevel={accessLevel}
+          store={store}
+          onToggleVisibility={handleToggleStoreVisibility}
         />
 
-        <div className="flex flex-1 min-h-0 overflow-hidden">
+        <div className="flex flex-1 min-h-0 overflow-hidden relative">
           {/* Canvas */}
-          <div className="flex flex-col w-1/2 border-r border-slate-200 overflow-hidden">
+          <div
+            className={`flex flex-col border-r border-slate-200 overflow-hidden ${
+              showCanvas ? "w-1/2" : "hidden"
+            }`}
+          >
             <div className="px-4 h-10 flex items-center border-b border-slate-100 shrink-0 bg-white">
               <span className="text-[9px] font-bold uppercase tracking-widest text-slate-300">
                 Floor Plan
               </span>
             </div>
             <div className="flex-1 overflow-auto p-4">
-              <StoreHeader store={store} id={id} />
+              {store && <StoreHeader store={store} id={id} />}
               <div className="mt-4" style={{ width: `${zoom * 100}%` }}>
                 <GridCanvas
-                  cols={store.cols}
-                  rows={store.rows}
+                  cols={store!.cols}
+                  rows={store!.rows}
                   blocks={blocks}
                   handles={handles}
                   selectedId={highlightedCell}
@@ -264,7 +388,11 @@ export default function StorePage() {
           </div>
 
           {/* Inventory */}
-          <div className="flex flex-col w-1/2 overflow-hidden">
+          <div
+            className={`flex flex-col overflow-hidden ${
+              showCanvas ? "w-1/2" : "w-full"
+            }`}
+          >
             <div className="px-4 h-10 flex items-center border-b border-slate-100 bg-white shrink-0">
               <span className="text-[9px] font-bold uppercase tracking-widest text-slate-300">
                 Inventory · {filteredItems.length} item
@@ -276,8 +404,20 @@ export default function StorePage() {
               selectedItemId={selectedItemId}
               onSelect={handleSelectItem}
               onSave={handleSaveItem}
+              accessLevel={accessLevel}
+              onToggleItemVisibility={handleToggleItemVisibility}
             />
           </div>
+
+          {/* Members panel — slides over inventory */}
+          {isOwner && (
+            <MembersPanel
+              isOpen={membersPanelOpen}
+              members={members}
+              onRemoveMember={handleRemoveMember}
+              onClose={() => setMembersPanelOpen(false)}
+            />
+          )}
         </div>
 
         <ItemEditModal
@@ -286,13 +426,15 @@ export default function StorePage() {
           onSave={handleSaveItem}
         />
       </div>
-      <AddItemPanel
-        isOpen={addItemOpen}
-        onClose={() => setAddItemOpen(false)}
-        onSubmit={handleAddItem}
-        selectedBlockId={highlightedCell}
-        selectedBlockLabel={blocks[highlightedCell ?? ""]?.label ?? ""}
-      />
+      {canEdit && (
+        <AddItemPanel
+          isOpen={addItemOpen}
+          onClose={() => setAddItemOpen(false)}
+          onSubmit={handleAddItem}
+          selectedBlockId={highlightedCell}
+          selectedBlockLabel={blocks[highlightedCell ?? ""]?.label ?? ""}
+        />
+      )}
     </div>
   );
 }

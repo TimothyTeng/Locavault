@@ -1,11 +1,12 @@
-import { eq, sql } from "drizzle-orm";
+import { eq, sql, inArray } from "drizzle-orm";
 import { db } from "./db";
-import { stores, items, blocks } from "./schema";
+import { stores, items, blocks, storeMembers, storeInvites } from "./schema";
 import type { StoreWithDetails } from "~/types/dashboardTypes";
 import type {
   CreateStoreInput,
   BlockDetails,
 } from "~/types/storeViewFinderTypes";
+import type { AccessLevel, StoreRole } from "~/types/memberTypes";
 
 // ─── STORES ────────────────────────────────────────────────
 
@@ -22,13 +23,11 @@ export async function getStoresByUserWithDetails(
 
   const storeIds = userStores.map((s) => s.id);
 
-  // Fetch all blocks for all stores in one query
   const allBlocks = await db
     .select()
     .from(blocks)
     .where(sql`${blocks.storeId} IN ${storeIds}`);
 
-  // Fetch item counts per store in one query
   const itemCounts = await db
     .select({
       storeId: items.storeId,
@@ -64,6 +63,81 @@ export async function getStoresByUserWithDetails(
     ...store,
     blocks: blocksByStore[store.id] ?? [],
     itemCount: itemCountMap[store.id] ?? 0,
+  }));
+}
+
+/** Fetch stores the user is a member of (editor/viewer) but does not own */
+export async function getStoresMemberOf(
+  userId: string,
+): Promise<StoreWithDetails[]> {
+  // Find memberships where user is not the store owner
+  const memberships = await db
+    .select()
+    .from(storeMembers)
+    .where(
+      sql`${storeMembers.userId} = ${userId} AND ${storeMembers.role} != 'owner'`,
+    );
+
+  if (!memberships.length) return [];
+
+  const storeIds = memberships.map((m) => m.storeId);
+
+  const memberStores = await db
+    .select()
+    .from(stores)
+    .where(sql`${stores.id} IN ${storeIds}`);
+
+  // Exclude stores the user also owns (edge case)
+  const nonOwnedStores = memberStores.filter((s) => s.userId !== userId);
+  if (!nonOwnedStores.length) return [];
+
+  const nonOwnedIds = nonOwnedStores.map((s) => s.id);
+
+  const allBlocks = await db
+    .select()
+    .from(blocks)
+    .where(sql`${blocks.storeId} IN ${nonOwnedIds}`);
+
+  const itemCounts = await db
+    .select({
+      storeId: items.storeId,
+      count: sql<number>`count(*)`.as("count"),
+    })
+    .from(items)
+    .where(sql`${items.storeId} IN ${nonOwnedIds}`)
+    .groupBy(items.storeId);
+
+  const itemCountMap = Object.fromEntries(
+    itemCounts.map((r) => [r.storeId, r.count]),
+  );
+
+  const blocksByStore = allBlocks.reduce<Record<string, BlockDetails[]>>(
+    (acc, block) => {
+      if (!acc[block.storeId]) acc[block.storeId] = [];
+      acc[block.storeId].push({
+        block_id: block.block_id,
+        background: block.background,
+        border: block.border,
+        label: block.label,
+        height: block.height,
+        width: block.width,
+        x: block.x,
+        y: block.y,
+      });
+      return acc;
+    },
+    {},
+  );
+
+  const roleMap = Object.fromEntries(
+    memberships.map((m) => [m.storeId, m.role]),
+  );
+
+  return nonOwnedStores.map((store) => ({
+    ...store,
+    blocks: blocksByStore[store.id] ?? [],
+    itemCount: itemCountMap[store.id] ?? 0,
+    role: roleMap[store.id] as "editor" | "viewer",
   }));
 }
 
@@ -104,6 +178,8 @@ export async function getStoreById(id: string) {
       rows: store.rows,
       cols: store.cols,
       blocks: blkDetails.length ? blkDetails : [],
+      isPublic: store.isPublic,
+      canvasVisible: store.canvasVisible,
     };
     return res;
   });
@@ -140,6 +216,13 @@ export async function createStoreWithBlocks(data: CreateStoreInput) {
       description: data.description ?? null,
       rows: data.rows ?? 10,
       cols: data.cols ?? 10,
+    });
+
+    // Auto-insert owner into storeMembers
+    await tx.insert(storeMembers).values({
+      storeId: id,
+      userId: data.userId,
+      role: "owner",
     });
 
     if (data.blocks?.length) {
@@ -183,6 +266,12 @@ export async function duplicateStore(
       description: store.description,
       rows: store.rows,
       cols: store.cols,
+    });
+
+    await tx.insert(storeMembers).values({
+      storeId: newId,
+      userId,
+      role: "owner",
     });
 
     const existingBlocks = await tx
@@ -235,6 +324,58 @@ export async function verifyStoreOwner(storeId: string, userId: string) {
   if (store.userId !== userId)
     throw new Response("Unauthorized", { status: 403 });
   return store;
+}
+
+/**
+ * Determine access level for a user (or null = unauthenticated) on a store.
+ * Returns the store + accessLevel together to avoid double fetches.
+ */
+export async function verifyStoreAccess(
+  storeId: string,
+  userId: string | null,
+): Promise<{ store: CreateStoreInput; accessLevel: AccessLevel } | null> {
+  const store = await getStoreById(storeId);
+  if (!store) return null;
+
+  // Authenticated — check membership
+  if (userId) {
+    // Owner check via userId column (original owner who created the store)
+    if (store.userId === userId) {
+      return { store, accessLevel: "owner" };
+    }
+
+    // Check storeMembers table
+    const memberResult = await db
+      .select()
+      .from(storeMembers)
+      .where(
+        sql`${storeMembers.storeId} = ${storeId} AND ${storeMembers.userId} = ${userId}`,
+      );
+    const member = memberResult[0];
+    if (member) {
+      return { store, accessLevel: member.role as AccessLevel };
+    }
+  }
+
+  // Not a member — check if store is public
+  if (store.isPublic) {
+    return { store, accessLevel: "public" };
+  }
+
+  return { store, accessLevel: "none" };
+}
+
+/** Update store visibility toggles */
+export async function updateStoreVisibility(
+  storeId: string,
+  data: Partial<{ isPublic: boolean; canvasVisible: boolean }>,
+) {
+  return db.update(stores).set(data).where(eq(stores.id, storeId));
+}
+
+/** Update per-item visibility */
+export async function updateItemVisibility(itemId: string, isPublic: boolean) {
+  return db.update(items).set({ isPublic }).where(eq(items.id, itemId));
 }
 
 // ─── BLOCKS ────────────────────────────────────────────────
@@ -343,11 +484,6 @@ export async function getItemCountByStore(storeId: string) {
   return result.length;
 }
 
-// ─── ADD THIS TO queries.ts ────────────────────────────────
-// Place alongside createStoreWithBlocks
-
-import { inArray } from "drizzle-orm";
-
 /**
  * Replace all blocks for an existing store and null-out blockId
  * on any items that referenced deleted blocks.
@@ -364,7 +500,6 @@ export async function updateStoreWithBlocks(
   },
 ) {
   return db.transaction(async (tx) => {
-    // 1. Update store metadata
     await tx
       .update(stores)
       .set({
@@ -376,7 +511,6 @@ export async function updateStoreWithBlocks(
       })
       .where(eq(stores.id, storeId));
 
-    // 2. Find which block IDs are being removed
     const existing = await tx
       .select({ block_id: blocks.block_id })
       .from(blocks)
@@ -386,7 +520,6 @@ export async function updateStoreWithBlocks(
     const incomingIds = data.blocks.map((b) => b.block_id);
     const removedIds = existingIds.filter((id) => !incomingIds.includes(id));
 
-    // 3. Null out blockId on items that referenced removed blocks
     if (removedIds.length > 0) {
       await tx
         .update(items)
@@ -394,7 +527,6 @@ export async function updateStoreWithBlocks(
         .where(inArray(items.blockId, removedIds));
     }
 
-    // 4. Delete all old blocks and re-insert the new set
     await tx.delete(blocks).where(eq(blocks.storeId, storeId));
 
     if (data.blocks.length > 0) {
@@ -412,5 +544,128 @@ export async function updateStoreWithBlocks(
         })),
       );
     }
+  });
+}
+
+// ─── MEMBERS ───────────────────────────────────────────────
+
+/** Fetch all members of a store */
+export async function getMembersByStore(storeId: string) {
+  return db
+    .select()
+    .from(storeMembers)
+    .where(eq(storeMembers.storeId, storeId));
+}
+
+/** Add a member to a store */
+export async function addMember(
+  storeId: string,
+  userId: string,
+  role: StoreRole,
+) {
+  return db.insert(storeMembers).values({ storeId, userId, role });
+}
+
+/** Update a member's role */
+export async function updateMemberRole(
+  storeId: string,
+  userId: string,
+  role: StoreRole,
+) {
+  return db
+    .update(storeMembers)
+    .set({ role })
+    .where(
+      sql`${storeMembers.storeId} = ${storeId} AND ${storeMembers.userId} = ${userId}`,
+    );
+}
+
+/** Remove a member from a store */
+export async function removeMember(storeId: string, userId: string) {
+  return db
+    .delete(storeMembers)
+    .where(
+      sql`${storeMembers.storeId} = ${storeId} AND ${storeMembers.userId} = ${userId}`,
+    );
+}
+
+// ─── INVITES ───────────────────────────────────────────────
+
+/** Create a new invite link (7-day expiry) */
+export async function createInvite(
+  storeId: string,
+  role: "editor" | "viewer",
+  createdBy: string,
+) {
+  const token = crypto.randomUUID();
+  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  await db
+    .insert(storeInvites)
+    .values({ storeId, token, role, expiresAt, createdBy });
+  return token;
+}
+
+/** Fetch an invite by token */
+export async function getInviteByToken(token: string) {
+  const result = await db
+    .select()
+    .from(storeInvites)
+    .where(eq(storeInvites.token, token));
+  return result[0] ?? null;
+}
+
+/**
+ * Claim an invite:
+ * - Validates not expired, not already claimed
+ * - Checks user isn't already a member
+ * - Inserts into storeMembers
+ * - Marks invite as claimed
+ * Returns the storeId on success, throws on failure.
+ */
+export async function claimInvite(token: string, userId: string) {
+  return db.transaction(async (tx) => {
+    const inviteResult = await tx
+      .select()
+      .from(storeInvites)
+      .where(eq(storeInvites.token, token));
+    const invite = inviteResult[0];
+
+    if (!invite) throw new Response("Invite not found", { status: 404 });
+    if (invite.claimedAt)
+      throw new Response("Invite already claimed", { status: 410 });
+    if (new Date() > invite.expiresAt)
+      throw new Response("Invite expired", { status: 410 });
+
+    // Check if already a member
+    const existing = await tx
+      .select()
+      .from(storeMembers)
+      .where(
+        sql`${storeMembers.storeId} = ${invite.storeId} AND ${storeMembers.userId} = ${userId}`,
+      );
+
+    // Also check if they're the owner
+    const storeResult = await tx
+      .select()
+      .from(stores)
+      .where(eq(stores.id, invite.storeId));
+    const store = storeResult[0];
+
+    const isOwner = store?.userId === userId;
+
+    if (!existing.length && !isOwner) {
+      await tx.insert(storeMembers).values({
+        storeId: invite.storeId,
+        userId,
+        role: invite.role,
+      });
+    }
+
+    await tx
+      .update(storeInvites)
+      .set({ claimedAt: new Date() })
+      .where(eq(storeInvites.token, token));
+
+    return invite.storeId;
   });
 }

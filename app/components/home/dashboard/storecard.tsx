@@ -5,6 +5,17 @@ import { useState } from "react";
 import { GridThumbnail } from "./gridtumbnail";
 import { formatDate } from "~/utils/dashboardUtils";
 
+const ROLE_BADGE: Record<string, { label: string; className: string }> = {
+  editor: {
+    label: "Editor",
+    className: "bg-blue-50 border-blue-200 text-blue-500",
+  },
+  viewer: {
+    label: "Viewer",
+    className: "bg-slate-100 border-slate-200 text-slate-400",
+  },
+};
+
 export const StoreCard = memo(function StoreCard({
   store,
   pinned,
@@ -25,6 +36,10 @@ export const StoreCard = memo(function StoreCard({
       (store.rows * store.cols)) *
       100,
   );
+
+  const isOwner = !store.role || store.role === "owner";
+  const roleBadge =
+    store.role && store.role !== "owner" ? ROLE_BADGE[store.role] : null;
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -70,11 +85,7 @@ export const StoreCard = memo(function StoreCard({
         >
           <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
             <path
-              d={
-                pinned
-                  ? "M6 1l1.5 3.5L11 5l-2.5 2.5.6 3.5L6 9.3 2.9 11l.6-3.5L1 5l3.5-.5L6 1z"
-                  : "M6 1l1.5 3.5L11 5l-2.5 2.5.6 3.5L6 9.3 2.9 11l.6-3.5L1 5l3.5-.5L6 1z"
-              }
+              d="M6 1l1.5 3.5L11 5l-2.5 2.5.6 3.5L6 9.3 2.9 11l.6-3.5L1 5l3.5-.5L6 1z"
               stroke="currentColor"
               strokeWidth="1.3"
               strokeLinejoin="round"
@@ -83,14 +94,26 @@ export const StoreCard = memo(function StoreCard({
           </svg>
         </button>
 
-        {/* Fill badge */}
-        <div
-          className="absolute bottom-2 right-2 px-2 py-0.5 bg-white/90 backdrop-blur-sm
-                        rounded-full border border-slate-200 text-[10px] font-semibold
-                        text-slate-500 tabular-nums"
-        >
-          {fillPct}% filled
-        </div>
+        {/* Role badge — shown for member stores */}
+        {roleBadge && (
+          <div
+            className={`absolute top-2 right-2 px-2 py-0.5 rounded-full border
+                        text-[10px] font-semibold ${roleBadge.className}`}
+          >
+            {roleBadge.label}
+          </div>
+        )}
+
+        {/* Fill badge — shown for owned stores only (no overlap with role badge) */}
+        {!roleBadge && (
+          <div
+            className="absolute bottom-2 right-2 px-2 py-0.5 bg-white/90 backdrop-blur-sm
+                          rounded-full border border-slate-200 text-[10px] font-semibold
+                          text-slate-500 tabular-nums"
+          >
+            {fillPct}% filled
+          </div>
+        )}
       </div>
 
       {/* Card body */}
@@ -108,42 +131,44 @@ export const StoreCard = memo(function StoreCard({
             </span>
           </div>
 
-          {/* Delete button */}
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            title={confirmDelete ? "Click again to confirm" : "Delete"}
-            className={`shrink-0 w-7 h-7 flex items-center justify-center rounded-lg
-                        border transition-all duration-150 text-xs
-                        ${
-                          confirmDelete
-                            ? "border-red-300 bg-red-50 text-red-500"
-                            : "border-slate-200 text-slate-400 opacity-0 group-hover:opacity-100 hover:border-red-200 hover:text-red-400 hover:bg-red-50"
-                        }`}
-          >
-            {deleting ? (
-              <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
-            ) : confirmDelete ? (
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path
-                  d="M2 6l3 3 5-5"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-            ) : (
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path
-                  d="M2 2l8 8M10 2L2 10"
-                  stroke="currentColor"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                />
-              </svg>
-            )}
-          </button>
+          {/* Delete button — owner only */}
+          {isOwner && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              title={confirmDelete ? "Click again to confirm" : "Delete"}
+              className={`shrink-0 w-7 h-7 flex items-center justify-center rounded-lg
+                          border transition-all duration-150 text-xs
+                          ${
+                            confirmDelete
+                              ? "border-red-300 bg-red-50 text-red-500"
+                              : "border-slate-200 text-slate-400 opacity-0 group-hover:opacity-100 hover:border-red-200 hover:text-red-400 hover:bg-red-50"
+                          }`}
+            >
+              {deleting ? (
+                <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+              ) : confirmDelete ? (
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path
+                    d="M2 6l3 3 5-5"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              ) : (
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                  <path
+                    d="M2 2l8 8M10 2L2 10"
+                    stroke="currentColor"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                  />
+                </svg>
+              )}
+            </button>
+          )}
         </div>
 
         {/* Tags */}

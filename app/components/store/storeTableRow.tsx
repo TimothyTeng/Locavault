@@ -7,6 +7,8 @@ type Props = {
   isSelected: boolean;
   onSelect: (item: Item) => void;
   onSave: (updated: Item) => void;
+  isOwner: boolean;
+  onToggleVisibility: (itemId: string, isPublic: boolean) => void;
 };
 
 export function StoreTableRow({
@@ -15,6 +17,8 @@ export function StoreTableRow({
   isSelected,
   onSelect,
   onSave,
+  isOwner,
+  onToggleVisibility,
 }: Props) {
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState(item.name);
@@ -106,6 +110,13 @@ export function StoreTableRow({
           />
         </td>
 
+        {/* Public toggle — owner only, disabled while editing */}
+        {isOwner && (
+          <td className={`${cellClass} w-16`}>
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-slate-200" />
+          </td>
+        )}
+
         {/* Actions */}
         <td className={`${cellClass} w-20`}>
           <div className="flex items-center gap-2">
@@ -144,7 +155,9 @@ export function StoreTableRow({
       <td className={`${cellClass} font-bold`}>{item.name}</td>
       <td className={`${cellClass} font-mono`}>{item.quantity}</td>
       <td
-        className={`${cellClass} max-w-[200px] truncate ${isSelected ? "text-slate-300" : "text-slate-400"}`}
+        className={`${cellClass} max-w-[200px] truncate ${
+          isSelected ? "text-slate-300" : "text-slate-400"
+        }`}
       >
         {item.description ?? "—"}
       </td>
@@ -157,6 +170,29 @@ export function StoreTableRow({
           ].join(" ")}
         />
       </td>
+
+      {/* Public toggle — owner only */}
+      {isOwner && (
+        <td
+          className={`${cellClass} w-16`}
+          onClick={(e) => e.stopPropagation()} // don't trigger row select
+        >
+          <button
+            onClick={() => onToggleVisibility(item.id, !item.isPublic)}
+            title={item.isPublic ? "Visible to public" : "Hidden from public"}
+            className={`w-7 h-4 rounded-full transition-colors duration-150 relative flex items-center ${
+              item.isPublic ? "bg-slate-700" : "bg-slate-200"
+            }`}
+          >
+            <span
+              className={`absolute w-3 h-3 rounded-full bg-white shadow-sm transition-transform duration-150 ${
+                item.isPublic ? "translate-x-3.5" : "translate-x-0.5"
+              }`}
+            />
+          </button>
+        </td>
+      )}
+
       <td className={`${cellClass} w-20`}>
         <span
           className={[

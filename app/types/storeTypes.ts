@@ -6,4 +6,5 @@ export type Item = {
   storeId: string;
   blockId: string | null;
   createdAt: Date | null;
+  isPublic: boolean;
 };

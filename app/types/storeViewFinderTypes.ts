@@ -36,4 +36,7 @@ export type CreateStoreInput = {
   rows: number;
   cols: number;
   blocks: BlockDetails[];
+  // Phase 3
+  isPublic?: boolean;
+  canvasVisible?: boolean;
 };
