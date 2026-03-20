@@ -59,7 +59,7 @@ export const storeInvites = sqliteTable("store_invites", {
   id:          text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   storeId:     text("store_id").notNull().references(() => stores.id, { onDelete: "cascade" }),
   token:       text("token").notNull().unique(),
-  role:        text("role", { enum: ["editor", "viewer"] }).notNull(),
+  role:        text("role", { enum: ["editor"] }).notNull(),
   expiresAt:   integer("expires_at", { mode: "timestamp" }).notNull(),
   claimedAt:   integer("claimed_at", { mode: "timestamp" }),
   createdBy:   text("created_by").notNull(),

@@ -52,21 +52,37 @@ export const loader = async (args: LoaderFunctionArgs) => {
 
   const access = await verifyStoreAccess(params.id!, userId ?? null);
 
-  if (!access) return { notFound: true, accessLevel: "none" as AccessLevel, store: null, items: [], members: [], userId };
+  if (!access) {
+    return {
+      notFound: true,
+      accessLevel: "none" as AccessLevel,
+      store: null,
+      items: [],
+      members: [],
+      userId,
+    };
+  }
 
   const { store, accessLevel } = access;
 
-  // "none" = private store, not a member
   if (accessLevel === "none") {
-    return { notFound: false, accessLevel, store: null, items: [], members: [], userId };
+    return {
+      notFound: false,
+      accessLevel,
+      store: null,
+      items: [],
+      members: [],
+      userId,
+    };
   }
 
   const [allItems, members] = await Promise.all([
     getItemsByStore(params.id!),
-    accessLevel === "owner" ? getMembersByStore(params.id!) : Promise.resolve([]),
+    accessLevel === "owner"
+      ? getMembersByStore(params.id!)
+      : Promise.resolve([]),
   ]);
 
-  // Public/viewer: filter to only public items
   const items =
     accessLevel === "public" || accessLevel === "viewer"
       ? allItems.filter((i) => i.isPublic)
@@ -84,14 +100,14 @@ export const action = async (args: ActionFunctionArgs) => {
   const data = await request.json();
 
   if (data._action === "createItem") {
-    await createItem({
+    const newItem = await createItem({
       name: data.name,
       storeId: params.id!,
       quantity: data.quantity,
       description: data.description,
       blockId: data.blockId ?? undefined,
     });
-    return { ok: true };
+    return { ok: true, id: newItem.id, optimisticId: data.optimisticId };
   }
 
   if (data._action === "updateItem") {
@@ -111,7 +127,7 @@ export const action = async (args: ActionFunctionArgs) => {
   }
 
   if (data._action === "createInvite") {
-    const token = await createInvite(params.id!, data.role, userId);
+    const token = await createInvite(params.id!, "editor", userId);
     return { ok: true, token };
   }
 
@@ -173,8 +189,15 @@ export default function StorePage() {
   const [blocks, setBlocks] = useState<BlocksMap>(() =>
     initial ? blocksToBlocksMap(initial.blocks) : {},
   );
-  const [items, setItems] = useState<Item[]>((dbItems as Item[]) ?? []);
-  const [members, setMembers] = useState<StoreMember[]>((dbMembers as StoreMember[]) ?? []);
+  const [items, setItems] = useState<Item[]>(
+    ((dbItems as Item[]) ?? []).map((i) => ({
+      ...i,
+      isPublic: i.isPublic ?? true,
+    })),
+  );
+  const [members, setMembers] = useState<StoreMember[]>(
+    (dbMembers as StoreMember[]) ?? [],
+  );
   const [search, setSearch] = useState("");
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [editingItem, setEditingItem] = useState<Item | null>(null);
@@ -186,6 +209,7 @@ export default function StorePage() {
   const [addItemOpen, setAddItemOpen] = useState(false);
 
   const fetcher = useFetcher();
+  const createFetcher = useFetcher();
 
   // ── Effects ──
   useEffect(() => {
@@ -202,6 +226,17 @@ export default function StorePage() {
       JSON.stringify(prev) === JSON.stringify(mapped) ? prev : mapped,
     );
   }, [dbStore]);
+
+  // Swap optimistic item ID with real server ID once createItem resolves
+  useEffect(() => {
+    const result = createFetcher.data as any;
+    if (!result?.id || !result?.optimisticId) return;
+    setItems((prev) =>
+      prev.map((i) =>
+        i.id === result.optimisticId ? { ...i, id: result.id } : i,
+      ),
+    );
+  }, [createFetcher.data]);
 
   // ── Derived ──
   const filteredItems = useMemo(() => {
@@ -244,8 +279,9 @@ export default function StorePage() {
     selectedBlockId?: string | null;
     inStore: boolean;
   }) => {
+    const optimisticId = crypto.randomUUID();
     const newItem: Item = {
-      id: crypto.randomUUID(),
+      id: optimisticId,
       name: data.name,
       description: data.description,
       quantity: data.quantity,
@@ -256,13 +292,14 @@ export default function StorePage() {
     };
     setItems((prev) => [...prev, newItem]);
     setAddItemOpen(false);
-    fetcher.submit(
+    createFetcher.submit(
       {
         _action: "createItem",
         name: data.name,
         description: data.description,
         quantity: data.quantity,
         blockId: data.selectedBlockId ?? null,
+        optimisticId,
       },
       { method: "POST", encType: "application/json" },
     );
@@ -276,13 +313,17 @@ export default function StorePage() {
     );
   };
 
-  const handleToggleStoreVisibility = (field: "isPublic" | "canvasVisible", value: boolean) => {
-    setStore((prev) => prev ? { ...prev, [field]: value } : prev);
+  const handleToggleStoreVisibility = (
+    field: "isPublic" | "canvasVisible",
+    value: boolean,
+  ) => {
+    setStore((prev) => (prev ? { ...prev, [field]: value } : prev));
     fetcher.submit(
       {
         _action: "updateVisibility",
-        isPublic: field === "isPublic" ? value : store?.isPublic ?? false,
-        canvasVisible: field === "canvasVisible" ? value : store?.canvasVisible ?? false,
+        isPublic: field === "isPublic" ? value : (store?.isPublic ?? false),
+        canvasVisible:
+          field === "canvasVisible" ? value : (store?.canvasVisible ?? false),
       },
       { method: "POST", encType: "application/json" },
     );
@@ -327,7 +368,9 @@ export default function StorePage() {
       <div>
         <Navbar />
         <div className="flex flex-col items-center justify-center h-screen w-full gap-2">
-          <p className="text-slate-800 font-mono text-sm font-bold">This store is private</p>
+          <p className="text-slate-800 font-mono text-sm font-bold">
+            This store is private
+          </p>
           <p className="text-slate-400 font-mono text-[11px]">
             You need an invite to view this store.
           </p>
@@ -409,7 +452,7 @@ export default function StorePage() {
             />
           </div>
 
-          {/* Members panel — slides over inventory */}
+          {/* Members panel */}
           {isOwner && (
             <MembersPanel
               isOpen={membersPanelOpen}

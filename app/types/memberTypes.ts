@@ -1,7 +1,7 @@
 export type StoreRole = "owner" | "editor" | "viewer";
-
+ 
 export type AccessLevel = "owner" | "editor" | "viewer" | "public" | "none";
-
+ 
 export type StoreMember = {
   id: string;
   storeId: string;
@@ -9,12 +9,12 @@ export type StoreMember = {
   role: StoreRole;
   joinedAt: Date | null;
 };
-
+ 
 export type StoreInvite = {
   id: string;
   storeId: string;
   token: string;
-  role: "editor" | "viewer";
+  role: "editor";
   expiresAt: Date;
   claimedAt: Date | null;
   createdBy: string;

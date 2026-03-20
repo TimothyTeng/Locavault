@@ -1,4 +1,4 @@
-import { eq, sql, inArray } from "drizzle-orm";
+import { eq, sql, inArray, and, isNull, gt } from "drizzle-orm";
 import { db } from "./db";
 import { stores, items, blocks, storeMembers, storeInvites } from "./schema";
 import type { StoreWithDetails } from "~/types/dashboardTypes";
@@ -206,7 +206,7 @@ export async function createStore(data: {
 
 export async function createStoreWithBlocks(data: CreateStoreInput) {
   return db.transaction(async (tx) => {
-    const id = crypto.randomUUID();
+    const id = data.id ?? crypto.randomUUID();
 
     await tx.insert(stores).values({
       id,
@@ -442,7 +442,7 @@ export async function getItemById(id: string) {
   return result[0] ?? null;
 }
 
-/** Create a new item */
+/** Create a new item — returns the inserted row including server-assigned ID */
 export async function createItem(data: {
   name: string;
   storeId: string;
@@ -450,13 +450,16 @@ export async function createItem(data: {
   description?: string;
   blockId?: string;
 }) {
-  return db.insert(items).values({
+  const id = crypto.randomUUID();
+  await db.insert(items).values({
+    id,
     name: data.name,
     storeId: data.storeId,
     quantity: data.quantity ?? 0,
     description: data.description ?? null,
     blockId: data.blockId,
   });
+  return { id };
 }
 
 /** Update an item */
@@ -591,14 +594,34 @@ export async function removeMember(storeId: string, userId: string) {
 
 // ─── INVITES ───────────────────────────────────────────────
 
-/** Create a new invite link (7-day expiry) */
+/** Create a new editor invite link (7-day expiry), reusing an existing valid one if present */
 export async function createInvite(
   storeId: string,
-  role: "editor" | "viewer",
+  role: "editor",
   createdBy: string,
 ) {
+  const now = new Date();
+
+  // Reuse any existing unclaimed, unexpired invite for this store+role
+  // Use and() with Drizzle operators so timestamp serialisation is handled correctly
+  const existing = await db
+    .select()
+    .from(storeInvites)
+    .where(
+      and(
+        eq(storeInvites.storeId, storeId),
+        eq(storeInvites.role, role),
+        isNull(storeInvites.claimedAt),
+        gt(storeInvites.expiresAt, now),
+      ),
+    )
+    .limit(1);
+
+  if (existing.length > 0) return existing[0].token;
+
+  // None found — create a fresh one
   const token = crypto.randomUUID();
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   await db
     .insert(storeInvites)
     .values({ storeId, token, role, expiresAt, createdBy });
