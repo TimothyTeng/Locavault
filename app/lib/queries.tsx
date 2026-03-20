@@ -1,6 +1,7 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "./db";
 import { stores, items, blocks } from "./schema";
+import type { StoreWithDetails } from "~/types/dashboardTypes";
 import type {
   CreateStoreInput,
   BlockDetails,
@@ -8,7 +9,65 @@ import type {
 
 // ─── STORES ────────────────────────────────────────────────
 
-/** Fetch all stores belonging to a user */
+/** Fetch all stores for a user with their blocks and item counts */
+export async function getStoresByUserWithDetails(
+  userId: string,
+): Promise<StoreWithDetails[]> {
+  const userStores = await db
+    .select()
+    .from(stores)
+    .where(eq(stores.userId, userId));
+
+  if (!userStores.length) return [];
+
+  const storeIds = userStores.map((s) => s.id);
+
+  // Fetch all blocks for all stores in one query
+  const allBlocks = await db
+    .select()
+    .from(blocks)
+    .where(sql`${blocks.storeId} IN ${storeIds}`);
+
+  // Fetch item counts per store in one query
+  const itemCounts = await db
+    .select({
+      storeId: items.storeId,
+      count: sql<number>`count(*)`.as("count"),
+    })
+    .from(items)
+    .where(sql`${items.storeId} IN ${storeIds}`)
+    .groupBy(items.storeId);
+
+  const itemCountMap = Object.fromEntries(
+    itemCounts.map((r) => [r.storeId, r.count]),
+  );
+
+  const blocksByStore = allBlocks.reduce<Record<string, BlockDetails[]>>(
+    (acc, block) => {
+      if (!acc[block.storeId]) acc[block.storeId] = [];
+      acc[block.storeId].push({
+        block_id: block.block_id,
+        background: block.background,
+        border: block.border,
+        label: block.label,
+        height: block.height,
+        width: block.width,
+        x: block.x,
+        y: block.y,
+      });
+      return acc;
+    },
+    {},
+  );
+
+  return userStores.map((store) => ({
+    ...store,
+    blocks: blocksByStore[store.id] ?? [],
+    itemCount: itemCountMap[store.id] ?? 0,
+  }));
+}
+
+/** Fetch all stores belonging to a user (lightweight, no blocks) */
 export async function getStoresByUser(userId: string) {
   return db.select().from(stores).where(eq(stores.userId, userId));
 }
@@ -25,9 +84,6 @@ export async function getStoreById(id: string) {
       .from(blocks)
       .where(eq(blocks.storeId, id));
 
-    if (!blocksResult) return null;
-
-    // map all blocksResult rows into BlockDetails array
     const blkDetails: BlockDetails[] = blocksResult.map((block) => ({
       block_id: block.block_id,
       background: block.background,
@@ -102,6 +158,54 @@ export async function createStoreWithBlocks(data: CreateStoreInput) {
     }
 
     return id;
+  });
+}
+
+/** Duplicate a store and all its blocks under a new ID */
+export async function duplicateStore(
+  storeId: string,
+  userId: string,
+): Promise<string> {
+  return db.transaction(async (tx) => {
+    const storeResult = await tx
+      .select()
+      .from(stores)
+      .where(eq(stores.id, storeId));
+    const store = storeResult[0];
+    if (!store) throw new Response("Store not found", { status: 404 });
+
+    const newId = crypto.randomUUID();
+    await tx.insert(stores).values({
+      id: newId,
+      name: `${store.name} (copy)`,
+      userId,
+      tags: store.tags,
+      description: store.description,
+      rows: store.rows,
+      cols: store.cols,
+    });
+
+    const existingBlocks = await tx
+      .select()
+      .from(blocks)
+      .where(eq(blocks.storeId, storeId));
+
+    if (existingBlocks.length) {
+      await tx.insert(blocks).values(
+        existingBlocks.map((b) => ({
+          storeId: newId,
+          background: b.background,
+          border: b.border,
+          label: b.label,
+          height: b.height,
+          width: b.width,
+          x: b.x,
+          y: b.y,
+        })),
+      );
+    }
+
+    return newId;
   });
 }
 
@@ -233,7 +337,7 @@ export async function deleteItem(id: string) {
   return db.delete(items).where(eq(items.id, id));
 }
 
-/** Count items per store — useful for card display */
+/** Count items per store */
 export async function getItemCountByStore(storeId: string) {
   const result = await getItemsByStore(storeId);
   return result.length;

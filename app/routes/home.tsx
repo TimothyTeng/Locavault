@@ -15,20 +15,26 @@ import Testimonials from "../components/home/testimonials";
 import Pricing from "../components/home/pricing";
 import CtaBanner from "../components/home/ctabanner";
 import Footer from "../components/home/footer";
-import Dashboard from "../components/home/dashboard";
+import Dashboard from "../components/home/dashboard/dashboard";
 
-import { getStoresByUser, deleteStore, verifyStoreOwner } from "../lib/queries";
+import {
+  getStoresByUserWithDetails,
+  deleteStore,
+  verifyStoreOwner,
+} from "../lib/queries";
 
 // ── Loader ─────────────────────────────────────────────────
+
 export async function loader(args: Route.LoaderArgs) {
   const { userId } = await getAuth(args);
   if (!userId) return { stores: [] };
 
-  const userStores = await getStoresByUser(userId);
-  return { stores: userStores };
+  const stores = await getStoresByUserWithDetails(userId);
+  return { stores };
 }
 
 // ── Action ─────────────────────────────────────────────────
+
 export async function action(args: Route.ActionArgs) {
   const { userId } = await getAuth(args);
   if (!userId) throw new Response("Unauthorized", { status: 401 });
@@ -38,7 +44,7 @@ export async function action(args: Route.ActionArgs) {
 
   if (_action === "deleteStore") {
     const storeId = String(formData.get("storeId"));
-    await verifyStoreOwner(storeId, userId); // ensures user owns this store
+    await verifyStoreOwner(storeId, userId);
     await deleteStore(storeId);
     return { ok: true };
   }
@@ -47,6 +53,7 @@ export async function action(args: Route.ActionArgs) {
 }
 
 // ── Meta ───────────────────────────────────────────────────
+
 export function meta({}: Route.MetaArgs) {
   return [
     { title: "Locavault — Inventory Management for Home & Work" },
@@ -59,17 +66,16 @@ export function meta({}: Route.MetaArgs) {
 }
 
 // ── Component ──────────────────────────────────────────────
+
 export default function Home() {
   const { isSignedIn, isLoaded } = useAuth();
   const { revalidate } = useRevalidator();
-  const { stores: userStores } = useLoaderData<typeof loader>();
+  const { stores } = useLoaderData<typeof loader>();
 
-  // Revalidate loader when auth state changes
   useEffect(() => {
     revalidate();
   }, [isSignedIn]);
 
-  // GSAP animations (only for signed-out landing page)
   useEffect(() => {
     if (!isLoaded || isSignedIn) return;
     gsap.registerPlugin(ScrollTrigger);
@@ -108,30 +114,38 @@ export default function Home() {
       scrollTrigger: { trigger: ".dashboard-preview-wrap", start: "top 85%" },
     });
 
-    document
-      .querySelectorAll(".section-label, .section-title, .section-sub")
-      .forEach((el) => {
-        gsap.set(el, { y: 22 });
+    [
+      { sel: ".section-label, .section-title, .section-sub", y: 22, dur: 0.65 },
+    ].forEach(({ sel, y, dur }) => {
+      document.querySelectorAll(sel).forEach((el) => {
+        gsap.set(el, { y });
         gsap.to(el, {
           opacity: 1,
           y: 0,
-          duration: 0.65,
+          duration: dur,
           ease: "power3.out",
           scrollTrigger: { trigger: el, start: "top 88%" },
         });
       });
-
-    document.querySelectorAll(".feature-card").forEach((card, i) => {
-      gsap.set(card, { y: 36 });
-      gsap.to(card, {
-        opacity: 1,
-        y: 0,
-        duration: 0.6,
-        ease: "power3.out",
-        delay: (i % 3) * 0.1,
-        scrollTrigger: { trigger: card, start: "top 88%" },
-      });
     });
+
+    const staggerCards = (sel: string, trigger: string, y = 36) => {
+      document.querySelectorAll(sel).forEach((card, i) => {
+        gsap.set(card, { y });
+        gsap.to(card, {
+          opacity: 1,
+          y: 0,
+          duration: 0.6,
+          ease: "power3.out",
+          delay: (i % 3) * 0.1,
+          scrollTrigger: { trigger, start: "top 85%" },
+        });
+      });
+    };
+
+    staggerCards(".feature-card", ".features-grid");
+    staggerCards(".testimonial-card", ".testimonials-grid", 30);
+    staggerCards(".pricing-card", ".pricing-grid");
 
     document.querySelectorAll(".step-item").forEach((step, i) => {
       gsap.set(step, { y: 28 });
@@ -142,30 +156,6 @@ export default function Home() {
         ease: "power3.out",
         delay: i * 0.12,
         scrollTrigger: { trigger: ".steps-grid", start: "top 85%" },
-      });
-    });
-
-    document.querySelectorAll(".testimonial-card").forEach((card, i) => {
-      gsap.set(card, { y: 30 });
-      gsap.to(card, {
-        opacity: 1,
-        y: 0,
-        duration: 0.6,
-        ease: "power3.out",
-        delay: i * 0.1,
-        scrollTrigger: { trigger: ".testimonials-grid", start: "top 85%" },
-      });
-    });
-
-    document.querySelectorAll(".pricing-card").forEach((card, i) => {
-      gsap.set(card, { y: 36 });
-      gsap.to(card, {
-        opacity: 1,
-        y: 0,
-        duration: 0.6,
-        ease: "power3.out",
-        delay: i * 0.12,
-        scrollTrigger: { trigger: ".pricing-grid", start: "top 85%" },
       });
     });
 
@@ -197,7 +187,7 @@ export default function Home() {
         <Footer />
       </Show>
       <Show when="signed-in">
-        <Dashboard stores={userStores} />
+        <Dashboard stores={stores} />
       </Show>
     </div>
   );
