@@ -1,7 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useRevalidator, useLoaderData } from "react-router";
 import { Show, useAuth } from "@clerk/react-router";
-import { getAuth } from "@clerk/react-router/server";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import type { Route } from "./+types/home";
@@ -16,51 +15,9 @@ import Pricing from "../components/home/pricing";
 import CtaBanner from "../components/home/ctabanner";
 import Footer from "../components/home/footer";
 import Dashboard from "../components/home/dashboard/dashboard";
+import type { loader } from "#utils/loaders/home.loader";
 
-import {
-  getStoresByUserWithDetails,
-  getStoresMemberOf,
-  deleteStore,
-  verifyStoreOwner,
-} from "../lib/queries";
-
-// ── Loader ─────────────────────────────────────────────────
-
-export async function loader(args: Route.LoaderArgs) {
-  const { userId } = await getAuth(args);
-  if (!userId) return { stores: [] };
-
-  const [ownedStores, memberStores] = await Promise.all([
-    getStoresByUserWithDetails(userId),
-    getStoresMemberOf(userId),
-  ]);
-
-  const stores = [
-    ...ownedStores.map((s) => ({ ...s, role: "owner" as const })),
-    ...memberStores,
-  ];
-
-  return { stores };
-}
-
-// ── Action ─────────────────────────────────────────────────
-
-export async function action(args: Route.ActionArgs) {
-  const { userId } = await getAuth(args);
-  if (!userId) throw new Response("Unauthorized", { status: 401 });
-
-  const formData = await args.request.formData();
-  const _action = formData.get("_action");
-
-  if (_action === "deleteStore") {
-    const storeId = String(formData.get("storeId"));
-    await verifyStoreOwner(storeId, userId);
-    await deleteStore(storeId);
-    return { ok: true };
-  }
-
-  throw new Response("Unknown action", { status: 400 });
-}
+export { loader, action } from "#utils/loaders/home.loader";
 
 // ── Meta ───────────────────────────────────────────────────
 
@@ -82,8 +39,16 @@ export default function Home() {
   const { revalidate } = useRevalidator();
   const { stores } = useLoaderData<typeof loader>();
 
+  // Only revalidate on actual sign-in/sign-out transitions, not on initial mount
+  const prevSignedIn = useRef<boolean | undefined>(undefined);
   useEffect(() => {
-    revalidate();
+    if (
+      prevSignedIn.current !== undefined &&
+      prevSignedIn.current !== isSignedIn
+    ) {
+      revalidate();
+    }
+    prevSignedIn.current = isSignedIn;
   }, [isSignedIn]);
 
   useEffect(() => {

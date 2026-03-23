@@ -26,7 +26,7 @@ export async function getStoresByUserWithDetails(
   const allBlocks = await db
     .select()
     .from(blocks)
-    .where(sql`${blocks.storeId} IN ${storeIds}`);
+    .where(inArray(blocks.storeId, storeIds));
 
   const itemCounts = await db
     .select({
@@ -34,7 +34,7 @@ export async function getStoresByUserWithDetails(
       count: sql<number>`count(*)`.as("count"),
     })
     .from(items)
-    .where(sql`${items.storeId} IN ${storeIds}`)
+    .where(inArray(items.blockId, storeIds))
     .groupBy(items.storeId);
 
   const itemCountMap = Object.fromEntries(
@@ -85,7 +85,7 @@ export async function getStoresMemberOf(
   const memberStores = await db
     .select()
     .from(stores)
-    .where(sql`${stores.id} IN ${storeIds}`);
+    .where(inArray(stores.id, storeIds));
 
   // Exclude stores the user also owns (edge case)
   const nonOwnedStores = memberStores.filter((s) => s.userId !== userId);
@@ -96,7 +96,7 @@ export async function getStoresMemberOf(
   const allBlocks = await db
     .select()
     .from(blocks)
-    .where(sql`${blocks.storeId} IN ${nonOwnedIds}`);
+    .where(inArray(blocks.storeId, nonOwnedIds));
 
   const itemCounts = await db
     .select({
@@ -104,7 +104,7 @@ export async function getStoresMemberOf(
       count: sql<number>`count(*)`.as("count"),
     })
     .from(items)
-    .where(sql`${items.storeId} IN ${nonOwnedIds}`)
+    .where(inArray(items.storeId, nonOwnedIds))
     .groupBy(items.storeId);
 
   const itemCountMap = Object.fromEntries(

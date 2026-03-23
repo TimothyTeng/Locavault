@@ -32,14 +32,22 @@ export default function Dashboard({ stores: initialStores }: Props) {
     }
   });
 
+  // Parse tags once per store, reused by allTags and filtered
+  const parsedTags = useMemo(() => {
+    return new Map(
+      stores.map((store) => [
+        store.id,
+        JSON.parse(store.tags ?? "[]") as string[],
+      ]),
+    );
+  }, [stores]);
+
   // All unique tags across stores
   const allTags = useMemo(() => {
     const s = new Set<string>();
-    stores.forEach((store) => {
-      JSON.parse(store.tags ?? "[]").forEach((t: string) => s.add(t));
-    });
+    parsedTags.forEach((tags) => tags.forEach((t) => s.add(t)));
     return Array.from(s).sort();
-  }, [stores]);
+  }, [parsedTags]);
 
   const filtered = useMemo(() => {
     let result = [...stores];
@@ -49,16 +57,12 @@ export default function Dashboard({ stores: initialStores }: Props) {
       result = result.filter(
         (s) =>
           s.name.toLowerCase().includes(q) ||
-          JSON.parse(s.tags ?? "[]").some((t: string) =>
-            t.toLowerCase().includes(q),
-          ),
+          parsedTags.get(s.id)?.some((t) => t.toLowerCase().includes(q)),
       );
     }
 
     if (activeTag) {
-      result = result.filter((s) =>
-        JSON.parse(s.tags ?? "[]").includes(activeTag),
-      );
+      result = result.filter((s) => parsedTags.get(s.id)?.includes(activeTag));
     }
 
     result.sort((a, b) => {
@@ -76,14 +80,18 @@ export default function Dashboard({ stores: initialStores }: Props) {
     });
 
     return result;
-  }, [stores, search, sort, sortDir, activeTag, pinned]);
+  }, [stores, search, sort, sortDir, activeTag, pinned, parsedTags]);
 
   const handleDelete = useCallback(
     (id: string) => {
       fetcher.submit(
         { storeId: id, _action: "deleteStore" },
-        { method: "POST", action: "/" },
+        {
+          method: "POST",
+          encType: "application/x-www-form-urlencoded",
+        },
       );
+
       setStores((prev) => prev.filter((s) => s.id !== id));
     },
     [fetcher],

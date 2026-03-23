@@ -2,9 +2,7 @@ import type { Route } from "./+types/home";
 import { Show } from "@clerk/react-router";
 import Navbar from "~/components/home/navbar";
 import StoreViewFinder from "~/components/addstore/storeViewFinder/storeViewFinder";
-import { requireAuth } from "~/lib/auth";
-import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { createStoreWithBlocks } from "~/lib/queries";
+export { loader, action } from "#utils/loaders/addstore.loader";
 
 export function meta({}: Route.MetaArgs) {
   return [
@@ -12,17 +10,6 @@ export function meta({}: Route.MetaArgs) {
     { name: "description", content: "Add a new location" },
   ];
 }
-
-export const loader = async (args: LoaderFunctionArgs) => {
-  const userId = await requireAuth(args);
-  return { userId };
-};
-
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const data = await request.json();
-  await createStoreWithBlocks(data);
-  return { ok: true };
-};
 
 export default function AddStore() {
   return (

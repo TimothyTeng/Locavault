@@ -11,25 +11,12 @@ import type {
 } from "../types/storeViewFinderTypes";
 import type { Route } from "./+types/home";
 import { useState, useEffect, useMemo } from "react";
-import type { LoaderFunctionArgs, ActionFunctionArgs } from "react-router";
-import { getAuth } from "@clerk/react-router/server";
-import {
-  verifyStoreAccess,
-  getItemsByStore,
-  getMembersByStore,
-  createItem,
-  updateItem,
-  removeMember,
-  createInvite,
-  updateStoreVisibility,
-  updateItemVisibility,
-} from "~/lib/queries";
 import { StoreHeader } from "~/components/store/storeHeader";
 import { StoreLoading } from "~/components/store/storeLoading";
 import { StoreToolbar } from "~/components/store/storeToolbar";
 import { StoreTable } from "~/components/store/storeTable";
 import { type Item } from "~/types/storeTypes";
-import type { AccessLevel, StoreMember } from "~/types/memberTypes";
+import type { StoreMember } from "~/types/memberTypes";
 import { ItemEditModal } from "~/components/store/itemEditModal";
 import { handlesForMode } from "~/components/addstore/storeViewFinder/ModeToggle";
 import { useZoom } from "~/utils/useZoom";
@@ -37,6 +24,10 @@ import { GridCanvas } from "~/components/addstore/storeViewFinder/GridCanvas";
 import Navbar from "~/components/home/navbar";
 import { AddItemPanel } from "~/components/addItem/addItemPanel";
 import { MembersPanel } from "~/components/store/membersPanel";
+import { blocksToBlocksMap } from "#utils/helpers/store.helper";
+import type { loader } from "#utils/loaders/store.loader";
+
+export { loader, action } from "#utils/loaders/store.loader";
 
 const POLL_INTERVAL_MS = 15_000;
 
@@ -48,126 +39,6 @@ export function meta({}: Route.MetaArgs) {
   ];
 }
 
-// ── Loader ─────────────────────────────────────────────────
-export const loader = async (args: LoaderFunctionArgs) => {
-  const { userId } = await getAuth(args);
-  const { params } = args;
-
-  const access = await verifyStoreAccess(params.id!, userId ?? null);
-
-  if (!access) {
-    return {
-      notFound: true,
-      accessLevel: "none" as AccessLevel,
-      store: null,
-      items: [],
-      members: [],
-      userId,
-    };
-  }
-
-  const { store, accessLevel } = access;
-
-  if (accessLevel === "none") {
-    return {
-      notFound: false,
-      accessLevel,
-      store: null,
-      items: [],
-      members: [],
-      userId,
-    };
-  }
-
-  const [allItems, members] = await Promise.all([
-    getItemsByStore(params.id!),
-    accessLevel === "owner"
-      ? getMembersByStore(params.id!)
-      : Promise.resolve([]),
-  ]);
-
-  const items =
-    accessLevel === "public" || accessLevel === "viewer"
-      ? allItems.filter((i) => i.isPublic)
-      : allItems;
-
-  return { notFound: false, accessLevel, store, items, members, userId };
-};
-
-// ── Action ─────────────────────────────────────────────────
-export const action = async (args: ActionFunctionArgs) => {
-  const { request, params } = args;
-  const { userId } = await getAuth(args);
-  if (!userId) throw new Response("Unauthorized", { status: 401 });
-
-  const data = await request.json();
-
-  if (data._action === "createItem") {
-    const newItem = await createItem({
-      name: data.name,
-      storeId: params.id!,
-      quantity: data.quantity,
-      description: data.description,
-      blockId: data.blockId ?? undefined,
-    });
-    return { ok: true, id: newItem.id, optimisticId: data.optimisticId };
-  }
-
-  if (data._action === "updateItem") {
-    await updateItem(data.id, {
-      name: data.name,
-      quantity: data.quantity,
-      description: data.description,
-      storeId: data.storeId,
-      blockId: data.blockId,
-    });
-    return { ok: true };
-  }
-
-  if (data._action === "removeMember") {
-    await removeMember(params.id!, data.userId);
-    return { ok: true };
-  }
-
-  if (data._action === "createInvite") {
-    const token = await createInvite(params.id!, "editor", userId);
-    return { ok: true, token };
-  }
-
-  if (data._action === "updateVisibility") {
-    await updateStoreVisibility(params.id!, {
-      isPublic: data.isPublic,
-      canvasVisible: data.canvasVisible,
-    });
-    return { ok: true };
-  }
-
-  if (data._action === "updateItemVisibility") {
-    await updateItemVisibility(data.itemId, data.isPublic);
-    return { ok: true };
-  }
-
-  return { ok: false };
-};
-
-// ── Helpers ────────────────────────────────────────────────
-function blocksToBlocksMap(blocks: CreateStoreInput["blocks"]): BlocksMap {
-  return Object.fromEntries(
-    blocks.map((block) => [
-      block.block_id,
-      {
-        x: block.x,
-        y: block.y,
-        w: block.width,
-        h: block.height,
-        bg: block.background,
-        border: block.border,
-        label: block.label,
-      },
-    ]),
-  );
-}
-
 // ── Page ───────────────────────────────────────────────────
 export default function StorePage() {
   const {
@@ -175,7 +46,6 @@ export default function StorePage() {
     items: dbItems,
     members: dbMembers,
     accessLevel,
-    notFound,
     userId,
   } = useLoaderData<typeof loader>();
 
@@ -218,7 +88,6 @@ export default function StorePage() {
   // ── Polling ──
   useEffect(() => {
     const interval = setInterval(() => {
-      // Skip if tab is hidden or a create is in flight (avoid clobbering optimistic items)
       if (
         document.visibilityState !== "visible" ||
         createFetcher.state !== "idle"
@@ -245,7 +114,6 @@ export default function StorePage() {
     );
   }, [dbStore]);
 
-  // Sync items from revalidation, but only when no create is in flight
   useEffect(() => {
     if (!dbItems || createFetcher.state !== "idle") return;
     setItems(
@@ -253,13 +121,11 @@ export default function StorePage() {
     );
   }, [dbItems]);
 
-  // Sync members from revalidation
   useEffect(() => {
     if (!dbMembers) return;
     setMembers(dbMembers as StoreMember[]);
   }, [dbMembers]);
 
-  // Swap optimistic item ID with real server ID once createItem resolves
   useEffect(() => {
     const result = createFetcher.data as any;
     if (!result?.id || !result?.optimisticId) return;
@@ -381,35 +247,6 @@ export default function StorePage() {
   }
 
   if (isLoading) return <StoreLoading />;
-
-  if (notFound) {
-    return (
-      <div>
-        <Navbar />
-        <div className="flex flex-col items-center justify-center h-screen w-full gap-2">
-          <p className="text-slate-400 font-mono text-[11px] uppercase tracking-widest">
-            Store not found
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (accessLevel === "none") {
-    return (
-      <div>
-        <Navbar />
-        <div className="flex flex-col items-center justify-center h-screen w-full gap-2">
-          <p className="text-slate-800 font-mono text-sm font-bold">
-            This store is private
-          </p>
-          <p className="text-slate-400 font-mono text-[11px]">
-            You need an invite to view this store.
-          </p>
-        </div>
-      </div>
-    );
-  }
 
   const showCanvas =
     isOwner ||

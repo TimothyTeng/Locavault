@@ -180,7 +180,10 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
         cols,
         blocks: blockArr,
       };
-      fetcher.submit(data, { method: "POST", encType: "application/json" });
+      fetcher.submit(data, {
+        method: "POST",
+        encType: "application/json",
+      });
       navigate(`/store/${id}`, { state: { storeData: data } });
     }
   };
