@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { Layout, LayoutItem } from "react-grid-layout";
 import { BlockPicker, type Block } from "../blockPicker/index";
 import { GridCanvas } from "./GridCanvas";
@@ -35,19 +35,25 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
 
   const [ROWS, setROWS] = useState(initialData?.rows ?? 10);
   const [COLS, setCOLS] = useState(initialData?.cols ?? 10);
-  const [mode, setMode] = useState<Mode>("size");
-  const [currentSelection, setCurrentSelection] = useState<string | null>(null);
+  const [mode, setMode] = useState<Mode>("draw");
 
-  // ── Unified block state ──────────────────────────────────
   const [blocks, setBlocks] = useState<BlocksMap>(initialData?.blocks ?? {});
 
-  // ── Selected block lifted from BlockPicker ───────────────
-  // Initialised with the first default block so draw mode always has a valid block ready
+  // Multi-select (select mode) vs single select (size/draw modes)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  // Snapshot of block positions at the moment a group drag starts.
+  // We apply the cell delta from this snapshot on every preview tick
+  // so positions are always relative to the origin, never accumulated.
+  const dragOrigin = useRef<BlocksMap | null>(null);
+
   const [selectedBlock, setSelectedBlock] = useState<Block>(DEFAULT_BLOCKS[0]);
 
   const { zoom, setZoom } = useZoom(0.5, 3);
   const handles = handlesForMode(mode);
   const isDrawMode = mode === "draw";
+  const isSelectMode = mode === "select";
 
   const layout = useMemo<LayoutItem[]>(
     () =>
@@ -65,15 +71,63 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
 
   // ── Handlers ─────────────────────────────────────────────
 
-  const selectCanvasBlock = (
+  const handleBlockClick = (
     e: React.MouseEvent<HTMLDivElement>,
     id: string,
   ) => {
     e.stopPropagation();
-    setCurrentSelection(id);
+    if (isSelectMode) {
+      setSelectedIds(new Set([id]));
+    } else {
+      setSelectedId(id);
+    }
   };
 
-  /** Draw mode — places a block spanning the drawn rectangle */
+  const handleSelectionBox = (x: number, y: number, w: number, h: number) => {
+    if (w === 0 && h === 0) {
+      setSelectedIds(new Set());
+      return;
+    }
+    const inside = new Set<string>();
+    for (const [id, b] of Object.entries(blocks)) {
+      if (b.x < x + w && b.x + b.w > x && b.y < y + h && b.y + b.h > y) {
+        inside.add(id);
+      }
+    }
+    setSelectedIds(inside);
+  };
+
+  /**
+   * Called on every cell-delta change during a group drag.
+   * Applies delta from the snapshot taken at drag start so positions
+   * don't accumulate across multiple move events.
+   */
+  const handleGroupMovePreview = (dx: number, dy: number) => {
+    if (!dragOrigin.current) {
+      // First preview tick — snapshot current positions
+      dragOrigin.current = { ...blocks };
+    }
+    const origin = dragOrigin.current;
+    setBlocks((prev) => {
+      const next = { ...prev };
+      for (const id of selectedIds) {
+        const o = origin[id];
+        if (!o) continue;
+        next[id] = {
+          ...o,
+          x: Math.max(0, Math.min(o.x + dx, COLS - o.w)),
+          y: Math.max(0, Math.min(o.y + dy, ROWS - o.h)),
+        };
+      }
+      return next;
+    });
+  };
+
+  /** Called on pointer-up — blocks are already in final position, just clear the snapshot */
+  const handleGroupMoveCommit = () => {
+    dragOrigin.current = null;
+  };
+
   const handleDrawComplete = (x: number, y: number, w: number, h: number) => {
     const key = `block-${Date.now()}`;
     setBlocks((prev) => ({
@@ -140,6 +194,13 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
     });
   };
 
+  const handleModeChange = (newMode: Mode) => {
+    setMode(newMode);
+    setSelectedIds(new Set());
+    setSelectedId(null);
+    dragOrigin.current = null;
+  };
+
   const submitForm = (
     name: string,
     tags: string[],
@@ -191,21 +252,33 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
     }
   };
 
-  // Delete selected block on Backspace / Delete
+  // Backspace / Delete — removes all selected blocks
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== "Delete" && e.key !== "Backspace") return;
-      if (!currentSelection) return;
-      setBlocks((prev) => {
-        const next = { ...prev };
-        delete next[currentSelection];
-        return next;
-      });
-      setCurrentSelection(null);
+
+      if (isSelectMode && selectedIds.size > 0) {
+        setBlocks((prev) => {
+          const next = { ...prev };
+          for (const id of selectedIds) delete next[id];
+          return next;
+        });
+        setSelectedIds(new Set());
+        return;
+      }
+
+      if (selectedId) {
+        setBlocks((prev) => {
+          const next = { ...prev };
+          delete next[selectedId];
+          return next;
+        });
+        setSelectedId(null);
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [currentSelection]);
+  }, [isSelectMode, selectedIds, selectedId]);
 
   // ── Render ────────────────────────────────────────────────
 
@@ -217,7 +290,7 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
           <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
             Floor Plan
           </span>
-          <ModeToggle mode={mode} onChange={setMode} />
+          <ModeToggle mode={mode} onChange={handleModeChange} />
           <ZoomControls
             zoom={zoom}
             onZoomIn={() => setZoom((z) => Math.min(3, z + 0.1))}
@@ -225,7 +298,7 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
           />
         </div>
 
-        {/* Contextual hint bar shown only in draw mode */}
+        {/* Contextual hint bars */}
         {isDrawMode && (
           <div className="px-4 py-1.5 bg-slate-800 shrink-0 flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
@@ -238,11 +311,31 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
             </span>
           </div>
         )}
+        {isSelectMode && (
+          <div className="px-4 py-1.5 bg-slate-800 shrink-0 flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
+            <span className="text-[10px] font-mono text-slate-300">
+              {selectedIds.size > 0 ? (
+                <>
+                  <span className="font-bold text-white">
+                    {selectedIds.size}
+                  </span>
+                  {" block"}
+                  {selectedIds.size !== 1 ? "s" : ""} selected
+                  {" · drag to move · "}
+                  <span className="text-slate-400">⌫ to delete</span>
+                </>
+              ) : (
+                "Drag to select · click a block to select it"
+              )}
+            </span>
+          </div>
+        )}
 
         <div
           className="flex-1 overflow-auto p-4 min-h-0 overscroll-none"
           onClick={() => {
-            if (!isDrawMode) setCurrentSelection(null);
+            if (!isDrawMode && !isSelectMode) setSelectedId(null);
           }}
         >
           <div style={{ width: `${zoom * 100}%` }}>
@@ -252,11 +345,16 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
               rows={ROWS}
               blocks={blocks}
               handles={handles}
-              selectedId={currentSelection}
-              onClick={selectCanvasBlock}
+              selectedId={selectedId}
+              selectedIds={selectedIds}
+              onClick={handleBlockClick}
               onLayoutChange={handleLayoutChange}
               onDrawComplete={handleDrawComplete}
+              onSelectionBox={handleSelectionBox}
+              onGroupMovePreview={handleGroupMovePreview}
+              onGroupMoveCommit={handleGroupMoveCommit}
               drawMode={isDrawMode}
+              selectMode={isSelectMode}
             />
           </div>
         </div>
