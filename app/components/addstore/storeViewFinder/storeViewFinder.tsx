@@ -4,9 +4,9 @@ import { BlockPicker, type Block } from "../blockPicker/index";
 import { GridCanvas } from "./GridCanvas";
 import { GridControls } from "./GridControls";
 import { ZoomControls } from "./ZoomControl";
-import { ModeToggle, handlesForMode } from "./ModeToggle";
+import { ModeToggle, handlesForMode, type Mode } from "./ModeToggle";
 import { useZoom } from "#utils/useZoom";
-import { findNextFreeCell } from "#utils/GridHelper";
+import { DEFAULT_BLOCKS } from "#types/BlockTypes";
 import type {
   BlocksMap,
   BlockDetails,
@@ -15,11 +15,8 @@ import type {
 import { FieldLabel, StoreForm } from "./StoreForm";
 import { useFetcher, useLoaderData, useNavigate } from "react-router";
 
-type Mode = "select" | "size";
-
 type Props = {
   sidePanel?: React.ReactNode;
-  /** When provided, the editor runs in edit mode — prefills all fields and PATCHes on save */
   initialData?: {
     storeId: string;
     name: string;
@@ -44,10 +41,14 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
   // ── Unified block state ──────────────────────────────────
   const [blocks, setBlocks] = useState<BlocksMap>(initialData?.blocks ?? {});
 
+  // ── Selected block lifted from BlockPicker ───────────────
+  // Initialised with the first default block so draw mode always has a valid block ready
+  const [selectedBlock, setSelectedBlock] = useState<Block>(DEFAULT_BLOCKS[0]);
+
   const { zoom, setZoom } = useZoom(0.5, 3);
   const handles = handlesForMode(mode);
+  const isDrawMode = mode === "draw";
 
-  // Derive LayoutItem[] for react-grid-layout from blocks
   const layout = useMemo<LayoutItem[]>(
     () =>
       Object.entries(blocks).map(([id, b]) => ({
@@ -64,24 +65,28 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
 
   // ── Handlers ─────────────────────────────────────────────
 
-  const selectedBlock = (e: React.MouseEvent<HTMLDivElement>, id: string) => {
+  const selectCanvasBlock = (
+    e: React.MouseEvent<HTMLDivElement>,
+    id: string,
+  ) => {
     e.stopPropagation();
     setCurrentSelection(id);
   };
 
-  const handleBlockClick = (block: Block) => {
+  /** Draw mode — places a block spanning the drawn rectangle */
+  const handleDrawComplete = (x: number, y: number, w: number, h: number) => {
     const key = `block-${Date.now()}`;
-    const { x, y } = findNextFreeCell(layout, COLS, ROWS);
     setBlocks((prev) => ({
       ...prev,
       [key]: {
         x,
         y,
-        w: 1,
-        h: 1,
-        bg: `${block.color}22`,
-        border: block.color,
-        label: block.name,
+        w,
+        h,
+        bg: `${selectedBlock.color}22`,
+        border: selectedBlock.color,
+        label: selectedBlock.name,
+        kind: selectedBlock.kind,
       },
     }));
   };
@@ -152,23 +157,24 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
       width: b.w,
       x: b.x,
       y: b.y,
+      kind: b.kind,
     }));
 
     if (initialData) {
-      // Edit mode — PATCH existing store
-      const data = {
-        name,
-        userId,
-        tags: JSON.stringify(tags),
-        description,
-        rows,
-        cols,
-        blocks: blockArr,
-      };
-      fetcher.submit(data, { method: "PATCH", encType: "application/json" });
+      fetcher.submit(
+        {
+          name,
+          userId,
+          tags: JSON.stringify(tags),
+          description,
+          rows,
+          cols,
+          blocks: blockArr,
+        },
+        { method: "PATCH", encType: "application/json" },
+      );
       navigate(`/store/${initialData.storeId}`);
     } else {
-      // Create mode — POST new store
       const id = crypto.randomUUID();
       const data: CreateStoreInput = {
         id,
@@ -180,10 +186,7 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
         cols,
         blocks: blockArr,
       };
-      fetcher.submit(data, {
-        method: "POST",
-        encType: "application/json",
-      });
+      fetcher.submit(data, { method: "POST", encType: "application/json" });
       navigate(`/store/${id}`, { state: { storeData: data } });
     }
   };
@@ -222,9 +225,25 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
           />
         </div>
 
+        {/* Contextual hint bar shown only in draw mode */}
+        {isDrawMode && (
+          <div className="px-4 py-1.5 bg-slate-800 shrink-0 flex items-center gap-2">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
+            <span className="text-[10px] font-mono text-slate-300">
+              Click or drag to place a
+              <span className="font-bold text-white mx-1">
+                {selectedBlock.name}
+              </span>
+              block
+            </span>
+          </div>
+        )}
+
         <div
           className="flex-1 overflow-auto p-4 min-h-0 overscroll-none"
-          onClick={() => setCurrentSelection(null)}
+          onClick={() => {
+            if (!isDrawMode) setCurrentSelection(null);
+          }}
         >
           <div style={{ width: `${zoom * 100}%` }}>
             <GridCanvas
@@ -234,8 +253,10 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
               blocks={blocks}
               handles={handles}
               selectedId={currentSelection}
-              onClick={selectedBlock}
+              onClick={selectCanvasBlock}
               onLayoutChange={handleLayoutChange}
+              onDrawComplete={handleDrawComplete}
+              drawMode={isDrawMode}
             />
           </div>
         </div>
@@ -268,7 +289,7 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
         <div className="px-6 py-5 border-b border-slate-100">
           <FieldLabel>Blocks</FieldLabel>
           <div className="mt-2">
-            <BlockPicker onBlockClick={handleBlockClick} />
+            <BlockPicker onSelectionChange={setSelectedBlock} />
           </div>
         </div>
 

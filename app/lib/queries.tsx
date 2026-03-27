@@ -7,6 +7,34 @@ import type {
   BlockDetails,
 } from "~/types/storeViewFinderTypes";
 import type { AccessLevel, StoreRole } from "~/types/memberTypes";
+import type { BlockKind } from "~/types/BlockTypes";
+
+// ─── Helpers ───────────────────────────────────────────────
+
+/** Map a raw DB block row to the BlockDetails shape */
+function toBlockDetails(b: typeof blocks.$inferSelect): BlockDetails {
+  return {
+    block_id: b.block_id,
+    background: b.background,
+    border: b.border,
+    label: b.label,
+    height: b.height,
+    width: b.width,
+    x: b.x,
+    y: b.y,
+    kind: (b.kind ?? "standard") as BlockKind,
+  };
+}
+
+/** Group a flat block array into a storeId → BlockDetails[] map */
+function groupBlocksByStore(
+  rows: (typeof blocks.$inferSelect)[],
+): Record<string, BlockDetails[]> {
+  return rows.reduce<Record<string, BlockDetails[]>>((acc, b) => {
+    (acc[b.storeId] ??= []).push(toBlockDetails(b));
+    return acc;
+  }, {});
+}
 
 // ─── STORES ────────────────────────────────────────────────
 
@@ -18,45 +46,25 @@ export async function getStoresByUserWithDetails(
     .select()
     .from(stores)
     .where(eq(stores.userId, userId));
-
   if (!userStores.length) return [];
 
   const storeIds = userStores.map((s) => s.id);
 
-  const allBlocks = await db
-    .select()
-    .from(blocks)
-    .where(inArray(blocks.storeId, storeIds));
+  const [allBlocks, itemCounts] = await Promise.all([
+    db.select().from(blocks).where(inArray(blocks.storeId, storeIds)),
+    db
+      .select({
+        storeId: items.storeId,
+        count: sql<number>`count(*)`.as("count"),
+      })
+      .from(items)
+      .where(inArray(items.storeId, storeIds))
+      .groupBy(items.storeId),
+  ]);
 
-  const itemCounts = await db
-    .select({
-      storeId: items.storeId,
-      count: sql<number>`count(*)`.as("count"),
-    })
-    .from(items)
-    .where(inArray(items.blockId, storeIds))
-    .groupBy(items.storeId);
-
+  const blocksByStore = groupBlocksByStore(allBlocks);
   const itemCountMap = Object.fromEntries(
     itemCounts.map((r) => [r.storeId, r.count]),
-  );
-
-  const blocksByStore = allBlocks.reduce<Record<string, BlockDetails[]>>(
-    (acc, block) => {
-      if (!acc[block.storeId]) acc[block.storeId] = [];
-      acc[block.storeId].push({
-        block_id: block.block_id,
-        background: block.background,
-        border: block.border,
-        label: block.label,
-        height: block.height,
-        width: block.width,
-        x: block.x,
-        y: block.y,
-      });
-      return acc;
-    },
-    {},
   );
 
   return userStores.map((store) => ({
@@ -70,7 +78,6 @@ export async function getStoresByUserWithDetails(
 export async function getStoresMemberOf(
   userId: string,
 ): Promise<StoreWithDetails[]> {
-  // Find memberships where user is not the store owner
   const memberships = await db
     .select()
     .from(storeMembers)
@@ -81,7 +88,6 @@ export async function getStoresMemberOf(
   if (!memberships.length) return [];
 
   const storeIds = memberships.map((m) => m.storeId);
-
   const memberStores = await db
     .select()
     .from(stores)
@@ -93,42 +99,22 @@ export async function getStoresMemberOf(
 
   const nonOwnedIds = nonOwnedStores.map((s) => s.id);
 
-  const allBlocks = await db
-    .select()
-    .from(blocks)
-    .where(inArray(blocks.storeId, nonOwnedIds));
+  const [allBlocks, itemCounts] = await Promise.all([
+    db.select().from(blocks).where(inArray(blocks.storeId, nonOwnedIds)),
+    db
+      .select({
+        storeId: items.storeId,
+        count: sql<number>`count(*)`.as("count"),
+      })
+      .from(items)
+      .where(inArray(items.storeId, nonOwnedIds))
+      .groupBy(items.storeId),
+  ]);
 
-  const itemCounts = await db
-    .select({
-      storeId: items.storeId,
-      count: sql<number>`count(*)`.as("count"),
-    })
-    .from(items)
-    .where(inArray(items.storeId, nonOwnedIds))
-    .groupBy(items.storeId);
-
+  const blocksByStore = groupBlocksByStore(allBlocks);
   const itemCountMap = Object.fromEntries(
     itemCounts.map((r) => [r.storeId, r.count]),
   );
-
-  const blocksByStore = allBlocks.reduce<Record<string, BlockDetails[]>>(
-    (acc, block) => {
-      if (!acc[block.storeId]) acc[block.storeId] = [];
-      acc[block.storeId].push({
-        block_id: block.block_id,
-        background: block.background,
-        border: block.border,
-        label: block.label,
-        height: block.height,
-        width: block.width,
-        x: block.x,
-        y: block.y,
-      });
-      return acc;
-    },
-    {},
-  );
-
   const roleMap = Object.fromEntries(
     memberships.map((m) => [m.storeId, m.role]),
   );
@@ -147,29 +133,20 @@ export async function getStoresByUser(userId: string) {
 }
 
 /** Fetch a single store by ID, including its blocks */
-export async function getStoreById(id: string) {
+export async function getStoreById(
+  id: string,
+): Promise<CreateStoreInput | null> {
   return db.transaction(async (tx) => {
     const storeResult = await tx.select().from(stores).where(eq(stores.id, id));
     const store = storeResult[0];
     if (!store) return null;
 
-    const blocksResult = await tx
+    const blockRows = await tx
       .select()
       .from(blocks)
       .where(eq(blocks.storeId, id));
 
-    const blkDetails: BlockDetails[] = blocksResult.map((block) => ({
-      block_id: block.block_id,
-      background: block.background,
-      border: block.border,
-      label: block.label,
-      height: block.height,
-      width: block.width,
-      x: block.x,
-      y: block.y,
-    }));
-
-    const res: CreateStoreInput = {
+    return {
       id: store.id,
       name: store.name,
       userId: store.userId,
@@ -177,15 +154,14 @@ export async function getStoreById(id: string) {
       description: store.description ?? undefined,
       rows: store.rows,
       cols: store.cols,
-      blocks: blkDetails.length ? blkDetails : [],
+      blocks: blockRows.map(toBlockDetails),
       isPublic: store.isPublic,
       canvasVisible: store.canvasVisible,
     };
-    return res;
   });
 }
 
-/** Create a new store */
+/** Create a new store (no blocks) */
 export async function createStore(data: {
   name: string;
   userId: string;
@@ -204,6 +180,7 @@ export async function createStore(data: {
   });
 }
 
+/** Create a store together with its blocks in a single transaction */
 export async function createStoreWithBlocks(data: CreateStoreInput) {
   return db.transaction(async (tx) => {
     const id = data.id ?? crypto.randomUUID();
@@ -219,23 +196,22 @@ export async function createStoreWithBlocks(data: CreateStoreInput) {
     });
 
     // Auto-insert owner into storeMembers
-    await tx.insert(storeMembers).values({
-      storeId: id,
-      userId: data.userId,
-      role: "owner",
-    });
+    await tx
+      .insert(storeMembers)
+      .values({ storeId: id, userId: data.userId, role: "owner" });
 
     if (data.blocks?.length) {
       await tx.insert(blocks).values(
-        data.blocks.map((block) => ({
+        data.blocks.map((b) => ({
           storeId: id,
-          background: block.background ?? "#000000",
-          border: block.border ?? "#000000",
-          label: block.label ?? "",
-          height: block.height ?? 1,
-          width: block.width ?? 1,
-          x: block.x ?? 0,
-          y: block.y ?? 0,
+          background: b.background ?? "#000000",
+          border: b.border ?? "#000000",
+          label: b.label ?? "",
+          height: b.height ?? 1,
+          width: b.width ?? 1,
+          x: b.x ?? 0,
+          y: b.y ?? 0,
+          kind: b.kind ?? "standard",
         })),
       );
     }
@@ -258,6 +234,7 @@ export async function duplicateStore(
     if (!store) throw new Response("Store not found", { status: 404 });
 
     const newId = crypto.randomUUID();
+
     await tx.insert(stores).values({
       id: newId,
       name: `${store.name} (copy)`,
@@ -268,11 +245,9 @@ export async function duplicateStore(
       cols: store.cols,
     });
 
-    await tx.insert(storeMembers).values({
-      storeId: newId,
-      userId,
-      role: "owner",
-    });
+    await tx
+      .insert(storeMembers)
+      .values({ storeId: newId, userId, role: "owner" });
 
     const existingBlocks = await tx
       .select()
@@ -290,6 +265,7 @@ export async function duplicateStore(
           width: b.width,
           x: b.x,
           y: b.y,
+          kind: b.kind ?? "standard",
         })),
       );
     }
@@ -298,7 +274,7 @@ export async function duplicateStore(
   });
 }
 
-/** Update a store's details */
+/** Update a store's metadata */
 export async function updateStore(
   id: string,
   data: Partial<{
@@ -327,8 +303,8 @@ export async function verifyStoreOwner(storeId: string, userId: string) {
 }
 
 /**
- * Determine access level for a user (or null = unauthenticated) on a store.
- * Returns the store + accessLevel together to avoid double fetches.
+ * Determine the access level for a user (or null = unauthenticated) on a store.
+ * Returns the store + accessLevel together to avoid a double fetch.
  */
 export async function verifyStoreAccess(
   storeId: string,
@@ -337,30 +313,21 @@ export async function verifyStoreAccess(
   const store = await getStoreById(storeId);
   if (!store) return null;
 
-  // Authenticated — check membership
   if (userId) {
-    // Owner check via userId column (original owner who created the store)
-    if (store.userId === userId) {
-      return { store, accessLevel: "owner" };
-    }
+    if (store.userId === userId) return { store, accessLevel: "owner" };
 
-    // Check storeMembers table
     const memberResult = await db
       .select()
       .from(storeMembers)
       .where(
         sql`${storeMembers.storeId} = ${storeId} AND ${storeMembers.userId} = ${userId}`,
       );
+
     const member = memberResult[0];
-    if (member) {
-      return { store, accessLevel: member.role as AccessLevel };
-    }
+    if (member) return { store, accessLevel: member.role as AccessLevel };
   }
 
-  // Not a member — check if store is public
-  if (store.isPublic) {
-    return { store, accessLevel: "public" };
-  }
+  if (store.isPublic) return { store, accessLevel: "public" };
 
   return { store, accessLevel: "none" };
 }
@@ -385,7 +352,7 @@ export async function getBlocksByStore(storeId: string) {
   return db.select().from(blocks).where(eq(blocks.storeId, storeId));
 }
 
-/** Create a new block */
+/** Create a single block */
 export async function createBlock(data: {
   storeId: string;
   background?: string;
@@ -395,6 +362,7 @@ export async function createBlock(data: {
   width?: number;
   x?: number;
   y?: number;
+  kind?: BlockKind;
 }) {
   return db.insert(blocks).values({
     storeId: data.storeId,
@@ -405,6 +373,7 @@ export async function createBlock(data: {
     width: data.width ?? 1,
     x: data.x ?? 0,
     y: data.y ?? 0,
+    kind: data.kind ?? "standard",
   });
 }
 
@@ -419,6 +388,7 @@ export async function updateBlock(
     width: number;
     x: number;
     y: number;
+    kind: BlockKind;
   }>,
 ) {
   return db.update(blocks).set(data).where(eq(blocks.block_id, blockId));
@@ -427,6 +397,69 @@ export async function updateBlock(
 /** Delete a block */
 export async function deleteBlock(blockId: string) {
   return db.delete(blocks).where(eq(blocks.block_id, blockId));
+}
+
+/**
+ * Replace all blocks for an existing store atomically.
+ * Null-outs blockId on any items that referenced removed blocks.
+ */
+export async function updateStoreWithBlocks(
+  storeId: string,
+  data: {
+    name: string;
+    tags: string;
+    description?: string;
+    rows: number;
+    cols: number;
+    blocks: BlockDetails[];
+  },
+) {
+  return db.transaction(async (tx) => {
+    await tx
+      .update(stores)
+      .set({
+        name: data.name,
+        tags: data.tags,
+        description: data.description ?? null,
+        rows: data.rows,
+        cols: data.cols,
+      })
+      .where(eq(stores.id, storeId));
+
+    const existing = await tx
+      .select({ block_id: blocks.block_id })
+      .from(blocks)
+      .where(eq(blocks.storeId, storeId));
+    const existingIds = existing.map((b) => b.block_id);
+    const incomingIds = data.blocks.map((b) => b.block_id);
+    const removedIds = existingIds.filter((id) => !incomingIds.includes(id));
+
+    if (removedIds.length) {
+      await tx
+        .update(items)
+        .set({ blockId: null })
+        .where(inArray(items.blockId, removedIds));
+    }
+
+    await tx.delete(blocks).where(eq(blocks.storeId, storeId));
+
+    if (data.blocks.length) {
+      await tx.insert(blocks).values(
+        data.blocks.map((b) => ({
+          block_id: b.block_id,
+          storeId,
+          background: b.background,
+          border: b.border,
+          label: b.label,
+          height: b.height,
+          width: b.width,
+          x: b.x,
+          y: b.y,
+          kind: b.kind ?? "standard",
+        })),
+      );
+    }
+  });
 }
 
 // ─── ITEMS ─────────────────────────────────────────────────
@@ -442,7 +475,7 @@ export async function getItemById(id: string) {
   return result[0] ?? null;
 }
 
-/** Create a new item — returns the inserted row including server-assigned ID */
+/** Create a new item — returns the inserted row's ID */
 export async function createItem(data: {
   name: string;
   storeId: string;
@@ -481,73 +514,13 @@ export async function deleteItem(id: string) {
   return db.delete(items).where(eq(items.id, id));
 }
 
-/** Count items per store */
+/** Count items in a store */
 export async function getItemCountByStore(storeId: string) {
-  const result = await getItemsByStore(storeId);
-  return result.length;
-}
-
-/**
- * Replace all blocks for an existing store and null-out blockId
- * on any items that referenced deleted blocks.
- */
-export async function updateStoreWithBlocks(
-  storeId: string,
-  data: {
-    name: string;
-    tags: string;
-    description?: string;
-    rows: number;
-    cols: number;
-    blocks: BlockDetails[];
-  },
-) {
-  return db.transaction(async (tx) => {
-    await tx
-      .update(stores)
-      .set({
-        name: data.name,
-        tags: data.tags,
-        description: data.description ?? null,
-        rows: data.rows,
-        cols: data.cols,
-      })
-      .where(eq(stores.id, storeId));
-
-    const existing = await tx
-      .select({ block_id: blocks.block_id })
-      .from(blocks)
-      .where(eq(blocks.storeId, storeId));
-
-    const existingIds = existing.map((b) => b.block_id);
-    const incomingIds = data.blocks.map((b) => b.block_id);
-    const removedIds = existingIds.filter((id) => !incomingIds.includes(id));
-
-    if (removedIds.length > 0) {
-      await tx
-        .update(items)
-        .set({ blockId: null })
-        .where(inArray(items.blockId, removedIds));
-    }
-
-    await tx.delete(blocks).where(eq(blocks.storeId, storeId));
-
-    if (data.blocks.length > 0) {
-      await tx.insert(blocks).values(
-        data.blocks.map((block) => ({
-          block_id: block.block_id,
-          storeId,
-          background: block.background,
-          border: block.border,
-          label: block.label,
-          height: block.height,
-          width: block.width,
-          x: block.x,
-          y: block.y,
-        })),
-      );
-    }
-  });
+  const result = await db
+    .select({ count: sql<number>`count(*)`.as("count") })
+    .from(items)
+    .where(eq(items.storeId, storeId));
+  return result[0]?.count ?? 0;
 }
 
 // ─── MEMBERS ───────────────────────────────────────────────
@@ -579,7 +552,7 @@ export async function updateMemberRole(
     .update(storeMembers)
     .set({ role })
     .where(
-      sql`${storeMembers.storeId} = ${storeId} AND ${storeMembers.userId} = ${userId}`,
+      and(eq(storeMembers.storeId, storeId), eq(storeMembers.userId, userId)),
     );
 }
 
@@ -588,13 +561,16 @@ export async function removeMember(storeId: string, userId: string) {
   return db
     .delete(storeMembers)
     .where(
-      sql`${storeMembers.storeId} = ${storeId} AND ${storeMembers.userId} = ${userId}`,
+      and(eq(storeMembers.storeId, storeId), eq(storeMembers.userId, userId)),
     );
 }
 
 // ─── INVITES ───────────────────────────────────────────────
 
-/** Create a new editor invite link (7-day expiry), reusing an existing valid one if present */
+/**
+ * Create an editor invite link (7-day expiry).
+ * Reuses an existing valid (unclaimed, unexpired) invite for the same store + role.
+ */
 export async function createInvite(
   storeId: string,
   role: "editor",
@@ -602,8 +578,6 @@ export async function createInvite(
 ) {
   const now = new Date();
 
-  // Reuse any existing unclaimed, unexpired invite for this store+role
-  // Use and() with Drizzle operators so timestamp serialisation is handled correctly
   const existing = await db
     .select()
     .from(storeInvites)
@@ -617,9 +591,8 @@ export async function createInvite(
     )
     .limit(1);
 
-  if (existing.length > 0) return existing[0].token;
+  if (existing.length) return existing[0].token;
 
-  // None found — create a fresh one
   const token = crypto.randomUUID();
   const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   await db
@@ -639,11 +612,10 @@ export async function getInviteByToken(token: string) {
 
 /**
  * Claim an invite:
- * - Validates not expired, not already claimed
- * - Checks user isn't already a member
- * - Inserts into storeMembers
- * - Marks invite as claimed
- * Returns the storeId on success, throws on failure.
+ * - Validates not expired / not already claimed
+ * - Checks the user isn't already a member or the owner
+ * - Inserts into storeMembers and marks invite as claimed
+ * Returns the storeId on success, throws a Response on failure.
  */
 export async function claimInvite(token: string, userId: string) {
   return db.transaction(async (tx) => {
@@ -659,29 +631,25 @@ export async function claimInvite(token: string, userId: string) {
     if (new Date() > invite.expiresAt)
       throw new Response("Invite expired", { status: 410 });
 
-    // Check if already a member
-    const existing = await tx
-      .select()
-      .from(storeMembers)
-      .where(
-        sql`${storeMembers.storeId} = ${invite.storeId} AND ${storeMembers.userId} = ${userId}`,
-      );
+    const [existingMember, storeResult] = await Promise.all([
+      tx
+        .select()
+        .from(storeMembers)
+        .where(
+          and(
+            eq(storeMembers.storeId, invite.storeId),
+            eq(storeMembers.userId, userId),
+          ),
+        ),
+      tx.select().from(stores).where(eq(stores.id, invite.storeId)),
+    ]);
 
-    // Also check if they're the owner
-    const storeResult = await tx
-      .select()
-      .from(stores)
-      .where(eq(stores.id, invite.storeId));
-    const store = storeResult[0];
+    const isOwner = storeResult[0]?.userId === userId;
 
-    const isOwner = store?.userId === userId;
-
-    if (!existing.length && !isOwner) {
-      await tx.insert(storeMembers).values({
-        storeId: invite.storeId,
-        userId,
-        role: invite.role,
-      });
+    if (!existingMember.length && !isOwner) {
+      await tx
+        .insert(storeMembers)
+        .values({ storeId: invite.storeId, userId, role: invite.role });
     }
 
     await tx

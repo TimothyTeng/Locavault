@@ -295,6 +295,7 @@ export default function StorePage() {
                     setHighlightedCell(blockId);
                   }}
                   readOnly={true}
+                  nonClickableKinds={["divider", "stairs"]}
                 />
               </div>
             </div>

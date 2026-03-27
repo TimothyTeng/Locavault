@@ -5,16 +5,24 @@ import { DEFAULT_BLOCKS, type Block } from "#types/BlockTypes";
 
 interface BlockPickerProps {
   onChange?: (blocks: Block[]) => void;
-  onBlockClick?: (block: Block) => void;
+  onSelectionChange?: (block: Block) => void;
 }
 
-export { type Block } from "#types/BlockTypes"; // re-export so parent imports still work
+export { type Block } from "#types/BlockTypes";
 
-export const BlockPicker = ({ onChange, onBlockClick }: BlockPickerProps) => {
+export const BlockPicker = ({
+  onChange,
+  onSelectionChange,
+}: BlockPickerProps) => {
   const [blocks, setBlocks] = useState<Block[]>(DEFAULT_BLOCKS);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<string>(DEFAULT_BLOCKS[0].id);
   const [expanded, setExpanded] = useState(false);
+
+  const select = (block: Block) => {
+    setSelectedId(block.id);
+    onSelectionChange?.(block);
+  };
 
   const handleAdd = (data: Omit<Block, "id">) => {
     const next = [...blocks, { ...data, id: crypto.randomUUID() }];
@@ -30,9 +38,8 @@ export const BlockPicker = ({ onChange, onBlockClick }: BlockPickerProps) => {
   };
 
   const handleClick = (block: Block) => {
-    setSelectedId(block.id);
+    select(block);
     setExpanded(false);
-    onBlockClick?.(block);
   };
 
   const selectedBlock = blocks.find((b) => b.id === selectedId) ?? blocks[0];
@@ -64,7 +71,6 @@ export const BlockPicker = ({ onChange, onBlockClick }: BlockPickerProps) => {
             background: `${selectedBlock.color}18`,
             borderColor: selectedBlock.color,
           }}
-          onClick={() => onBlockClick?.(selectedBlock)}
         >
           <div
             className="bp-item-swatch"

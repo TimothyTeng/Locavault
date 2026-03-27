@@ -12,6 +12,7 @@ export function blocksToBlocksMap(blocks: CreateStoreInput["blocks"]): BlocksMap
         bg: block.background,
         border: block.border,
         label: block.label,
+        kind: block.kind ?? "standard",
       },
     ]),
   );
