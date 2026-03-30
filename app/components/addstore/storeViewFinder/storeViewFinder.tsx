@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Layout, LayoutItem } from "react-grid-layout";
 import { BlockPicker, type Block } from "../blockPicker/index";
 import { GridCanvas } from "./GridCanvas";
@@ -49,6 +49,10 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
   const dragOrigin = useRef<BlocksMap | null>(null);
 
   const [selectedBlock, setSelectedBlock] = useState<Block>(DEFAULT_BLOCKS[0]);
+  const selectedIdsRef = useRef(selectedIds);
+  useEffect(() => {
+    selectedIdsRef.current = selectedIds;
+  }, [selectedIds]);
 
   const { zoom, setZoom } = useZoom(0.5, 3);
   const handles = handlesForMode(mode);
@@ -97,36 +101,43 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
     setSelectedIds(inside);
   };
 
-  /**
-   * Called on every cell-delta change during a group drag.
-   * Applies delta from the snapshot taken at drag start so positions
-   * don't accumulate across multiple move events.
-   */
-  const handleGroupMovePreview = (dx: number, dy: number) => {
-    if (!dragOrigin.current) {
-      // First preview tick — snapshot current positions
-      dragOrigin.current = { ...blocks };
-    }
-    const origin = dragOrigin.current;
-    setBlocks((prev) => {
-      const next = { ...prev };
-      for (const id of selectedIds) {
-        const o = origin[id];
-        if (!o) continue;
-        next[id] = {
-          ...o,
-          x: Math.max(0, Math.min(o.x + dx, COLS - o.w)),
-          y: Math.max(0, Math.min(o.y + dy, ROWS - o.h)),
-        };
-      }
-      return next;
-    });
-  };
+  const colsRef = useRef(COLS);
+  const rowsRef = useRef(ROWS);
+  useEffect(() => {
+    colsRef.current = COLS;
+  }, [COLS]);
+  useEffect(() => {
+    rowsRef.current = ROWS;
+  }, [ROWS]);
+
+  const handleGroupMovePreview = useCallback(
+    (dx: number, dy: number) => {
+      setBlocks((prev) => {
+        // Take snapshot from prev on first tick — no stale closure
+        if (!dragOrigin.current) {
+          dragOrigin.current = { ...prev };
+        }
+        const origin = dragOrigin.current;
+        const next = { ...prev };
+        for (const id of selectedIdsRef.current) {
+          const o = origin[id];
+          if (!o) continue;
+          next[id] = {
+            ...o,
+            x: Math.max(0, Math.min(o.x + dx, colsRef.current - o.w)),
+            y: Math.max(0, Math.min(o.y + dy, rowsRef.current - o.h)),
+          };
+        }
+        return next;
+      });
+    },
+    [selectedIdsRef.current],
+  ); // selectedIds is now the only dependency
 
   /** Called on pointer-up — blocks are already in final position, just clear the snapshot */
-  const handleGroupMoveCommit = () => {
+  const handleGroupMoveCommit = useCallback(() => {
     dragOrigin.current = null;
-  };
+  }, []);
 
   const handleDrawComplete = (x: number, y: number, w: number, h: number) => {
     const key = `block-${Date.now()}`;
@@ -146,6 +157,7 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
   };
 
   const handleLayoutChange = (newLayout: Layout) => {
+    if (isSelectMode || isDrawMode) return;
     setBlocks((prev) => {
       const next = { ...prev };
       for (const item of newLayout) {
@@ -164,6 +176,8 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
 
   const handleColsChange = (newCols: number) => {
     setCOLS(newCols);
+    dragOrigin.current = null; // ← add this
+    setSelectedIds(new Set()); // ← and this
     setBlocks((prev) => {
       const next = { ...prev };
       for (const id in next) {
@@ -180,6 +194,8 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
 
   const handleRowsChange = (newRows: number) => {
     setROWS(newRows);
+    dragOrigin.current = null; // ← add this
+    setSelectedIds(new Set()); // ← and this
     setBlocks((prev) => {
       const next = { ...prev };
       for (const id in next) {
@@ -255,6 +271,8 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
   // Backspace / Delete — removes all selected blocks
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
       if (e.key !== "Delete" && e.key !== "Backspace") return;
 
       if (isSelectMode && selectedIds.size > 0) {

@@ -12,7 +12,7 @@ import "react-grid-layout/css/styles.css";
 import "react-resizable/css/styles.css";
 import type { BlocksMap } from "#types/storeViewFinderTypes";
 import type { BlockKind } from "#types/BlockTypes";
-import { useMemo, useState, useCallback, useRef } from "react";
+import { useMemo, useState, useCallback, useRef, useEffect } from "react";
 
 type CellPos = { col: number; row: number };
 type HitTarget = "empty" | "selected-block" | "unselected-block";
@@ -68,6 +68,10 @@ export function GridCanvas({
   const hitRef = useRef<HitTarget>("empty");
   const clickedId = useRef<string | null>(null);
   const isDraggingGroup = useRef(false);
+  const blocksRef = useRef(blocks);
+  useEffect(() => {
+    blocksRef.current = blocks;
+  }, [blocks]);
 
   const rowHeight = width / cols;
   const cellSize = rowHeight;
@@ -96,16 +100,13 @@ export function GridCanvas({
     h: Math.abs(a.row - b.row) + 1,
   });
 
-  const blockAtCell = useCallback(
-    (col: number, row: number): string | null => {
-      for (const [id, b] of Object.entries(blocks)) {
-        if (col >= b.x && col < b.x + b.w && row >= b.y && row < b.y + b.h)
-          return id;
-      }
-      return null;
-    },
-    [blocks],
-  );
+  const blockAtCell = useCallback((col: number, row: number): string | null => {
+    for (const [id, b] of Object.entries(blocksRef.current)) {
+      if (col >= b.x && col < b.x + b.w && row >= b.y && row < b.y + b.h)
+        return id;
+    }
+    return null;
+  }, []);
 
   // ── Pointer handlers ─────────────────────────────────────
 
