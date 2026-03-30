@@ -13,9 +13,17 @@ import "react-resizable/css/styles.css";
 import type { BlocksMap } from "#types/storeViewFinderTypes";
 import type { BlockKind } from "#types/BlockTypes";
 import { useMemo, useState, useCallback, useRef, useEffect } from "react";
-
-type CellPos = { col: number; row: number };
-type HitTarget = "empty" | "selected-block" | "unselected-block";
+import {
+  type CellPos,
+  type HitTarget,
+  pointerToCell,
+  cornersToRect,
+  blockAtCell,
+  resolveCursor,
+  resolveBlockBg,
+  resolveBlockClasses,
+  resolveGhostStyle,
+} from "#utils/helpers/gridCanvas.helper";
 
 type Props = {
   cols: number;
@@ -25,11 +33,8 @@ type Props = {
   onClick: (e: React.MouseEvent<HTMLDivElement>, id: string) => void;
   onLayoutChange?: (layout: Layout) => void;
   onDrawComplete?: (x: number, y: number, w: number, h: number) => void;
-  /** Rubber-band complete — w/h = 0 signals "clear selection" */
   onSelectionBox?: (x: number, y: number, w: number, h: number) => void;
-  /** Fires on every cell-delta change during drag — parent updates blocks live */
   onGroupMovePreview?: (dx: number, dy: number) => void;
-  /** Fires on pointer-up — parent commits the final position */
   onGroupMoveCommit?: () => void;
   selectedId?: string | null;
   selectedIds?: Set<string>;
@@ -62,9 +67,8 @@ export function GridCanvas({
   const [dragStart, setDragStart] = useState<CellPos | null>(null);
   const [dragCurrent, setDragCurrent] = useState<CellPos | null>(null);
   const [moveOrigin, setMoveOrigin] = useState<CellPos | null>(null);
-  // Track last applied delta so we only fire onGroupMovePreview when the cell actually changes
-  const lastDelta = useRef<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
 
+  const lastDelta = useRef<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
   const hitRef = useRef<HitTarget>("empty");
   const clickedId = useRef<string | null>(null);
   const isDraggingGroup = useRef(false);
@@ -76,37 +80,11 @@ export function GridCanvas({
   const rowHeight = width / cols;
   const cellSize = rowHeight;
 
-  const pointerToCell = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>): CellPos => {
-      const rect = e.currentTarget.getBoundingClientRect();
-      return {
-        col: Math.max(
-          0,
-          Math.min(Math.floor((e.clientX - rect.left) / cellSize), cols - 1),
-        ),
-        row: Math.max(
-          0,
-          Math.min(Math.floor((e.clientY - rect.top) / cellSize), rows - 1),
-        ),
-      };
-    },
+  const toCell = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) =>
+      pointerToCell(e, cellSize, cols, rows),
     [cellSize, cols, rows],
   );
-
-  const cornersToRect = (a: CellPos, b: CellPos) => ({
-    x: Math.min(a.col, b.col),
-    y: Math.min(a.row, b.row),
-    w: Math.abs(a.col - b.col) + 1,
-    h: Math.abs(a.row - b.row) + 1,
-  });
-
-  const blockAtCell = useCallback((col: number, row: number): string | null => {
-    for (const [id, b] of Object.entries(blocksRef.current)) {
-      if (col >= b.x && col < b.x + b.w && row >= b.y && row < b.y + b.h)
-        return id;
-    }
-    return null;
-  }, []);
 
   // ── Pointer handlers ─────────────────────────────────────
 
@@ -114,7 +92,7 @@ export function GridCanvas({
     if (!drawMode && !selectMode) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
-    const cell = pointerToCell(e);
+    const cell = toCell(e);
 
     if (drawMode) {
       hitRef.current = "empty";
@@ -123,7 +101,7 @@ export function GridCanvas({
       return;
     }
 
-    const hitId = blockAtCell(cell.col, cell.row);
+    const hitId = blockAtCell(cell.col, cell.row, blocksRef.current);
     if (hitId && selectedIds.has(hitId)) {
       hitRef.current = "selected-block";
       clickedId.current = hitId;
@@ -142,7 +120,7 @@ export function GridCanvas({
 
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!drawMode && !selectMode) return;
-    const cell = pointerToCell(e);
+    const cell = toCell(e);
 
     if (drawMode) {
       if (dragStart) setDragCurrent(cell);
@@ -152,7 +130,6 @@ export function GridCanvas({
     if (hitRef.current === "selected-block" && moveOrigin) {
       const dx = cell.col - moveOrigin.col;
       const dy = cell.row - moveOrigin.row;
-      // Only fire when the cell delta actually changes — avoids redundant re-renders
       if (dx !== lastDelta.current.dx || dy !== lastDelta.current.dy) {
         lastDelta.current = { dx, dy };
         isDraggingGroup.current = true;
@@ -166,7 +143,7 @@ export function GridCanvas({
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!drawMode && !selectMode) return;
     e.currentTarget.releasePointerCapture(e.pointerId);
-    const cell = pointerToCell(e);
+    const cell = toCell(e);
 
     if (drawMode) {
       if (dragStart) {
@@ -180,11 +157,7 @@ export function GridCanvas({
     }
 
     if (hitRef.current === "selected-block") {
-      if (isDraggingGroup.current) {
-        // Commit — blocks are already in final position from preview updates
-        onGroupMoveCommit?.();
-      }
-      // If no drag occurred (pure click on selected block) keep selection as-is
+      if (isDraggingGroup.current) onGroupMoveCommit?.();
       setMoveOrigin(null);
       isDraggingGroup.current = false;
       lastDelta.current = { dx: 0, dy: 0 };
@@ -196,7 +169,7 @@ export function GridCanvas({
     } else if (hitRef.current === "empty" && dragStart) {
       const isTap = dragStart.col === cell.col && dragStart.row === cell.row;
       if (isTap) {
-        onSelectionBox?.(cell.col, cell.row, 0, 0); // clear signal
+        onSelectionBox?.(cell.col, cell.row, 0, 0);
       } else {
         const rect = cornersToRect(dragStart, cell);
         onSelectionBox?.(rect.x, rect.y, rect.w, rect.h);
@@ -213,6 +186,7 @@ export function GridCanvas({
     dragStart && dragCurrent ? cornersToRect(dragStart, dragCurrent) : null;
 
   // ── Layout ───────────────────────────────────────────────
+
   const layout = useMemo<LayoutItem[]>(
     () =>
       Object.entries(blocks).map(([id, b]) => ({
@@ -235,19 +209,13 @@ export function GridCanvas({
     layouts: { lg: layout },
   });
 
-  const activeCursor = drawMode
-    ? "crosshair"
-    : selectMode
-      ? moveOrigin
-        ? "grabbing"
-        : "default"
-      : undefined;
+  // ── Render ────────────────────────────────────────────────
 
   return (
     <div
       ref={containerRef}
       className="relative w-full"
-      style={{ cursor: activeCursor }}
+      style={{ cursor: resolveCursor(drawMode, selectMode, !!moveOrigin) }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -292,35 +260,25 @@ export function GridCanvas({
                 : item.i === selectedId;
               const isHovered =
                 hoveredId === item.i && !selectMode && !drawMode;
-              // Highlight moving blocks with slightly stronger tint
               const isMoving = selectMode && isSelected && !!moveOrigin;
-
-              const bgColor = isDivider
-                ? block.border
-                : isMoving
-                  ? `${block.border}77`
-                  : isSelected
-                    ? `${block.border}55`
-                    : isHovered
-                      ? `${block.border}33`
-                      : block.bg;
 
               return (
                 <div
                   key={item.i}
-                  className={[
-                    "sgf-block flex items-center justify-center overflow-hidden rounded-sm border",
-                    isSelected
-                      ? isMoving
-                        ? "ring-2 ring-offset-1 ring-slate-500 shadow-lg"
-                        : "ring-2 ring-offset-1 ring-slate-700 shadow-md"
-                      : "",
-                    item.static ? "sgf-block-static" : "",
-                    // Smooth position transition when snapping between cells
-                    isMoving ? "transition-none" : "transition-shadow",
-                  ].join(" ")}
+                  className={resolveBlockClasses(
+                    isSelected,
+                    isMoving,
+                    item.static ?? false,
+                  )}
                   style={{
-                    background: bgColor,
+                    background: resolveBlockBg(
+                      block.border,
+                      block.bg,
+                      isDivider,
+                      isMoving,
+                      isSelected,
+                      isHovered,
+                    ),
                     borderColor: block.border,
                     pointerEvents:
                       isNonClick || drawMode || selectMode ? "none" : undefined,
@@ -351,20 +309,10 @@ export function GridCanvas({
             })}
           </ReactGridLayout>
 
-          {/* Ghost overlay — rubber-band or draw */}
           {ghostRect && (
             <div
               className="absolute pointer-events-none rounded-sm border-2 border-dashed"
-              style={{
-                left: ghostRect.x * cellSize + 1,
-                top: ghostRect.y * cellSize + 1,
-                width: ghostRect.w * cellSize - 2,
-                height: ghostRect.h * cellSize - 2,
-                background: selectMode
-                  ? "rgba(71,85,105,0.06)"
-                  : "rgba(30,41,59,0.08)",
-                borderColor: selectMode ? "#94a3b8" : "#475569",
-              }}
+              style={resolveGhostStyle(ghostRect, cellSize, selectMode)}
             />
           )}
         </>

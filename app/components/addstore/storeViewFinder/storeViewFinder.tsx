@@ -7,13 +7,22 @@ import { ZoomControls } from "./ZoomControl";
 import { ModeToggle, handlesForMode, type Mode } from "./ModeToggle";
 import { useZoom } from "#utils/useZoom";
 import { DEFAULT_BLOCKS } from "#types/BlockTypes";
-import type {
-  BlocksMap,
-  BlockDetails,
-  CreateStoreInput,
-} from "#types/storeViewFinderTypes";
+import type { BlocksMap } from "#types/storeViewFinderTypes";
 import { FieldLabel, StoreForm } from "./StoreForm";
 import { useFetcher, useLoaderData, useNavigate } from "react-router";
+import {
+  handleBlockClick,
+  handleSelectionBox,
+  handleGroupMovePreview,
+  handleGroupMoveCommit,
+  handleDrawComplete,
+  handleLayoutChange,
+  handleColsChange,
+  handleRowsChange,
+  handleModeChange,
+  buildSubmitPayload,
+  handleKeyDown,
+} from "#utils/helpers/storeViewFinder.helper";
 
 type Props = {
   sidePanel?: React.ReactNode;
@@ -39,20 +48,25 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
 
   const [blocks, setBlocks] = useState<BlocksMap>(initialData?.blocks ?? {});
 
-  // Multi-select (select mode) vs single select (size/draw modes)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
-  // Snapshot of block positions at the moment a group drag starts.
-  // We apply the cell delta from this snapshot on every preview tick
-  // so positions are always relative to the origin, never accumulated.
   const dragOrigin = useRef<BlocksMap | null>(null);
-
-  const [selectedBlock, setSelectedBlock] = useState<Block>(DEFAULT_BLOCKS[0]);
   const selectedIdsRef = useRef(selectedIds);
+  const colsRef = useRef(COLS);
+  const rowsRef = useRef(ROWS);
+
   useEffect(() => {
     selectedIdsRef.current = selectedIds;
   }, [selectedIds]);
+  useEffect(() => {
+    colsRef.current = COLS;
+  }, [COLS]);
+  useEffect(() => {
+    rowsRef.current = ROWS;
+  }, [ROWS]);
+
+  const [selectedBlock, setSelectedBlock] = useState<Block>(DEFAULT_BLOCKS[0]);
 
   const { zoom, setZoom } = useZoom(0.5, 3);
   const handles = handlesForMode(mode);
@@ -75,227 +89,85 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
 
   // ── Handlers ─────────────────────────────────────────────
 
-  const handleBlockClick = (
-    e: React.MouseEvent<HTMLDivElement>,
-    id: string,
-  ) => {
-    e.stopPropagation();
-    if (isSelectMode) {
-      setSelectedIds(new Set([id]));
+  const onBlockClick = (e: React.MouseEvent<HTMLDivElement>, id: string) =>
+    handleBlockClick(e, id, isSelectMode, setSelectedIds, setSelectedId);
+
+  const onSelectionBox = (x: number, y: number, w: number, h: number) =>
+    handleSelectionBox(x, y, w, h, blocks, setSelectedIds);
+
+  const onGroupMovePreview = useCallback(
+    (dx: number, dy: number) =>
+      handleGroupMovePreview(
+        dx,
+        dy,
+        dragOrigin,
+        selectedIdsRef,
+        colsRef,
+        rowsRef,
+        setBlocks,
+      ),
+    [],
+  );
+
+  const onGroupMoveCommit = useCallback(
+    () => handleGroupMoveCommit(dragOrigin),
+    [],
+  );
+
+  const onDrawComplete = (x: number, y: number, w: number, h: number) =>
+    handleDrawComplete(x, y, w, h, selectedBlock, setBlocks);
+
+  const onLayoutChange = (newLayout: Layout) =>
+    handleLayoutChange(newLayout, isSelectMode, isDrawMode, setBlocks);
+
+  const onColsChange = (newCols: number) =>
+    handleColsChange(newCols, dragOrigin, setCOLS, setSelectedIds, setBlocks);
+
+  const onRowsChange = (newRows: number) =>
+    handleRowsChange(newRows, dragOrigin, setROWS, setSelectedIds, setBlocks);
+
+  const onModeChange = (newMode: Mode) =>
+    handleModeChange(
+      newMode,
+      dragOrigin,
+      setMode,
+      setSelectedIds,
+      setSelectedId,
+    );
+
+  const submitForm = (name: string, tags: string[], description: string) => {
+    const { isEdit, data } = buildSubmitPayload(
+      name,
+      tags,
+      description,
+      ROWS,
+      COLS,
+      blocks,
+      userId,
+      initialData?.storeId,
+    );
+    if (isEdit) {
+      fetcher.submit(data, { method: "PATCH", encType: "application/json" });
+      navigate(`/store/${initialData!.storeId}`);
     } else {
-      setSelectedId(id);
-    }
-  };
-
-  const handleSelectionBox = (x: number, y: number, w: number, h: number) => {
-    if (w === 0 && h === 0) {
-      setSelectedIds(new Set());
-      return;
-    }
-    const inside = new Set<string>();
-    for (const [id, b] of Object.entries(blocks)) {
-      if (b.x < x + w && b.x + b.w > x && b.y < y + h && b.y + b.h > y) {
-        inside.add(id);
-      }
-    }
-    setSelectedIds(inside);
-  };
-
-  const colsRef = useRef(COLS);
-  const rowsRef = useRef(ROWS);
-  useEffect(() => {
-    colsRef.current = COLS;
-  }, [COLS]);
-  useEffect(() => {
-    rowsRef.current = ROWS;
-  }, [ROWS]);
-
-  const handleGroupMovePreview = useCallback(
-    (dx: number, dy: number) => {
-      setBlocks((prev) => {
-        // Take snapshot from prev on first tick — no stale closure
-        if (!dragOrigin.current) {
-          dragOrigin.current = { ...prev };
-        }
-        const origin = dragOrigin.current;
-        const next = { ...prev };
-        for (const id of selectedIdsRef.current) {
-          const o = origin[id];
-          if (!o) continue;
-          next[id] = {
-            ...o,
-            x: Math.max(0, Math.min(o.x + dx, colsRef.current - o.w)),
-            y: Math.max(0, Math.min(o.y + dy, rowsRef.current - o.h)),
-          };
-        }
-        return next;
-      });
-    },
-    [selectedIdsRef.current],
-  ); // selectedIds is now the only dependency
-
-  /** Called on pointer-up — blocks are already in final position, just clear the snapshot */
-  const handleGroupMoveCommit = useCallback(() => {
-    dragOrigin.current = null;
-  }, []);
-
-  const handleDrawComplete = (x: number, y: number, w: number, h: number) => {
-    const key = `block-${Date.now()}`;
-    setBlocks((prev) => ({
-      ...prev,
-      [key]: {
-        x,
-        y,
-        w,
-        h,
-        bg: `${selectedBlock.color}22`,
-        border: selectedBlock.color,
-        label: selectedBlock.name,
-        kind: selectedBlock.kind,
-      },
-    }));
-  };
-
-  const handleLayoutChange = (newLayout: Layout) => {
-    if (isSelectMode || isDrawMode) return;
-    setBlocks((prev) => {
-      const next = { ...prev };
-      for (const item of newLayout) {
-        if (!next[item.i]) continue;
-        next[item.i] = {
-          ...next[item.i],
-          x: item.x,
-          y: item.y,
-          w: item.w,
-          h: item.h,
-        };
-      }
-      return next;
-    });
-  };
-
-  const handleColsChange = (newCols: number) => {
-    setCOLS(newCols);
-    dragOrigin.current = null; // ← add this
-    setSelectedIds(new Set()); // ← and this
-    setBlocks((prev) => {
-      const next = { ...prev };
-      for (const id in next) {
-        const b = next[id];
-        next[id] = {
-          ...b,
-          x: Math.min(b.x, newCols - b.w),
-          w: Math.min(b.w, newCols),
-        };
-      }
-      return next;
-    });
-  };
-
-  const handleRowsChange = (newRows: number) => {
-    setROWS(newRows);
-    dragOrigin.current = null; // ← add this
-    setSelectedIds(new Set()); // ← and this
-    setBlocks((prev) => {
-      const next = { ...prev };
-      for (const id in next) {
-        const b = next[id];
-        next[id] = {
-          ...b,
-          y: Math.min(b.y, newRows - b.h),
-          h: Math.min(b.h, newRows),
-        };
-      }
-      return next;
-    });
-  };
-
-  const handleModeChange = (newMode: Mode) => {
-    setMode(newMode);
-    setSelectedIds(new Set());
-    setSelectedId(null);
-    dragOrigin.current = null;
-  };
-
-  const submitForm = (
-    name: string,
-    tags: string[],
-    description: string,
-    rows: number,
-    cols: number,
-    blocks: BlocksMap,
-  ) => {
-    const blockArr: BlockDetails[] = Object.entries(blocks).map(([key, b]) => ({
-      block_id: key,
-      background: b.bg,
-      border: b.border,
-      label: b.label,
-      height: b.h,
-      width: b.w,
-      x: b.x,
-      y: b.y,
-      kind: b.kind,
-    }));
-
-    if (initialData) {
-      fetcher.submit(
-        {
-          name,
-          userId,
-          tags: JSON.stringify(tags),
-          description,
-          rows,
-          cols,
-          blocks: blockArr,
-        },
-        { method: "PATCH", encType: "application/json" },
-      );
-      navigate(`/store/${initialData.storeId}`);
-    } else {
-      const id = crypto.randomUUID();
-      const data: CreateStoreInput = {
-        id,
-        name,
-        userId,
-        tags: JSON.stringify(tags),
-        description,
-        rows,
-        cols,
-        blocks: blockArr,
-      };
       fetcher.submit(data, { method: "POST", encType: "application/json" });
-      navigate(`/store/${id}`, { state: { storeData: data } });
+      navigate(`/store/${data.id}`, { state: { storeData: data } });
     }
   };
 
-  // Backspace / Delete — removes all selected blocks
   useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA") return;
-      if (e.key !== "Delete" && e.key !== "Backspace") return;
-
-      if (isSelectMode && selectedIds.size > 0) {
-        setBlocks((prev) => {
-          const next = { ...prev };
-          for (const id of selectedIds) delete next[id];
-          return next;
-        });
-        setSelectedIds(new Set());
-        return;
-      }
-
-      if (selectedId) {
-        setBlocks((prev) => {
-          const next = { ...prev };
-          delete next[selectedId];
-          return next;
-        });
-        setSelectedId(null);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    const listener = (e: KeyboardEvent) =>
+      handleKeyDown(
+        e,
+        isSelectMode,
+        selectedIds,
+        selectedId,
+        setBlocks,
+        setSelectedIds,
+        setSelectedId,
+      );
+    window.addEventListener("keydown", listener);
+    return () => window.removeEventListener("keydown", listener);
   }, [isSelectMode, selectedIds, selectedId]);
 
   // ── Render ────────────────────────────────────────────────
@@ -308,7 +180,7 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
           <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
             Floor Plan
           </span>
-          <ModeToggle mode={mode} onChange={handleModeChange} />
+          <ModeToggle mode={mode} onChange={onModeChange} />
           <ZoomControls
             zoom={zoom}
             onZoomIn={() => setZoom((z) => Math.min(3, z + 0.1))}
@@ -316,7 +188,6 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
           />
         </div>
 
-        {/* Contextual hint bars */}
         {isDrawMode && (
           <div className="px-4 py-1.5 bg-slate-800 shrink-0 flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-green-400 shrink-0" />
@@ -365,12 +236,12 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
               handles={handles}
               selectedId={selectedId}
               selectedIds={selectedIds}
-              onClick={handleBlockClick}
-              onLayoutChange={handleLayoutChange}
-              onDrawComplete={handleDrawComplete}
-              onSelectionBox={handleSelectionBox}
-              onGroupMovePreview={handleGroupMovePreview}
-              onGroupMoveCommit={handleGroupMoveCommit}
+              onClick={onBlockClick}
+              onLayoutChange={onLayoutChange}
+              onDrawComplete={onDrawComplete}
+              onSelectionBox={onSelectionBox}
+              onGroupMovePreview={onGroupMovePreview}
+              onGroupMoveCommit={onGroupMoveCommit}
               drawMode={isDrawMode}
               selectMode={isSelectMode}
             />
@@ -396,8 +267,8 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
             <GridControls
               cols={COLS}
               rows={ROWS}
-              onColsChange={handleColsChange}
-              onRowsChange={handleRowsChange}
+              onColsChange={onColsChange}
+              onRowsChange={onRowsChange}
             />
           </div>
         </div>
@@ -422,7 +293,7 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
             }
             submitLabel={initialData ? "Save changes" : "Save"}
             onSubmit={(name, tags, description) =>
-              submitForm(name, tags, description, ROWS, COLS, blocks)
+              submitForm(name, tags, description)
             }
           />
         </div>
