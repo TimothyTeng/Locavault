@@ -31,9 +31,18 @@ type Props = {
   blocks: BlocksMap;
   handles: ResizeHandleAxis[];
   onClick: (e: React.MouseEvent<HTMLDivElement>, id: string) => void;
+  /** id, additive — add/remove a single block from selection */
+  onShiftSelect?: (id: string, additive: boolean) => void;
   onLayoutChange?: (layout: Layout) => void;
   onDrawComplete?: (x: number, y: number, w: number, h: number) => void;
-  onSelectionBox?: (x: number, y: number, w: number, h: number) => void;
+  /** w=0 h=0 = clear. additive=true = add to existing selection */
+  onSelectionBox?: (
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    additive?: boolean,
+  ) => void;
   onGroupMovePreview?: (dx: number, dy: number) => void;
   onGroupMoveCommit?: () => void;
   selectedId?: string | null;
@@ -50,6 +59,7 @@ export function GridCanvas({
   blocks = {},
   handles,
   onClick,
+  onShiftSelect,
   onLayoutChange,
   onDrawComplete,
   onSelectionBox,
@@ -67,15 +77,22 @@ export function GridCanvas({
   const [dragStart, setDragStart] = useState<CellPos | null>(null);
   const [dragCurrent, setDragCurrent] = useState<CellPos | null>(null);
   const [moveOrigin, setMoveOrigin] = useState<CellPos | null>(null);
+  // Whether the rubber band is additive (shift held) or replacing
+  const [rubberBandAdditive, setRubberBandAdditive] = useState(false);
 
   const lastDelta = useRef<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
   const hitRef = useRef<HitTarget>("empty");
   const clickedId = useRef<string | null>(null);
   const isDraggingGroup = useRef(false);
+  const hasDraggedRef = useRef(false); // true once pointer moves ≥1 cell from down pos
   const blocksRef = useRef(blocks);
+  const selectedIdsRef = useRef(selectedIds);
   useEffect(() => {
     blocksRef.current = blocks;
   }, [blocks]);
+  useEffect(() => {
+    selectedIdsRef.current = selectedIds;
+  }, [selectedIds]);
 
   const rowHeight = width / cols;
   const cellSize = rowHeight;
@@ -93,6 +110,7 @@ export function GridCanvas({
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     const cell = toCell(e);
+    const shift = e.shiftKey;
 
     if (drawMode) {
       hitRef.current = "empty";
@@ -101,18 +119,33 @@ export function GridCanvas({
       return;
     }
 
+    // ── select mode ──────────────────────────────────────
+    hasDraggedRef.current = false;
     const hitId = blockAtCell(cell.col, cell.row, blocksRef.current);
-    if (hitId && selectedIds.has(hitId)) {
+
+    if (hitId && selectedIdsRef.current.has(hitId) && !shift) {
+      // Drag selected block(s)
       hitRef.current = "selected-block";
       clickedId.current = hitId;
       isDraggingGroup.current = false;
       lastDelta.current = { dx: 0, dy: 0 };
       setMoveOrigin(cell);
+    } else if (hitId && shift) {
+      // Shift+click or shift+drag on any block → additive rubber band
+      hitRef.current = "unselected-block-shift";
+      clickedId.current = hitId;
+      setRubberBandAdditive(true);
+      setDragStart(cell);
+      setDragCurrent(cell);
     } else if (hitId) {
+      // Click/drag unselected block → will auto-select+move on drag, select on click
       hitRef.current = "unselected-block";
       clickedId.current = hitId;
+      setMoveOrigin(cell);
     } else {
-      hitRef.current = "empty";
+      // Empty space
+      hitRef.current = shift ? "empty-shift" : "empty";
+      setRubberBandAdditive(shift);
       setDragStart(cell);
       setDragCurrent(cell);
     }
@@ -133,10 +166,39 @@ export function GridCanvas({
       if (dx !== lastDelta.current.dx || dy !== lastDelta.current.dy) {
         lastDelta.current = { dx, dy };
         isDraggingGroup.current = true;
+        hasDraggedRef.current = true;
         onGroupMovePreview?.(dx, dy);
       }
-    } else if (hitRef.current === "empty" && dragStart) {
+    } else if (hitRef.current === "unselected-block" && moveOrigin) {
+      // First real drag on unselected block → auto-select it and start moving
+      const dx = cell.col - moveOrigin.col;
+      const dy = cell.row - moveOrigin.row;
+      if ((dx !== 0 || dy !== 0) && !hasDraggedRef.current) {
+        hasDraggedRef.current = true;
+        // Promote to selected-block move — parent selects just this block
+        onSelectionBox?.(0, 0, 0, 0); // clear first
+        onClick(
+          e as unknown as React.MouseEvent<HTMLDivElement>,
+          clickedId.current!,
+        );
+        hitRef.current = "selected-block";
+        isDraggingGroup.current = true;
+        lastDelta.current = { dx, dy };
+        onGroupMovePreview?.(dx, dy);
+      } else if (hasDraggedRef.current) {
+        if (dx !== lastDelta.current.dx || dy !== lastDelta.current.dy) {
+          lastDelta.current = { dx, dy };
+          onGroupMovePreview?.(dx, dy);
+        }
+      }
+    } else if (
+      (hitRef.current === "empty" ||
+        hitRef.current === "empty-shift" ||
+        hitRef.current === "unselected-block-shift") &&
+      dragStart
+    ) {
       setDragCurrent(cell);
+      hasDraggedRef.current = true;
     }
   };
 
@@ -144,6 +206,7 @@ export function GridCanvas({
     if (!drawMode && !selectMode) return;
     e.currentTarget.releasePointerCapture(e.pointerId);
     const cell = toCell(e);
+    const shift = e.shiftKey;
 
     if (drawMode) {
       if (dragStart) {
@@ -157,29 +220,56 @@ export function GridCanvas({
     }
 
     if (hitRef.current === "selected-block") {
-      if (isDraggingGroup.current) onGroupMoveCommit?.();
+      if (isDraggingGroup.current) {
+        onGroupMoveCommit?.();
+      }
+      // Pure click on already-selected block with no shift → keep selection
       setMoveOrigin(null);
       isDraggingGroup.current = false;
       lastDelta.current = { dx: 0, dy: 0 };
-    } else if (hitRef.current === "unselected-block" && clickedId.current) {
-      onClick(
-        e as unknown as React.MouseEvent<HTMLDivElement>,
-        clickedId.current,
-      );
-    } else if (hitRef.current === "empty" && dragStart) {
+    } else if (hitRef.current === "unselected-block") {
+      if (hasDraggedRef.current) {
+        // Drag completed — already moved via handlePointerMove promotion
+        onGroupMoveCommit?.();
+      } else {
+        // Pure click — select just this block (or add with shift)
+        onShiftSelect?.(clickedId.current!, shift);
+      }
+      setMoveOrigin(null);
+      isDraggingGroup.current = false;
+      lastDelta.current = { dx: 0, dy: 0 };
+    } else if (hitRef.current === "unselected-block-shift" && dragStart) {
+      // Shift+drag starting on a block → additive rubber band
       const isTap = dragStart.col === cell.col && dragStart.row === cell.row;
       if (isTap) {
-        onSelectionBox?.(cell.col, cell.row, 0, 0);
+        onShiftSelect?.(clickedId.current!, true);
       } else {
         const rect = cornersToRect(dragStart, cell);
-        onSelectionBox?.(rect.x, rect.y, rect.w, rect.h);
+        onSelectionBox?.(rect.x, rect.y, rect.w, rect.h, true);
       }
       setDragStart(null);
       setDragCurrent(null);
+      setRubberBandAdditive(false);
+    } else if (
+      (hitRef.current === "empty" || hitRef.current === "empty-shift") &&
+      dragStart
+    ) {
+      const isTap = dragStart.col === cell.col && dragStart.row === cell.row;
+      const additive = hitRef.current === "empty-shift";
+      if (isTap) {
+        if (!additive) onSelectionBox?.(cell.col, cell.row, 0, 0); // clear
+      } else {
+        const rect = cornersToRect(dragStart, cell);
+        onSelectionBox?.(rect.x, rect.y, rect.w, rect.h, additive);
+      }
+      setDragStart(null);
+      setDragCurrent(null);
+      setRubberBandAdditive(false);
     }
 
     hitRef.current = "empty";
     clickedId.current = null;
+    hasDraggedRef.current = false;
   };
 
   const ghostRect =
@@ -215,7 +305,14 @@ export function GridCanvas({
     <div
       ref={containerRef}
       className="relative w-full"
-      style={{ cursor: resolveCursor(drawMode, selectMode, !!moveOrigin) }}
+      style={{
+        cursor: resolveCursor(
+          drawMode,
+          selectMode,
+          !!moveOrigin,
+          selectMode && !!hoveredId,
+        ),
+      }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -285,12 +382,12 @@ export function GridCanvas({
                     cursor: isNonClick ? "default" : undefined,
                   }}
                   onMouseEnter={
-                    !isNonClick && !drawMode && !selectMode
+                    !isNonClick && !drawMode
                       ? () => setHoveredId(item.i)
                       : undefined
                   }
                   onMouseLeave={
-                    !isNonClick && !drawMode && !selectMode
+                    !isNonClick && !drawMode
                       ? () => setHoveredId(null)
                       : undefined
                   }
@@ -312,7 +409,12 @@ export function GridCanvas({
           {ghostRect && (
             <div
               className="absolute pointer-events-none rounded-sm border-2 border-dashed"
-              style={resolveGhostStyle(ghostRect, cellSize, selectMode)}
+              style={resolveGhostStyle(
+                ghostRect,
+                cellSize,
+                selectMode,
+                rubberBandAdditive,
+              )}
             />
           )}
         </>

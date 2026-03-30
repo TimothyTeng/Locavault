@@ -13,6 +13,7 @@ import { FieldLabel, StoreForm } from "./StoreForm";
 import { useFetcher, useLoaderData, useNavigate } from "react-router";
 import {
   handleBlockClick,
+  handleShiftSelect,
   handleSelectionBox,
   handleGroupMovePreview,
   handleGroupMoveCommit,
@@ -96,8 +97,16 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
   const onBlockClick = (e: React.MouseEvent<HTMLDivElement>, id: string) =>
     handleBlockClick(e, id, isSelectMode, setSelectedIds, setSelectedId);
 
-  const onSelectionBox = (x: number, y: number, w: number, h: number) =>
-    handleSelectionBox(x, y, w, h, blocks, setSelectedIds);
+  const onShiftSelect = (id: string, additive: boolean) =>
+    handleShiftSelect(id, additive, setSelectedIds);
+
+  const onSelectionBox = (
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    additive = false,
+  ) => handleSelectionBox(x, y, w, h, blocks, setSelectedIds, additive);
 
   const onGroupMovePreview = useCallback(
     (dx: number, dy: number) =>
@@ -250,6 +259,7 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
               selectedId={selectedId}
               selectedIds={selectedIds}
               onClick={onBlockClick}
+              onShiftSelect={onShiftSelect}
               onLayoutChange={onLayoutChange}
               onDrawComplete={onDrawComplete}
               onSelectionBox={onSelectionBox}

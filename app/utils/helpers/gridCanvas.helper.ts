@@ -3,7 +3,12 @@ import type { BlocksMap } from "#types/storeViewFinderTypes";
 // ── Types ─────────────────────────────────────────────────
 
 export type CellPos = { col: number; row: number };
-export type HitTarget = "empty" | "selected-block" | "unselected-block";
+export type HitTarget =
+  | "empty"
+  | "empty-shift"          // shift+drag from empty → additive rubber band
+  | "selected-block"
+  | "unselected-block"
+  | "unselected-block-shift"; // shift+click/drag block → add to selection
 
 export type GhostRect = { x: number; y: number; w: number; h: number };
 
@@ -44,9 +49,14 @@ export function resolveCursor(
   drawMode: boolean,
   selectMode: boolean,
   hasMovOrigin: boolean,
+  hoveringBlock = false,
 ): React.CSSProperties["cursor"] {
   if (drawMode) return "crosshair";
-  if (selectMode) return hasMovOrigin ? "grabbing" : "default";
+  if (selectMode) {
+    if (hasMovOrigin) return "grabbing";
+    if (hoveringBlock) return "grab";
+    return "default";
+  }
   return undefined;
 }
 
@@ -92,13 +102,18 @@ export function resolveGhostStyle(
   ghostRect: GhostRect,
   cellSize: number,
   selectMode: boolean,
+  additive = false,
 ): React.CSSProperties {
   return {
     left: ghostRect.x * cellSize + 1,
     top: ghostRect.y * cellSize + 1,
     width: ghostRect.w * cellSize - 2,
     height: ghostRect.h * cellSize - 2,
-    background: selectMode ? "rgba(71,85,105,0.06)" : "rgba(30,41,59,0.08)",
-    borderColor: selectMode ? "#94a3b8" : "#475569",
+    background: additive
+      ? "rgba(16,185,129,0.08)"
+      : selectMode
+        ? "rgba(71,85,105,0.06)"
+        : "rgba(30,41,59,0.08)",
+    borderColor: additive ? "#10b981" : selectMode ? "#94a3b8" : "#475569",
   };
 }

@@ -27,10 +27,11 @@ export function handleSelectionBox(
   w: number,
   h: number,
   blocks: BlocksMap,
-  setSelectedIds: (ids: Set<string>) => void,
+  setSelectedIds: (fn: (prev: Set<string>) => Set<string>) => void,
+  additive = false,
 ) {
   if (w === 0 && h === 0) {
-    setSelectedIds(new Set());
+    if (!additive) setSelectedIds(() => new Set());
     return;
   }
   const inside = new Set<string>();
@@ -39,7 +40,27 @@ export function handleSelectionBox(
       inside.add(id);
     }
   }
-  setSelectedIds(inside);
+  setSelectedIds((prev) => {
+    if (!additive) return inside;
+    const next = new Set(prev);
+    for (const id of inside) next.add(id);
+    return next;
+  });
+}
+ 
+// Toggle a single block in/out of selection (shift+click)
+export function handleShiftSelect(
+  id: string,
+  additive: boolean,
+  setSelectedIds: (fn: (prev: Set<string>) => Set<string>) => void,
+) {
+  setSelectedIds((prev) => {
+    if (!additive) return new Set([id]);
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
 }
 
 // ── Group Move ────────────────────────────────────────────
