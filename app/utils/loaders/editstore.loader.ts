@@ -1,7 +1,7 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { getAuth } from "@clerk/react-router/server";
 import { updateStoreWithBlocks, verifyStoreAccess } from "~/lib/queries";
-import type { BlockDetails } from "~/types/storeViewFinderTypes";
+import type { BlockDetails, BlocksMap } from "~/types/storeViewFinderTypes";
 
 // ── Loader ─────────────────────────────────────────────────
 
@@ -19,7 +19,7 @@ export const loader = async (args: LoaderFunctionArgs) => {
 
   const { store } = result;
 
-  const blocksMap = Object.fromEntries(
+  const blocksMap: BlocksMap = Object.fromEntries(
     store.blocks.map((b) => [
       b.block_id,
       {
@@ -30,6 +30,7 @@ export const loader = async (args: LoaderFunctionArgs) => {
         bg: b.background,
         border: b.border,
         label: b.label,
+        kind: b.kind,  // ← was missing
       },
     ]),
   );

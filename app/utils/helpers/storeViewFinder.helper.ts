@@ -109,8 +109,10 @@ export function handleLayoutChange(
   isSelectMode: boolean,
   isDrawMode: boolean,
   setBlocks: (fn: (prev: BlocksMap) => BlocksMap) => void,
+  allowInDrawMode = false,
 ) {
-  if (isSelectMode || isDrawMode) return;
+  if (isSelectMode) return;
+  if (isDrawMode && !allowInDrawMode) return;
   setBlocks((prev) => {
     const next = { ...prev };
     for (const item of newLayout) {

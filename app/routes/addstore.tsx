@@ -21,7 +21,9 @@ export default function AddStore() {
         </div>
       }
     >
-      <div className="flex flex-col h-dvh overflow-hidden pt-[var(--navbar-height,64px)]">
+      {/* md:pt-16 clears the floating pill (~64px). No padding on mobile — the
+          drawer lives at the bottom and doesn't affect the canvas area at all. */}
+      <div className="flex flex-col h-dvh overflow-hidden bg-white md:pt-16">
         <Navbar />
         <div className="flex-1 min-h-0">
           <StoreViewFinder />
