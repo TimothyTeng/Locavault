@@ -60,6 +60,9 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
   // True for exactly one onLayoutChange tick after a draw completes, so RGL's
   // push-out positions for existing blocks are captured even in draw mode.
   const justDrewRef = useRef(false);
+  // Ref for the scroll wrapper around the canvas — we need to suppress
+  // passive touchstart on it so mobile doesn't steal the gesture.
+  const canvasWrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     selectedIdsRef.current = selectedIds;
@@ -77,6 +80,21 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
   const handles = handlesForMode(mode);
   const isDrawMode = mode === "draw";
   const isSelectMode = mode === "select";
+
+  // ── Zoom-to-fit (once on mount) ───────────────────────────
+  // GridCanvas sets rowHeight = containerWidth / cols, so at zoom z:
+  //   grid height = z * wrapperWidth * rows / cols
+  // Solve for z so the full grid fits: fitZoom = availH * cols / (availW * rows)
+  useEffect(() => {
+    const el = canvasWrapperRef.current;
+    if (!el) return;
+    const availW = el.clientWidth - 32; // p-4 padding each side
+    const availH = el.clientHeight - 32;
+    if (availW <= 0 || availH <= 0) return;
+    const fit = Math.min((availH * COLS) / (availW * ROWS), 1);
+    setZoom(Math.max(0.5, parseFloat(fit.toFixed(2))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // empty deps — runs once on mount only
 
   const layout = useMemo<LayoutItem[]>(
     () =>
@@ -179,6 +197,11 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
     }
   };
 
+  // When in draw or select mode, prevent the scroll wrapper from claiming
+  // touch gestures before the canvas pointer handlers can intercept them.
+  // We do this only on the canvas element itself (via a prop), NOT the wrapper,
+  // so the wrapper remains scrollable when zoomed in.
+
   useEffect(() => {
     const listener = (e: KeyboardEvent) =>
       handleKeyDown(
@@ -197,20 +220,24 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
   // ── Render ────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col lg:flex-row h-full w-full overflow-hidden bg-white font-mono p-6 gap-4">
+    <div className="flex flex-col lg:flex-row h-full w-full overflow-hidden bg-white font-mono p-3 sm:p-6 gap-3 sm:gap-4">
       {/* ── Left: Canvas ─────────────────────────────────────── */}
-      <div className="flex flex-col lg:w-1/2 min-w-0 min-h-0 overflow-hidden">
+      <div className="flex flex-col lg:w-1/2 min-w-0 min-h-0 overflow-hidden h-[55vh] lg:h-auto">
         {/* Main toolbar */}
-        <div className="flex items-center justify-between px-4 h-11 shrink-0 bg-white border-b border-slate-200">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+        <div className="flex items-center justify-between px-3 sm:px-4 h-11 shrink-0 bg-white border-b border-slate-200 gap-2">
+          <span className="hidden sm:block text-[10px] font-bold uppercase tracking-widest text-slate-400 shrink-0">
             Floor Plan
           </span>
-          <ModeToggle mode={mode} onChange={onModeChange} />
-          <ZoomControls
-            zoom={zoom}
-            onZoomIn={() => setZoom((z) => Math.min(3, z + 0.1))}
-            onZoomOut={() => setZoom((z) => Math.max(0.5, z - 0.1))}
-          />
+          <div className="flex items-center gap-2 flex-1 sm:flex-initial justify-between sm:justify-end">
+            <ModeToggle mode={mode} onChange={onModeChange} />
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            <ZoomControls
+              zoom={zoom}
+              onZoomIn={() => setZoom((z) => Math.min(3, z + 0.1))}
+              onZoomOut={() => setZoom((z) => Math.max(0.5, z - 0.1))}
+            />
+          </div>
         </div>
 
         {/* Draw mode — inline block picker toolbar */}
@@ -244,6 +271,7 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
         )}
 
         <div
+          ref={canvasWrapperRef}
           className="flex-1 overflow-auto p-4 min-h-0 overscroll-none"
           onClick={() => {
             if (!isDrawMode && !isSelectMode) setSelectedId(null);
@@ -267,6 +295,7 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
               onGroupMoveCommit={onGroupMoveCommit}
               drawMode={isDrawMode}
               selectMode={isSelectMode}
+              captureTouches={isDrawMode || isSelectMode}
             />
           </div>
         </div>
