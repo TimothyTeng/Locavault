@@ -1,6 +1,13 @@
 import { eq, sql, inArray, and, isNull, gt } from "drizzle-orm";
 import { db } from "./db";
-import { stores, items, blocks, storeMembers, storeInvites } from "./schema";
+import {
+  stores,
+  items,
+  blocks,
+  storeMembers,
+  storeInvites,
+  itemLogs,
+} from "./schema";
 import type { StoreWithDetails } from "~/types/dashboardTypes";
 import type {
   CreateStoreInput,
@@ -482,6 +489,13 @@ export async function createItem(data: {
   quantity?: number;
   description?: string;
   blockId?: string;
+  sku?: string;
+  unit?: string;
+  minQuantity?: number;
+  cost?: number;
+  expiryDate?: Date;
+  useRate?: number;
+  useRatePeriod?: "day" | "week" | "month";
 }) {
   const id = crypto.randomUUID();
   await db.insert(items).values({
@@ -491,6 +505,13 @@ export async function createItem(data: {
     quantity: data.quantity ?? 0,
     description: data.description ?? null,
     blockId: data.blockId,
+    sku: data.sku ?? null,
+    unit: data.unit ?? null,
+    minQuantity: data.minQuantity ?? null,
+    cost: data.cost ?? null,
+    expiryDate: data.expiryDate ?? null,
+    useRate: data.useRate ?? null,
+    useRatePeriod: data.useRatePeriod ?? null,
   });
   return { id };
 }
@@ -503,7 +524,14 @@ export async function updateItem(
     storeId: string;
     quantity: number;
     description: string;
-    blockId: string;
+    blockId: string | null;
+    sku: string | null;
+    unit: string | null;
+    minQuantity: number | null;
+    cost: number | null;
+    expiryDate: Date | null;
+    useRate: number | null;
+    useRatePeriod: "day" | "week" | "month" | null;
   }>,
 ) {
   return db.update(items).set(data).where(eq(items.id, id));
@@ -521,6 +549,67 @@ export async function getItemCountByStore(storeId: string) {
     .from(items)
     .where(eq(items.storeId, storeId));
   return result[0]?.count ?? 0;
+}
+
+// ─── ITEM LOGS ─────────────────────────────────────────────
+
+/** Log a quantity change — call alongside updateItem whenever quantity changes */
+export async function createItemLog(
+  itemId: string,
+  storeId: string,
+  delta: number,
+  loggedBy?: string,
+  note?: string,
+) {
+  return db.insert(itemLogs).values({ itemId, storeId, delta, loggedBy, note });
+}
+
+/** Fetch all logs for an item, newest first */
+export async function getItemLogs(itemId: string) {
+  return db
+    .select()
+    .from(itemLogs)
+    .where(eq(itemLogs.itemId, itemId))
+    .orderBy(sql`${itemLogs.loggedAt} desc`);
+}
+
+/**
+ * Predict days until an item runs out.
+ * Uses log history if available, falls back to useRate/useRatePeriod fields.
+ * Returns null if there's not enough data to make a prediction.
+ */
+export async function predictRunoutDays(
+  itemId: string,
+): Promise<number | null> {
+  const item = await getItemById(itemId);
+  if (!item || item.quantity <= 0) return null;
+
+  // ── Log-based prediction (preferred) ──
+  const logs = await db
+    .select()
+    .from(itemLogs)
+    .where(and(eq(itemLogs.itemId, itemId), sql`${itemLogs.delta} < 0`))
+    .orderBy(sql`${itemLogs.loggedAt} asc`);
+
+  if (logs.length >= 2) {
+    const totalConsumed = logs.reduce((sum, l) => sum + Math.abs(l.delta), 0);
+    const first = logs[0].loggedAt!.getTime();
+    const last = logs[logs.length - 1].loggedAt!.getTime();
+    const days = (last - first) / (1000 * 60 * 60 * 24);
+    if (days > 0) {
+      const dailyRate = totalConsumed / days;
+      return Math.floor(item.quantity / dailyRate);
+    }
+  }
+
+  // ── Fallback: manual useRate fields ──
+  if (item.useRate && item.useRatePeriod) {
+    const periodDays = { day: 1, week: 7, month: 30 }[item.useRatePeriod];
+    const dailyRate = item.useRate / periodDays;
+    return Math.floor(item.quantity / dailyRate);
+  }
+
+  return null;
 }
 
 // ─── MEMBERS ───────────────────────────────────────────────

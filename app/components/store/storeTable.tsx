@@ -21,7 +21,7 @@ export function StoreTable({
 }: Props) {
   const isOwner = accessLevel === "owner";
 
-  const headers = ["#", "Name", "Qty", "Description", "Location", "In Store"];
+  const headers = ["#", "Name", "Qty", "Expiry", "Est Depletion", "Status"];
   if (isOwner) headers.push("Public", "");
   else headers.push("");
 

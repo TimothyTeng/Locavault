@@ -34,14 +34,34 @@ export const blocks = sqliteTable("blocks", {
 // ─── ITEMS ─────────────────────────────────────────────────
 
 export const items = sqliteTable("items", {
-  id:          text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
-  name:        text("name").notNull(),
-  quantity:    integer("quantity").notNull().default(0),
-  description: text("description"),
-  storeId:     text("store_id").notNull().references(() => stores.id, { onDelete: "cascade" }),
-  blockId:     text("block_id").references(() => blocks.block_id, { onDelete: "set null" }),
-  createdAt:   integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
-  isPublic:    integer("is_public", { mode: "boolean" }).notNull().default(true),
+  id:            text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name:          text("name").notNull(),
+  quantity:      integer("quantity").notNull().default(0),
+  description:   text("description"),
+  storeId:       text("store_id").notNull().references(() => stores.id, { onDelete: "cascade" }),
+  blockId:       text("block_id").references(() => blocks.block_id, { onDelete: "set null" }),
+  createdAt:     integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+  isPublic:      integer("is_public", { mode: "boolean" }).notNull().default(true),
+  // ── New fields ──
+  sku:           text("sku"),
+  unit:          text("unit"),
+  minQuantity:   integer("min_quantity"),
+  cost:          integer("cost"),                                                    // cents
+  expiryDate:    integer("expiry_date", { mode: "timestamp" }),
+  useRate:       integer("use_rate"),                                                // units per period
+  useRatePeriod: text("use_rate_period", { enum: ["day", "week", "month"] }),
+});
+
+// ─── ITEM LOGS ─────────────────────────────────────────────
+
+export const itemLogs = sqliteTable("item_logs", {
+  id:       text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  itemId:   text("item_id").notNull().references(() => items.id, { onDelete: "cascade" }),
+  storeId:  text("store_id").notNull().references(() => stores.id, { onDelete: "cascade" }),
+  delta:    integer("delta").notNull(),      // negative = consumed, positive = restocked
+  note:     text("note"),
+  loggedAt: integer("logged_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+  loggedBy: text("logged_by"),               // userId
 });
 
 // ─── COLLABORATION  ───────────────────────────────
@@ -67,18 +87,25 @@ export const storeInvites = sqliteTable("store_invites", {
 // ─── RELATIONS ─────────────────────────────────────────────
 
 export const storesRelations = relations(stores, ({ many }) => ({
-  items:   many(items),
-  blocks:  many(blocks),
-  members: many(storeMembers),
-  invites: many(storeInvites),
+  items:    many(items),
+  blocks:   many(blocks),
+  members:  many(storeMembers),
+  invites:  many(storeInvites),
+  itemLogs: many(itemLogs),
 }));
 
 export const blocksRelations = relations(blocks, ({ one }) => ({
   store: one(stores, { fields: [blocks.storeId], references: [stores.id] }),
 }));
 
-export const itemsRelations = relations(items, ({ one }) => ({
-  store: one(stores, { fields: [items.storeId], references: [stores.id] }),
+export const itemsRelations = relations(items, ({ one, many }) => ({
+  store:    one(stores, { fields: [items.storeId], references: [stores.id] }),
+  itemLogs: many(itemLogs),
+}));
+
+export const itemLogsRelations = relations(itemLogs, ({ one }) => ({
+  item:  one(items,  { fields: [itemLogs.itemId],  references: [items.id]  }),
+  store: one(stores, { fields: [itemLogs.storeId], references: [stores.id] }),
 }));
 
 export const storeMembersRelations = relations(storeMembers, ({ one }) => ({

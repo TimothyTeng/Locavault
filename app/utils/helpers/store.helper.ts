@@ -17,3 +17,32 @@ export function blocksToBlocksMap(blocks: CreateStoreInput["blocks"]): BlocksMap
     ]),
   );
 }
+
+export const runOutDays = ((useRate: string, useRatePeriod: "day" | "week" | "month", quantity: number) => {
+    const rate = Number(useRate);
+    if (!rate || rate <= 0 || quantity <= 0) return null;
+    const periodDays =
+      useRatePeriod === "day" ? 1 : useRatePeriod === "week" ? 7 : 30;
+    const daily = rate / periodDays;
+    if (!daily) return null;
+    return Math.floor(quantity / daily);
+  });
+
+export const remainingDays = (createdAt: Date | null, useRate: string, useRatePeriod: "day" | "week" | "month", quantity: number) => {
+  const daysToRunOut = runOutDays(useRate, useRatePeriod, quantity);
+  if (daysToRunOut === null) return null;
+  const runOutDate = createdAt ? new Date(createdAt) : new Date();
+  runOutDate.setDate(runOutDate.getDate() + daysToRunOut);
+  const today = new Date();
+  const msDiff = runOutDate.getTime() - today.getTime();
+  const daysRemaining = Math.ceil(msDiff / (1000 * 60 * 60 * 24));
+  return daysRemaining >= 0 ? daysRemaining : 0;
+}
+
+export const expiryDateRemainingDays = (expiryDate: Date | null) => {
+  if (!expiryDate) return null;
+  const today = new Date();
+  const msDiff = expiryDate.getTime() - today.getTime();
+  const daysRemaining = Math.ceil(msDiff / (1000 * 60 * 60 * 24));
+  return daysRemaining >= 0 ? daysRemaining : 0;
+}

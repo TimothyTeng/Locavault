@@ -5,7 +5,7 @@ import Navbar from "~/components/home/navbar";
 import StoreViewFinder from "~/components/addstore/storeViewFinder/storeViewFinder";
 import type { loader } from "#utils/loaders/editstore.loader";
 
-export { loader } from "#utils/loaders/editstore.loader";
+export { loader, action } from "#utils/loaders/editstore.loader";
 
 export function meta({}: Route.MetaArgs) {
   return [

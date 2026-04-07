@@ -165,6 +165,15 @@ export default function StorePage() {
         description: updated.description,
         quantity: updated.quantity,
         blockId: updated.blockId,
+        sku: updated.sku ?? null,
+        unit: updated.unit ?? null,
+        minQuantity: updated.minQuantity ?? null,
+        cost: updated.cost ?? null,
+        expiryDate: updated.expiryDate
+          ? updated.expiryDate.toISOString()
+          : null,
+        useRate: updated.useRate ?? null,
+        useRatePeriod: updated.useRatePeriod ?? null,
       },
       { method: "POST", encType: "application/json" },
     );
@@ -176,6 +185,13 @@ export default function StorePage() {
     quantity: number;
     selectedBlockId?: string | null;
     inStore: boolean;
+    sku?: string | null;
+    unit?: string | null;
+    minQuantity?: number | null;
+    cost?: number | null;
+    expiryDate?: Date | null;
+    useRate?: number | null;
+    useRatePeriod?: "day" | "week" | "month" | null;
   }) => {
     const optimisticId = crypto.randomUUID();
     const newItem: Item = {
@@ -187,6 +203,13 @@ export default function StorePage() {
       blockId: data.selectedBlockId ?? null,
       createdAt: new Date(),
       isPublic: true,
+      sku: data.sku ?? null,
+      unit: data.unit ?? null,
+      minQuantity: data.minQuantity ?? null,
+      cost: data.cost ?? null,
+      expiryDate: data.expiryDate ?? null,
+      useRate: data.useRate ?? null,
+      useRatePeriod: data.useRatePeriod ?? null,
     };
     setItems((prev) => [...prev, newItem]);
     setAddItemOpen(false);
@@ -198,6 +221,13 @@ export default function StorePage() {
         quantity: data.quantity,
         blockId: data.selectedBlockId ?? null,
         optimisticId,
+        sku: data.sku ?? null,
+        unit: data.unit ?? null,
+        minQuantity: data.minQuantity ?? null,
+        cost: data.cost ?? null,
+        expiryDate: data.expiryDate ? data.expiryDate.toISOString() : null,
+        useRate: data.useRate ?? null,
+        useRatePeriod: data.useRatePeriod ?? null,
       },
       { method: "POST", encType: "application/json" },
     );

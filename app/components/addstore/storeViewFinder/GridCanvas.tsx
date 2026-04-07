@@ -432,6 +432,11 @@ export function GridCanvas({
                       isNonClick || drawMode || selectMode ? "none" : undefined,
                     cursor: isNonClick ? "default" : undefined,
                   }}
+                  onClick={
+                    !isNonClick && !drawMode && !selectMode
+                      ? (e) => onClick(e, item.i)
+                      : undefined
+                  }
                   onMouseEnter={
                     !isNonClick && !drawMode
                       ? () => setHoveredId(item.i)

@@ -44,6 +44,13 @@ export const action = async (args: ActionFunctionArgs) => {
       quantity: data.quantity,
       description: data.description,
       blockId: data.blockId ?? undefined,
+      sku: data.sku ?? undefined,
+      unit: data.unit ?? undefined,
+      minQuantity: data.minQuantity ?? undefined,
+      cost: data.cost ?? undefined,
+      expiryDate: data.expiryDate ? new Date(data.expiryDate) : undefined,
+      useRate: data.useRate ?? undefined,
+      useRatePeriod: data.useRatePeriod ?? undefined,
     });
     return { ok: true, id: newItem.id, optimisticId: data.optimisticId };
   }
@@ -55,6 +62,13 @@ export const action = async (args: ActionFunctionArgs) => {
       description: data.description,
       storeId: data.storeId,
       blockId: data.blockId,
+      sku: data.sku ?? null,
+      unit: data.unit ?? null,
+      minQuantity: data.minQuantity ?? null,
+      cost: data.cost ?? null,
+      expiryDate: data.expiryDate ? new Date(data.expiryDate) : null,
+      useRate: data.useRate ?? null,
+      useRatePeriod: data.useRatePeriod ?? null,
     });
     return { ok: true };
   }
