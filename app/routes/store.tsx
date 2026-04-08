@@ -10,7 +10,7 @@ import type {
   BlocksMap,
 } from "../types/storeViewFinderTypes";
 import type { Route } from "./+types/home";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { StoreHeader } from "~/components/store/storeHeader";
 import { StoreLoading } from "~/components/store/storeLoading";
 import { StoreToolbar } from "~/components/store/storeToolbar";

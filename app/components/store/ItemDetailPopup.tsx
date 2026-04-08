@@ -5,7 +5,7 @@ import {
   formatCost,
   formatExpiry,
   formatUseRate,
-} from "~/utils/helpers/storeTableHelper.helper";
+} from "~/utils/helpers/storeTable.helper";
 
 export function ItemDetailPopup({
   item,

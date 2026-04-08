@@ -1,5 +1,5 @@
 import type { Item, ItemStatus } from "~/types/storeTypes";
-import { remainingDays } from "./store.helper";
+import { expiryDateRemainingDays, remainingDays } from "./store.helper";
 
 export function formatCost(cents: number | null) {
   if (cents == null) return "—";
@@ -62,3 +62,51 @@ export function getItemStatus(item: Item): ItemStatus {
   }
   return "ok";
 }
+
+export type SortKey = "name" | "quantity" | "expiry" | "depletion" | "status";
+export type SortDir = "asc" | "desc";
+
+export type FilterState = {
+  statuses: Set<ItemStatus>;
+  hasExpiry: boolean;
+  hasUseRate: boolean;
+};
+
+export const STATUS_ORDER: ItemStatus[] = ["out", "low", "expiring", "ok"];
+
+export function getSortValue(item: Item, key: SortKey): number | string {
+  switch (key) {
+    case "name":
+      return item.name.toLowerCase();
+    case "quantity":
+      return item.quantity;
+    case "expiry": {
+      const d = expiryDateRemainingDays(item.expiryDate);
+      return d ?? Infinity;
+    }
+    case "depletion": {
+      const d =
+        item.useRate && item.useRatePeriod
+          ? Number(
+              remainingDays(
+                item.createdAt,
+                item.useRate.toString(),
+                item.useRatePeriod,
+                item.quantity,
+              ),
+            )
+          : null;
+      return d ?? Infinity;
+    }
+    case "status":
+      return STATUS_ORDER.indexOf(getItemStatus(item));
+  }
+}
+
+export const SORT_LABELS: Record<SortKey, string> = {
+  name: "Name",
+  quantity: "Qty",
+  expiry: "Expiry",
+  depletion: "Est Depletion",
+  status: "Status",
+};

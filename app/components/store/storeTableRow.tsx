@@ -4,12 +4,7 @@ import {
   expiryDateRemainingDays,
   remainingDays,
 } from "~/utils/helpers/store.helper";
-import {
-  formatCost,
-  formatExpiry,
-  formatUseRate,
-  getItemStatus,
-} from "~/utils/helpers/storeTableHelper.helper";
+import { getItemStatus } from "~/utils/helpers/storeTable.helper";
 import { ItemDetailPopup } from "./ItemDetailPopup";
 
 type Props = {
