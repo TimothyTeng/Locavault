@@ -71,7 +71,6 @@ export default function StorePage() {
   const [members, setMembers] = useState<StoreMember[]>(
     (dbMembers as StoreMember[]) ?? [],
   );
-  const [search, setSearch] = useState("");
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [highlightedCell, setHighlightedCell] = useState<string | null>(null);
   const [membersPanelOpen, setMembersPanelOpen] = useState(false);
@@ -133,14 +132,6 @@ export default function StorePage() {
       ),
     );
   }, [createFetcher.data]);
-
-  // ── Derived ──
-  const filteredItems = useMemo(() => {
-    if (!search.trim()) return items;
-    return items.filter((item) =>
-      item.name.toLowerCase().includes(search.toLowerCase()),
-    );
-  }, [items, search]);
 
   const canEdit = accessLevel === "owner" || accessLevel === "editor";
   const isOwner = accessLevel === "owner";
@@ -273,6 +264,7 @@ export default function StorePage() {
     );
   };
 
+  // ── Deselect on outside click ──
   const tableRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -310,8 +302,6 @@ export default function StorePage() {
       <div className="flex flex-col h-screen w-full bg-slate-50 font-mono pt-16 overflow-hidden">
         <StoreToolbar
           storeId={id!}
-          search={search}
-          onSearchChange={setSearch}
           onAddItem={() => setAddItemOpen(true)}
           onMembersToggle={() => setMembersPanelOpen((v) => !v)}
           accessLevel={accessLevel}
@@ -357,14 +347,8 @@ export default function StorePage() {
               showCanvas ? "w-1/2" : "w-full"
             }`}
           >
-            <div className="px-4 h-10 flex items-center border-b border-slate-100 bg-white shrink-0">
-              <span className="text-[9px] font-bold uppercase tracking-widest text-slate-300">
-                Inventory · {filteredItems.length} item
-                {filteredItems.length !== 1 ? "s" : ""}
-              </span>
-            </div>
             <StoreTable
-              items={filteredItems}
+              items={items}
               selectedItemId={selectedItemId}
               onSelect={handleSelectItem}
               onSave={handleSaveItem}

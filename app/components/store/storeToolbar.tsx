@@ -4,8 +4,6 @@ import type { CreateStoreInput } from "~/types/storeViewFinderTypes";
 
 type Props = {
   storeId: string;
-  search: string;
-  onSearchChange: (val: string) => void;
   onAddItem: () => void;
   onMembersToggle: () => void;
   accessLevel: AccessLevel;
@@ -18,8 +16,6 @@ type Props = {
 
 export function StoreToolbar({
   storeId,
-  search,
-  onSearchChange,
   onAddItem,
   onMembersToggle,
   accessLevel,
@@ -74,7 +70,6 @@ export function StoreToolbar({
         <>
           <div className="w-px h-5 bg-slate-200" />
 
-          {/* Public toggle */}
           <button
             onClick={() => onToggleVisibility("isPublic", !store.isPublic)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-[10px] font-bold uppercase tracking-widest transition-all duration-150 ${
@@ -91,7 +86,6 @@ export function StoreToolbar({
             {store.isPublic ? "Public" : "Private"}
           </button>
 
-          {/* Canvas visible toggle — only meaningful when public */}
           {store.isPublic && (
             <button
               onClick={() =>
@@ -146,56 +140,6 @@ export function StoreToolbar({
           Members
         </button>
       )}
-
-      {/* Spacer */}
-      <div className="flex-1" />
-
-      {/* Search */}
-      <div className="relative flex items-center">
-        <svg
-          className="absolute left-2.5 text-slate-300"
-          width="12"
-          height="12"
-          viewBox="0 0 12 12"
-          fill="none"
-        >
-          <circle
-            cx="5.5"
-            cy="5.5"
-            r="3.5"
-            stroke="currentColor"
-            strokeWidth="1.4"
-          />
-          <path
-            d="M8 8l2.5 2.5"
-            stroke="currentColor"
-            strokeWidth="1.4"
-            strokeLinecap="round"
-          />
-        </svg>
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => onSearchChange(e.target.value)}
-          placeholder="Search items..."
-          className="pl-7 pr-3 py-1.5 rounded-md border border-slate-200 bg-slate-50 text-[11px] font-mono text-slate-700 placeholder-slate-300 outline-none focus:border-slate-400 focus:ring-2 focus:ring-slate-100 transition-all w-52"
-        />
-        {search && (
-          <button
-            onClick={() => onSearchChange("")}
-            className="absolute right-2 text-slate-300 hover:text-slate-500"
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-              <path
-                d="M1 1l8 8M9 1L1 9"
-                stroke="currentColor"
-                strokeWidth="1.4"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
-        )}
-      </div>
     </div>
   );
 }
