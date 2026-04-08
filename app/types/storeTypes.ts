@@ -16,3 +16,5 @@ export type Item = {
   useRate: number | null;
   useRatePeriod: "day" | "week" | "month" | null;
 };
+
+export type ItemStatus = "out" | "low" | "expiring" | "ok";

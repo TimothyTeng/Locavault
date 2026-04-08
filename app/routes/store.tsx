@@ -10,14 +10,13 @@ import type {
   BlocksMap,
 } from "../types/storeViewFinderTypes";
 import type { Route } from "./+types/home";
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { StoreHeader } from "~/components/store/storeHeader";
 import { StoreLoading } from "~/components/store/storeLoading";
 import { StoreToolbar } from "~/components/store/storeToolbar";
 import { StoreTable } from "~/components/store/storeTable";
 import { type Item } from "~/types/storeTypes";
 import type { StoreMember } from "~/types/memberTypes";
-import { ItemEditModal } from "~/components/store/itemEditModal";
 import { handlesForMode } from "~/components/addstore/storeViewFinder/ModeToggle";
 import { useZoom } from "~/utils/useZoom";
 import { GridCanvas } from "~/components/addstore/storeViewFinder/GridCanvas";
@@ -74,7 +73,6 @@ export default function StorePage() {
   );
   const [search, setSearch] = useState("");
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
-  const [editingItem, setEditingItem] = useState<Item | null>(null);
   const [highlightedCell, setHighlightedCell] = useState<string | null>(null);
   const [membersPanelOpen, setMembersPanelOpen] = useState(false);
 
@@ -155,7 +153,6 @@ export default function StorePage() {
 
   const handleSaveItem = (updated: Item) => {
     setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
-    setEditingItem(null);
     fetcher.submit(
       {
         _action: "updateItem",
@@ -175,6 +172,15 @@ export default function StorePage() {
         useRate: updated.useRate ?? null,
         useRatePeriod: updated.useRatePeriod ?? null,
       },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
+  const handleDeleteItem = (itemId: string) => {
+    setItems((prev) => prev.filter((i) => i.id !== itemId));
+    if (selectedItemId === itemId) setSelectedItemId(null);
+    fetcher.submit(
+      { _action: "deleteItem", id: itemId },
       { method: "POST", encType: "application/json" },
     );
   };
@@ -267,6 +273,19 @@ export default function StorePage() {
     );
   };
 
+  const tableRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (tableRef.current && !tableRef.current.contains(e.target as Node)) {
+        setSelectedItemId(null);
+        setHighlightedCell(null);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
   // ── Early returns ──
   if (!mounted) {
     return (
@@ -333,6 +352,7 @@ export default function StorePage() {
 
           {/* Inventory */}
           <div
+            ref={tableRef}
             className={`flex flex-col overflow-hidden ${
               showCanvas ? "w-1/2" : "w-full"
             }`}
@@ -348,7 +368,9 @@ export default function StorePage() {
               selectedItemId={selectedItemId}
               onSelect={handleSelectItem}
               onSave={handleSaveItem}
+              onDelete={handleDeleteItem}
               accessLevel={accessLevel}
+              storeIsPublic={store?.isPublic ?? false}
               onToggleItemVisibility={handleToggleItemVisibility}
             />
           </div>
@@ -363,12 +385,6 @@ export default function StorePage() {
             />
           )}
         </div>
-
-        <ItemEditModal
-          item={editingItem}
-          onClose={() => setEditingItem(null)}
-          onSave={handleSaveItem}
-        />
       </div>
       {canEdit && (
         <AddItemPanel

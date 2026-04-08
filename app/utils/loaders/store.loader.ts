@@ -1,6 +1,17 @@
 import { getAuth } from "@clerk/react-router/server";
 import { redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from "react-router";
-import { createInvite, createItem, getItemsByStore, getMembersByStore, removeMember, updateItem, updateItemVisibility, updateStoreVisibility, verifyStoreAccess } from "~/lib/queries";
+import {
+  createInvite,
+  createItem,
+  deleteItem,
+  getItemsByStore,
+  getMembersByStore,
+  removeMember,
+  updateItem,
+  updateItemVisibility,
+  updateStoreVisibility,
+  verifyStoreAccess,
+} from "~/lib/queries";
 
 export const loader = async (args: LoaderFunctionArgs) => {
   const { userId } = await getAuth(args);
@@ -70,6 +81,11 @@ export const action = async (args: ActionFunctionArgs) => {
       useRate: data.useRate ?? null,
       useRatePeriod: data.useRatePeriod ?? null,
     });
+    return { ok: true };
+  }
+
+  if (data._action === "deleteItem") {
+    await deleteItem(data.id);
     return { ok: true };
   }
 
