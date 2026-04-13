@@ -17,6 +17,7 @@ type Props = {
   isOwner: boolean;
   storeIsPublic: boolean;
   onToggleVisibility: (itemId: string, isPublic: boolean) => void;
+  isMobile: boolean;
 };
 
 const STATUS_STYLES: Record<ItemStatus, { pill: string; label: string }> = {
@@ -35,8 +36,6 @@ const STATUS_STYLES: Record<ItemStatus, { pill: string; label: string }> = {
   },
 };
 
-// ── Row ────────────────────────────────────────────────────
-
 export function StoreTableRow({
   item,
   index,
@@ -47,12 +46,12 @@ export function StoreTableRow({
   isOwner,
   storeIsPublic,
   onToggleVisibility,
+  isMobile,
 }: Props) {
   const [showDetail, setShowDetail] = useState(false);
 
   const isLowStock =
     item.minQuantity != null && item.quantity <= item.minQuantity;
-
   const status = getItemStatus(item);
   const { pill, label: statusLabel } = STATUS_STYLES[status];
 
@@ -95,6 +94,19 @@ export function StoreTableRow({
     setShowDetail(false);
   };
 
+  // On mobile: single tap opens modal. On desktop: single tap selects, double tap opens modal.
+  const handleClick = () => {
+    if (isMobile) {
+      setShowDetail(true);
+    } else {
+      onSelect(item);
+    }
+  };
+
+  const handleDoubleClick = () => {
+    if (!isMobile) setShowDetail(true);
+  };
+
   return (
     <>
       {showDetail && (
@@ -107,8 +119,8 @@ export function StoreTableRow({
       )}
 
       <tr
-        onClick={() => onSelect(item)}
-        onDoubleClick={() => setShowDetail(true)}
+        onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
         className={[
           "border-b border-slate-100 cursor-pointer transition-colors duration-100 group",
           isSelected
@@ -145,27 +157,31 @@ export function StoreTableRow({
           )}
         </td>
 
-        {/* Expiry */}
-        <td
-          className={`${cellClass} w-24 text-right text-[10px] font-mono tabular-nums ${expiryColor}`}
-        >
-          {expiryDays != null ? (
-            `${expiryDays}d`
-          ) : (
-            <span className="opacity-30">—</span>
-          )}
-        </td>
+        {/* Expiry — desktop only */}
+        {!isMobile && (
+          <td
+            className={`${cellClass} w-24 text-right text-[10px] font-mono tabular-nums ${expiryColor}`}
+          >
+            {expiryDays != null ? (
+              `${expiryDays}d`
+            ) : (
+              <span className="opacity-30">—</span>
+            )}
+          </td>
+        )}
 
-        {/* Est depletion */}
-        <td
-          className={`${cellClass} w-24 text-right text-[10px] font-mono tabular-nums ${depletionColor}`}
-        >
-          {depletionDays != null ? (
-            `${depletionDays}d`
-          ) : (
-            <span className="opacity-30">—</span>
-          )}
-        </td>
+        {/* Est depletion — desktop only */}
+        {!isMobile && (
+          <td
+            className={`${cellClass} w-24 text-right text-[10px] font-mono tabular-nums ${depletionColor}`}
+          >
+            {depletionDays != null ? (
+              `${depletionDays}d`
+            ) : (
+              <span className="opacity-30">—</span>
+            )}
+          </td>
+        )}
 
         {/* Status pill */}
         <td className={`${cellClass} w-24`}>
@@ -176,8 +192,8 @@ export function StoreTableRow({
           </span>
         </td>
 
-        {/* Public toggle — only when owner AND store is public */}
-        {isOwner && storeIsPublic && (
+        {/* Public toggle — desktop + owner + storeIsPublic */}
+        {!isMobile && isOwner && storeIsPublic && (
           <td
             className={`${cellClass} w-14`}
             onClick={(e) => e.stopPropagation()}
@@ -194,7 +210,7 @@ export function StoreTableRow({
           </td>
         )}
 
-        {/* Details hint */}
+        {/* Details button — always visible on mobile, hover-only on desktop */}
         <td
           className={`${cellClass} w-14`}
           onClick={(e) => e.stopPropagation()}
@@ -202,7 +218,8 @@ export function StoreTableRow({
           <button
             onClick={() => setShowDetail(true)}
             className={[
-              "text-[9px] font-bold uppercase tracking-widest transition-all opacity-0 group-hover:opacity-100",
+              "text-[9px] font-bold uppercase tracking-widest transition-all",
+              isMobile ? "opacity-100" : "opacity-0 group-hover:opacity-100",
               isSelected
                 ? "text-slate-300 hover:text-white"
                 : "text-slate-400 hover:text-slate-700",

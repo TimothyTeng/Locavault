@@ -111,7 +111,7 @@ export default function Navbar() {
         onClick={() => setMobileOpen(true)}
         aria-label="Open menu"
         className={`
-          md:hidden fixed bottom-6 right-5 z-30
+          md:hidden fixed bottom-6 right-5 z-50
           w-14 h-14 rounded-full flex items-center justify-center
           bg-emerald-600 text-white shadow-xl shadow-emerald-900/25
           transition-all duration-300 active:scale-95
@@ -133,7 +133,7 @@ export default function Navbar() {
       <div
         onClick={() => setMobileOpen(false)}
         className={`
-          md:hidden fixed inset-0 z-30 bg-black/40 backdrop-blur-sm
+          md:hidden fixed inset-0 z-50 bg-black/40 backdrop-blur-sm
           transition-opacity duration-300
           ${mobileOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}
         `}
@@ -142,7 +142,7 @@ export default function Navbar() {
       {/* ── MOBILE: bottom drawer ── */}
       <div
         className={`
-          md:hidden fixed bottom-0 left-0 right-0 z-30
+          md:hidden fixed bottom-0 left-0 right-0 z-50
           bg-white rounded-t-3xl shadow-2xl
           transition-transform duration-300 ease-out
           ${mobileOpen ? "translate-y-0" : "translate-y-full"}

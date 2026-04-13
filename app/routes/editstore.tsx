@@ -28,7 +28,7 @@ export default function EditStore() {
         </div>
       }
     >
-      <div className="flex flex-col h-dvh overflow-hidden pt-[var(--navbar-height,64px)]">
+      <div className="flex flex-col h-dvh overflow-hidden bg-white md:pt-16">
         <Navbar />
         <div className="flex-1 min-h-0">
           <StoreViewFinder initialData={initialData} />

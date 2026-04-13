@@ -21,9 +21,9 @@ type Props = {
   accessLevel: AccessLevel;
   storeIsPublic: boolean;
   onToggleItemVisibility: (itemId: string, isPublic: boolean) => void;
+  isMobile: boolean;
+  minimapExpanded: boolean;
 };
-
-// ── Main component ─────────────────────────────────────────
 
 export function StoreTable({
   items,
@@ -34,10 +34,11 @@ export function StoreTable({
   accessLevel,
   storeIsPublic,
   onToggleItemVisibility,
+  isMobile,
+  minimapExpanded,
 }: Props) {
   const isOwner = accessLevel === "owner";
 
-  // ── Search / sort / filter state ──
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>("asc");
@@ -60,25 +61,20 @@ export function StoreTable({
     setFilters({ statuses: new Set(), hasExpiry: false, hasUseRate: false });
   };
 
-  // ── Derived: filter then sort ──
   const displayItems = useMemo(() => {
     let result = items;
-
     if (search.trim()) {
       const q = search.toLowerCase();
       result = result.filter((i) => i.name.toLowerCase().includes(q));
     }
-
     if (filters.statuses.size > 0) {
       result = result.filter((i) => filters.statuses.has(getItemStatus(i)));
     }
-
     if (filters.hasExpiry) result = result.filter((i) => i.expiryDate != null);
     if (filters.hasUseRate)
       result = result.filter(
         (i) => i.useRate != null && i.useRatePeriod != null,
       );
-
     if (sortKey) {
       result = [...result].sort((a, b) => {
         const av = getSortValue(a, sortKey);
@@ -90,11 +86,9 @@ export function StoreTable({
         return sortDir === "asc" ? cmp : -cmp;
       });
     }
-
     return result;
   }, [items, search, filters, sortKey, sortDir]);
 
-  // ── Column header click to sort ──
   const handleHeaderClick = (key: SortKey) => {
     if (sortKey === key) {
       if (sortDir === "asc") setSortDir("desc");
@@ -108,10 +102,20 @@ export function StoreTable({
     }
   };
 
-  // ── Header definitions ──
   type HeaderDef =
-    | { label: string; className: string; sortable: false }
-    | { label: string; className: string; sortable: true; key: SortKey };
+    | {
+        label: string;
+        className: string;
+        sortable: false;
+        mobileHide?: boolean;
+      }
+    | {
+        label: string;
+        className: string;
+        sortable: true;
+        key: SortKey;
+        mobileHide?: boolean;
+      };
 
   const baseHeaders: HeaderDef[] = [
     { label: "#", className: "w-8 text-right", sortable: false },
@@ -127,24 +131,34 @@ export function StoreTable({
       className: "w-24 text-right",
       sortable: true,
       key: "expiry",
+      mobileHide: true,
     },
     {
       label: "Est Depletion",
       className: "w-24 text-right",
       sortable: true,
       key: "depletion",
+      mobileHide: true,
     },
     { label: "Status", className: "w-24", sortable: true, key: "status" },
   ];
   if (isOwner && storeIsPublic)
-    baseHeaders.push({ label: "Public", className: "w-14", sortable: false });
+    baseHeaders.push({
+      label: "Public",
+      className: "w-14",
+      sortable: false,
+      mobileHide: true,
+    });
   baseHeaders.push({ label: "", className: "w-14", sortable: false });
+
+  const visibleHeaders = isMobile
+    ? baseHeaders.filter((h) => !h.mobileHide)
+    : baseHeaders;
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
       {/* Search + Filter/Sort bar */}
       <div className="px-3 h-11 flex items-center gap-2 border-b border-slate-100 bg-white shrink-0">
-        {/* Search */}
         <div className="relative flex items-center flex-1 max-w-xs">
           <svg
             className="absolute left-2 text-slate-300 pointer-events-none"
@@ -191,15 +205,12 @@ export function StoreTable({
           )}
         </div>
 
-        {/* Spacer */}
         <div className="flex-1" />
 
-        {/* Item count */}
         <span className="text-[9px] font-bold uppercase tracking-widest text-slate-300 shrink-0">
           {displayItems.length} item{displayItems.length !== 1 ? "s" : ""}
         </span>
 
-        {/* Filter & Sort button */}
         <div className="relative shrink-0">
           <button
             onClick={() => setPanelOpen((v) => !v)}
@@ -218,7 +229,7 @@ export function StoreTable({
                 strokeLinecap="round"
               />
             </svg>
-            Filter & Sort
+            {!isMobile && "Filter & Sort"}
             {activeCount > 0 && (
               <span className="bg-white text-slate-800 rounded-full w-4 h-4 flex items-center justify-center text-[9px] font-black leading-none">
                 {activeCount}
@@ -242,16 +253,22 @@ export function StoreTable({
       </div>
 
       {/* Table */}
-      <div className="flex-1 overflow-auto min-h-0">
+      <div
+        className={`flex-1 overflow-auto min-h-0 ${isMobile && minimapExpanded ? "pb-[50vh]" : ""}`}
+      >
         <table className="w-full text-left border-collapse">
           <thead className="sticky top-0 bg-slate-50 z-10">
             <tr className="border-b border-slate-200">
-              {baseHeaders.map((h, i) =>
+              {visibleHeaders.map((h, i) =>
                 h.sortable ? (
                   <th
                     key={i}
                     onClick={() => handleHeaderClick(h.key)}
-                    className={`group/th px-3 py-2.5 text-[9px] font-bold uppercase tracking-widest cursor-pointer select-none transition-colors ${sortKey === h.key ? "text-slate-700" : "text-slate-400 hover:text-slate-600"} ${h.className}`}
+                    className={`group/th px-3 py-2.5 text-[9px] font-bold uppercase tracking-widest cursor-pointer select-none transition-colors ${
+                      sortKey === h.key
+                        ? "text-slate-700"
+                        : "text-slate-400 hover:text-slate-600"
+                    } ${h.className}`}
                   >
                     {h.label}
                     <SortArrow active={sortKey === h.key} dir={sortDir} />
@@ -271,7 +288,7 @@ export function StoreTable({
             {displayItems.length === 0 ? (
               <tr>
                 <td
-                  colSpan={baseHeaders.length}
+                  colSpan={visibleHeaders.length}
                   className="px-4 py-10 text-center text-[11px] text-slate-300 font-mono"
                 >
                   No items found
@@ -290,6 +307,7 @@ export function StoreTable({
                   isOwner={isOwner}
                   storeIsPublic={storeIsPublic}
                   onToggleVisibility={onToggleItemVisibility}
+                  isMobile={isMobile}
                 />
               ))
             )}

@@ -23,14 +23,15 @@ import { GridCanvas } from "~/components/addstore/storeViewFinder/GridCanvas";
 import Navbar from "~/components/home/navbar";
 import { AddItemPanel } from "~/components/addItem/addItemPanel";
 import { MembersPanel } from "~/components/store/membersPanel";
+import { MiniMap } from "~/components/store/minimap";
 import { blocksToBlocksMap } from "#utils/helpers/store.helper";
+import { useIsMobile } from "~/utils/useIsMobile";
 import type { loader } from "#utils/loaders/store.loader";
 
 export { loader, action } from "#utils/loaders/store.loader";
 
 const POLL_INTERVAL_MS = 15_000;
 
-// ── Meta ───────────────────────────────────────────────────
 export function meta({}: Route.MetaArgs) {
   return [
     { title: "Stores" },
@@ -38,7 +39,6 @@ export function meta({}: Route.MetaArgs) {
   ];
 }
 
-// ── Page ───────────────────────────────────────────────────
 export default function StorePage() {
   const {
     store: dbStore,
@@ -51,11 +51,11 @@ export default function StorePage() {
   const { state } = useLocation();
   const { id } = useParams();
   const { revalidate } = useRevalidator();
+  const isMobile = useIsMobile();
 
   const navStore: CreateStoreInput | null = state?.storeData ?? null;
   const initial = navStore ?? dbStore;
 
-  // ── State ──
   const [mounted, setMounted] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [store, setStore] = useState<CreateStoreInput | null>(initial);
@@ -74,11 +74,13 @@ export default function StorePage() {
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [highlightedCell, setHighlightedCell] = useState<string | null>(null);
   const [membersPanelOpen, setMembersPanelOpen] = useState(false);
-
-  const { zoom } = useZoom(0.5, 3);
-  const handles = handlesForMode("select");
   const [addItemOpen, setAddItemOpen] = useState(false);
+  const [minimapExpanded, setMinimapExpanded] = useState(false);
 
+  const { zoom, setZoom } = useZoom(0.5, 3);
+  const onZoomIn = () => setZoom((z: number) => Math.min(3, z + 0.1));
+  const onZoomOut = () => setZoom((z: number) => Math.max(0.5, z - 0.1));
+  const handles = handlesForMode("select");
   const fetcher = useFetcher();
   const createFetcher = useFetcher();
 
@@ -264,10 +266,10 @@ export default function StorePage() {
     );
   };
 
-  // ── Deselect on outside click ──
+  // ── Deselect on outside click (desktop only) ──
   const tableRef = useRef<HTMLDivElement>(null);
-
   useEffect(() => {
+    if (isMobile) return;
     const handler = (e: MouseEvent) => {
       if (tableRef.current && !tableRef.current.contains(e.target as Node)) {
         setSelectedItemId(null);
@@ -276,7 +278,7 @@ export default function StorePage() {
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, []);
+  }, [isMobile]);
 
   // ── Early returns ──
   if (!mounted) {
@@ -299,7 +301,7 @@ export default function StorePage() {
   return (
     <div>
       <Navbar />
-      <div className="flex flex-col h-screen w-full bg-slate-50 font-mono pt-16 overflow-hidden">
+      <div className="flex flex-col h-dvh overflow-hidden bg-white md:pt-16 font-mono">
         <StoreToolbar
           storeId={id!}
           onAddItem={() => setAddItemOpen(true)}
@@ -307,44 +309,53 @@ export default function StorePage() {
           accessLevel={accessLevel}
           store={store}
           onToggleVisibility={handleToggleStoreVisibility}
+          isMobile={isMobile}
         />
 
         <div className="flex flex-1 min-h-0 overflow-hidden relative">
-          {/* Canvas */}
-          <div
-            className={`flex flex-col border-r border-slate-200 overflow-hidden ${
-              showCanvas ? "w-1/2" : "hidden"
-            }`}
-          >
-            <div className="px-4 h-10 flex items-center border-b border-slate-100 shrink-0 bg-white">
-              <span className="text-[9px] font-bold uppercase tracking-widest text-slate-300">
-                Floor Plan
-              </span>
-            </div>
-            <div className="flex-1 overflow-auto p-4">
-              {store && <StoreHeader store={store} id={id} />}
-              <div className="mt-4" style={{ width: `${zoom * 100}%` }}>
-                <GridCanvas
-                  cols={store!.cols}
-                  rows={store!.rows}
-                  blocks={blocks}
-                  handles={handles}
-                  selectedId={highlightedCell}
-                  onClick={(_, blockId) => {
-                    setHighlightedCell(blockId);
-                  }}
-                  readOnly={true}
-                  nonClickableKinds={["divider", "stairs"]}
-                />
+          {/* ── Desktop canvas (left pane) ── */}
+          {!isMobile && (
+            <div
+              className={`flex flex-col border-r border-slate-200 overflow-hidden ${
+                showCanvas ? "w-1/2" : "hidden"
+              }`}
+            >
+              <div className="px-4 h-10 flex items-center border-b border-slate-100 shrink-0 bg-white">
+                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-300">
+                  Floor Plan
+                </span>
+              </div>
+              <div className="flex-1 overflow-auto p-4">
+                {store && (
+                  <StoreHeader
+                    store={store}
+                    id={id}
+                    zoom={zoom}
+                    onZoomIn={onZoomIn}
+                    onZoomOut={onZoomOut}
+                  />
+                )}
+                <div className="mt-4" style={{ width: `${zoom * 100}%` }}>
+                  <GridCanvas
+                    cols={store!.cols}
+                    rows={store!.rows}
+                    blocks={blocks}
+                    handles={handles}
+                    selectedId={highlightedCell}
+                    onClick={(_, blockId) => setHighlightedCell(blockId)}
+                    readOnly={true}
+                    nonClickableKinds={["divider", "stairs"]}
+                  />
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
-          {/* Inventory */}
+          {/* ── Inventory (full width on mobile, half on desktop) ── */}
           <div
             ref={tableRef}
             className={`flex flex-col overflow-hidden ${
-              showCanvas ? "w-1/2" : "w-full"
+              !isMobile && showCanvas ? "w-1/2" : "w-full"
             }`}
           >
             <StoreTable
@@ -356,6 +367,8 @@ export default function StorePage() {
               accessLevel={accessLevel}
               storeIsPublic={store?.isPublic ?? false}
               onToggleItemVisibility={handleToggleItemVisibility}
+              isMobile={isMobile}
+              minimapExpanded={minimapExpanded}
             />
           </div>
 
@@ -370,6 +383,27 @@ export default function StorePage() {
           )}
         </div>
       </div>
+
+      {/* ── Mobile minimap (floating bottom-left) ── */}
+      {isMobile && showCanvas && store && (
+        <MiniMap
+          blocks={blocks}
+          cols={store.cols}
+          rows={store.rows}
+          handles={handles}
+          selectedId={highlightedCell}
+          onClick={(_, blockId) => setHighlightedCell(blockId)}
+          // Force expand when AddItem panel is open so map fills bottom half
+          forceExpanded={addItemOpen}
+          expanded={minimapExpanded}
+          onToggleExpanded={setMinimapExpanded}
+          zoom={zoom}
+          onZoomIn={onZoomIn}
+          onZoomOut={onZoomOut}
+        />
+      )}
+
+      {/* ── Add Item panel ── */}
       {canEdit && (
         <AddItemPanel
           isOpen={addItemOpen}
@@ -377,6 +411,7 @@ export default function StorePage() {
           onSubmit={handleAddItem}
           selectedBlockId={highlightedCell}
           selectedBlockLabel={blocks[highlightedCell ?? ""]?.label ?? ""}
+          isMobile={isMobile}
         />
       )}
     </div>

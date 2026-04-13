@@ -66,7 +66,7 @@ export function FilterSortPanel({
   return (
     <div
       ref={panelRef}
-      className="absolute top-full right-0 mt-1 z-30 bg-white border border-slate-200 rounded-xl shadow-xl w-64 p-4 flex flex-col gap-4"
+      className="absolute top-full right-0 mt-1 z-30 bg-white border border-slate-200 rounded-xl shadow-xl w-64 p-4 flex flex-col gap-4 overflow-y-auto max-h-[60vh]"
     >
       {/* Sort by */}
       <div>

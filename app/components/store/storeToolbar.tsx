@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router";
 import type { AccessLevel } from "~/types/memberTypes";
 import type { CreateStoreInput } from "~/types/storeViewFinderTypes";
@@ -12,6 +13,7 @@ type Props = {
     field: "isPublic" | "canvasVisible",
     value: boolean,
   ) => void;
+  isMobile: boolean;
 };
 
 export function StoreToolbar({
@@ -21,14 +23,167 @@ export function StoreToolbar({
   accessLevel,
   store,
   onToggleVisibility,
+  isMobile,
 }: Props) {
   const navigate = useNavigate();
   const canEdit = accessLevel === "owner" || accessLevel === "editor";
   const isOwner = accessLevel === "owner";
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node))
+        setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuOpen]);
+
+  // ── Mobile toolbar ──────────────────────────────────────
+  if (isMobile) {
+    return (
+      <div className="flex items-center gap-2 px-3 h-12 shrink-0 border-b border-slate-200 bg-white">
+        {/* Edit Store */}
+        {canEdit && (
+          <button
+            onClick={() => navigate(`/store/${storeId}/edit`)}
+            className="flex items-center justify-center w-8 h-8 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all"
+            title="Edit Store"
+          >
+            <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
+              <path
+                d="M8.5 1.5l2 2-7 7H1.5v-2l7-7z"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
+        )}
+
+        {/* Add Item */}
+        {canEdit && (
+          <button
+            onClick={onAddItem}
+            className="flex items-center justify-center w-8 h-8 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all"
+            title="Add Item"
+          >
+            <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
+              <path
+                d="M6 1v10M1 6h10"
+                stroke="currentColor"
+                strokeWidth="1.6"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        )}
+
+        <div className="flex-1" />
+
+        {/* ⋯ overflow menu — owner only */}
+        {isOwner && (
+          <div className="relative" ref={menuRef}>
+            <button
+              onClick={() => setMenuOpen((v) => !v)}
+              className={`flex items-center justify-center w-8 h-8 rounded-md border transition-all ${
+                menuOpen
+                  ? "bg-slate-800 border-slate-800 text-white"
+                  : "border-slate-300 text-slate-600 hover:bg-slate-50"
+              }`}
+              title="More options"
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 16 4"
+                fill="currentColor"
+              >
+                <circle cx="2" cy="2" r="1.5" />
+                <circle cx="8" cy="2" r="1.5" />
+                <circle cx="14" cy="2" r="1.5" />
+              </svg>
+            </button>
+
+            {menuOpen && store && (
+              <div className="absolute top-full right-0 mt-1 z-50 bg-white border border-slate-200 rounded-xl shadow-xl w-52 py-2 flex flex-col">
+                {/* Public toggle */}
+                <button
+                  onClick={() => {
+                    onToggleVisibility("isPublic", !store.isPublic);
+                    setMenuOpen(false);
+                  }}
+                  className="flex items-center gap-3 px-4 py-2.5 text-[11px] font-mono text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <span
+                    className={`w-2 h-2 rounded-full shrink-0 ${store.isPublic ? "bg-emerald-400" : "bg-slate-300"}`}
+                  />
+                  {store.isPublic ? "Public" : "Private"}
+                </button>
+
+                {/* Canvas visible */}
+                {store.isPublic && (
+                  <button
+                    onClick={() => {
+                      onToggleVisibility("canvasVisible", !store.canvasVisible);
+                      setMenuOpen(false);
+                    }}
+                    className="flex items-center gap-3 px-4 py-2.5 text-[11px] font-mono text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    <span
+                      className={`w-2 h-2 rounded-full shrink-0 ${store.canvasVisible ? "bg-emerald-400" : "bg-slate-300"}`}
+                    />
+                    {store.canvasVisible ? "Map Visible" : "Map Hidden"}
+                  </button>
+                )}
+
+                <div className="mx-4 my-1 h-px bg-slate-100" />
+
+                {/* Members */}
+                <button
+                  onClick={() => {
+                    onMembersToggle();
+                    setMenuOpen(false);
+                  }}
+                  className="flex items-center gap-3 px-4 py-2.5 text-[11px] font-mono text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
+                    <circle
+                      cx="4.5"
+                      cy="3.5"
+                      r="2"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                    />
+                    <path
+                      d="M1 10c0-2 1.5-3.5 3.5-3.5S8 8 8 10"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M8.5 5v3M10 6.5H7"
+                      stroke="currentColor"
+                      strokeWidth="1.4"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  Members
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── Desktop toolbar ─────────────────────────────────────
   return (
     <div className="flex items-center gap-3 px-6 h-14 shrink-0 border-b border-slate-200 bg-white">
-      {/* Edit Store — owner/editor only */}
       {canEdit && (
         <button
           onClick={() => navigate(`/store/${storeId}/edit`)}
@@ -47,7 +202,6 @@ export function StoreToolbar({
         </button>
       )}
 
-      {/* Add Item — owner/editor only */}
       {canEdit && (
         <button
           onClick={onAddItem}
@@ -65,11 +219,9 @@ export function StoreToolbar({
         </button>
       )}
 
-      {/* Visibility toggles — owner only */}
       {isOwner && store && (
         <>
           <div className="w-px h-5 bg-slate-200" />
-
           <button
             onClick={() => onToggleVisibility("isPublic", !store.isPublic)}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-[10px] font-bold uppercase tracking-widest transition-all duration-150 ${
@@ -79,9 +231,7 @@ export function StoreToolbar({
             }`}
           >
             <span
-              className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                store.isPublic ? "bg-emerald-400" : "bg-slate-300"
-              }`}
+              className={`w-1.5 h-1.5 rounded-full shrink-0 ${store.isPublic ? "bg-emerald-400" : "bg-slate-300"}`}
             />
             {store.isPublic ? "Public" : "Private"}
           </button>
@@ -98,19 +248,15 @@ export function StoreToolbar({
               }`}
             >
               <span
-                className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                  store.canvasVisible ? "bg-emerald-400" : "bg-slate-300"
-                }`}
+                className={`w-1.5 h-1.5 rounded-full shrink-0 ${store.canvasVisible ? "bg-emerald-400" : "bg-slate-300"}`}
               />
               {store.canvasVisible ? "Map Visible" : "Map Hidden"}
             </button>
           )}
-
           <div className="w-px h-5 bg-slate-200" />
         </>
       )}
 
-      {/* Members button — owner only */}
       {isOwner && (
         <button
           onClick={onMembersToggle}

@@ -1,44 +1,39 @@
 import type { CreateStoreInput } from "~/types/storeViewFinderTypes";
+import { ZoomControls } from "#components/addstore/storeViewFinder/ZoomControl";
 
 type Props = {
   store: CreateStoreInput;
   id: string | undefined;
+  zoom: number;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
 };
 
-export function StoreHeader({ store, id }: Props) {
+export function StoreHeader({ store, id, zoom, onZoomIn, onZoomOut }: Props) {
   const tags: string[] = JSON.parse(store.tags ?? "[]");
 
   return (
-    <div className="bg-white border border-slate-200 rounded-lg p-6 flex flex-col gap-3">
-      <div className="flex items-start justify-between">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-xl font-bold text-slate-800">{store.name}</h1>
-          <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-            {store.cols} × {store.rows} grid · {store.blocks.length} block
-            {store.blocks.length !== 1 ? "s" : ""}
-          </p>
-        </div>
-        <span className="text-[10px] font-mono text-slate-300">{id}</span>
+    <div className="flex items-center gap-3 px-1 pb-3">
+      {/* Name + tags */}
+      <div className="flex items-center gap-2 min-w-0 flex-1">
+        <span className="text-[12px] font-bold text-slate-700 truncate">
+          {store.name}
+        </span>
+        {tags.map((tag) => (
+          <span
+            key={tag}
+            className="hidden sm:inline-flex items-center rounded-full px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest border bg-slate-100 border-slate-200 text-slate-500 shrink-0"
+          >
+            {tag}
+          </span>
+        ))}
+        <span className="text-[9px] font-mono text-slate-300 shrink-0">
+          {store.cols}×{store.rows}
+        </span>
       </div>
 
-      {tags.length > 0 && (
-        <div className="flex flex-wrap gap-1.5">
-          {tags.map((tag) => (
-            <span
-              key={tag}
-              className="inline-flex items-center rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest border bg-slate-100 border-slate-300 text-slate-600"
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {store.description && (
-        <p className="text-[12px] text-slate-500 leading-relaxed">
-          {store.description}
-        </p>
-      )}
+      {/* Zoom */}
+      <ZoomControls zoom={zoom} onZoomIn={onZoomIn} onZoomOut={onZoomOut} />
     </div>
   );
 }

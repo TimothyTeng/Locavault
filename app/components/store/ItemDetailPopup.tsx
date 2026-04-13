@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import type { Item } from "~/types/storeTypes";
 import { remainingDays } from "~/utils/helpers/store.helper";
 import {
@@ -113,7 +114,7 @@ export function ItemDetailPopup({
     </div>
   );
 
-  return (
+  return createPortal(
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-sm"
       onClick={onClose}
@@ -398,6 +399,7 @@ export function ItemDetailPopup({
             </button>
           ))}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
