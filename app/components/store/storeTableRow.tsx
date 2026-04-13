@@ -94,19 +94,6 @@ export function StoreTableRow({
     setShowDetail(false);
   };
 
-  // On mobile: single tap opens modal. On desktop: single tap selects, double tap opens modal.
-  const handleClick = () => {
-    if (isMobile) {
-      setShowDetail(true);
-    } else {
-      onSelect(item);
-    }
-  };
-
-  const handleDoubleClick = () => {
-    if (!isMobile) setShowDetail(true);
-  };
-
   return (
     <>
       {showDetail && (
@@ -119,8 +106,8 @@ export function StoreTableRow({
       )}
 
       <tr
-        onClick={handleClick}
-        onDoubleClick={handleDoubleClick}
+        onClick={() => onSelect(item)}
+        onDoubleClick={() => setShowDetail(true)}
         className={[
           "border-b border-slate-100 cursor-pointer transition-colors duration-100 group",
           isSelected

@@ -72,6 +72,19 @@ export function AddItemForm({
           useRate: useRate !== "" ? Number(useRate) : null,
           useRatePeriod: useRate !== "" ? useRatePeriod : null,
         });
+        // Reset form
+        setName("");
+        setDescription("");
+        setQuantity(0);
+        setInStore(false);
+        setSku("");
+        setUnit("");
+        setMinQuantity("");
+        setCost("");
+        setExpiryDate("");
+        setUseRate("");
+        setUseRatePeriod("week");
+        setShowExtra(false);
       }}
       className="flex flex-col gap-6"
     >
