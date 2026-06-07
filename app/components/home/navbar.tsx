@@ -1,15 +1,19 @@
-import { useRef, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+import { useLocation } from "react-router";
 import { IconLogoMark } from "./icons";
 import {
   Show,
   SignInButton,
   SignUpButton,
   UserButton,
+  useAuth,
 } from "@clerk/react-router";
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { isSignedIn } = useAuth();
+  const location = useLocation();
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 20);
@@ -25,12 +29,28 @@ export default function Navbar() {
     };
   }, [mobileOpen]);
 
-  const navLinks = [
+  const marketingLinks = [
     { href: "#features", label: "Features" },
     { href: "#how", label: "How it works" },
     { href: "#pricing", label: "Pricing" },
     { href: "/docs", label: "Docs" },
   ];
+
+  const appLinks = [
+    { href: "/", label: "My stores" },
+    { href: "/templates", label: "Templates" },
+    { href: "/purchases", label: "Purchase list" },
+    { href: "/settings", label: "Settings" },
+  ];
+
+  const navLinks = isSignedIn ? appLinks : marketingLinks;
+
+  function isActive(href: string) {
+    if (href === "/") return location.pathname === "/";
+    return (
+      location.pathname.startsWith(href.split("#")[0]) && href !== "/#pricing"
+    );
+  }
 
   return (
     <>
@@ -65,9 +85,15 @@ export default function Navbar() {
           <a
             key={link.href}
             href={link.href}
-            className="px-3.5 py-1.5 rounded-full text-sm text-gray-600
-                       hover:text-gray-900 hover:bg-gray-100 transition-all duration-150
-                       font-medium whitespace-nowrap"
+            className={`
+              px-3.5 py-1.5 rounded-full text-sm font-medium whitespace-nowrap
+              transition-all duration-150
+              ${
+                isActive(link.href)
+                  ? "text-emerald-700 bg-emerald-50"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+              }
+            `}
           >
             {link.label}
           </a>
@@ -82,8 +108,8 @@ export default function Navbar() {
             <SignInButton mode="modal">
               <button
                 className="px-3.5 py-1.5 rounded-full text-sm font-medium
-                                 text-gray-600 hover:text-gray-900 hover:bg-gray-100
-                                 transition-all duration-150 whitespace-nowrap shrink-0"
+                           text-gray-600 hover:text-gray-900 hover:bg-gray-100
+                           transition-all duration-150 whitespace-nowrap shrink-0"
               >
                 Log in
               </button>
@@ -91,8 +117,8 @@ export default function Navbar() {
             <SignUpButton mode="modal">
               <button
                 className="px-4 py-1.5 rounded-full text-sm font-semibold
-                                 bg-emerald-600 text-white hover:bg-emerald-500
-                                 transition-all duration-150 shadow-sm whitespace-nowrap shrink-0"
+                           bg-emerald-600 text-white hover:bg-emerald-500
+                           transition-all duration-150 shadow-sm whitespace-nowrap shrink-0"
               >
                 Get started →
               </button>
@@ -118,7 +144,6 @@ export default function Navbar() {
           ${mobileOpen ? "opacity-0 pointer-events-none scale-75" : "opacity-100 scale-100"}
         `}
       >
-        {/* Hamburger */}
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
           <path
             d="M3 5h14M3 10h14M3 15h14"
@@ -190,9 +215,15 @@ export default function Navbar() {
               key={link.href}
               href={link.href}
               onClick={() => setMobileOpen(false)}
-              className="flex items-center justify-between px-4 py-3.5 rounded-2xl
-                         text-gray-700 font-medium text-[15px] hover:bg-gray-50
-                         transition-colors active:bg-gray-100"
+              className={`
+                flex items-center justify-between px-4 py-3.5 rounded-2xl
+                font-medium text-[15px] transition-colors active:bg-gray-100
+                ${
+                  isActive(link.href)
+                    ? "text-emerald-700 bg-emerald-50"
+                    : "text-gray-700 hover:bg-gray-50"
+                }
+              `}
               style={{ animationDelay: `${i * 40}ms` }}
             >
               {link.label}
@@ -201,7 +232,9 @@ export default function Navbar() {
                 height="16"
                 viewBox="0 0 16 16"
                 fill="none"
-                className="text-gray-300"
+                className={
+                  isActive(link.href) ? "text-emerald-400" : "text-gray-300"
+                }
               >
                 <path
                   d="M6 3l5 5-5 5"

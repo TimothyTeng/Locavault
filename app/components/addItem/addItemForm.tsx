@@ -1,6 +1,19 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { FieldLabel } from "../addstore/storeViewFinder/StoreForm";
 import { runOutDays } from "~/utils/helpers/store.helper";
+import {
+  resolveBarcode,
+  FOOD_CATEGORY_RE,
+} from "~/utils/helpers/barcode.helper";
+import { BarcodeScanner } from "./BarcodeScanner";
+
+/** Format a Date as the YYYY-MM-DD value an <input type="date"> expects */
+function toDateInput(d: Date): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+type Category = { id: string; label: string };
 
 type Props = {
   onSubmit: (data: {
@@ -17,22 +30,36 @@ type Props = {
     useRate?: number | null;
     useRatePeriod?: "day" | "week" | "month" | null;
   }) => void;
+  /** Labelled standard blocks, used as categories / shelves */
+  categories?: Category[];
   selectedBlockId?: string | null;
   selectedBlockLabel?: string;
 };
 
+// Heuristics: which tracking field matters for a given category label.
+// Keyword-based so it works with user-defined labels (not hardcoded names).
+const EXPIRY_HINT =
+  /food|grocer|pantry|fridge|freezer|perish|fresh|dairy|produce|snack|drink|beverage|fruit|veg|meat|medic|pharma|cosmetic/i;
+const USERATE_HINT =
+  /clean|laundry|detergent|toiletr|hygiene|paper|consumable|suppl|soap|shampoo|tissue|refill/i;
+
 export function AddItemForm({
   onSubmit,
+  categories = [],
   selectedBlockId,
   selectedBlockLabel,
 }: Props) {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [quantity, setQuantity] = useState(0);
+  const [quantity, setQuantity] = useState(1);
+  const [quantityTouched, setQuantityTouched] = useState(false);
   const [inStore, setInStore] = useState(false);
   const [nameError, setNameError] = useState(false);
 
   // Extended fields
+  // Fallback category (a block id) used only when no block is selected on the
+  // floor plan. Floor-plan selection always takes precedence.
+  const [fallbackCategoryId, setFallbackCategoryId] = useState("");
   const [sku, setSku] = useState("");
   const [unit, setUnit] = useState("");
   const [minQuantity, setMinQuantity] = useState("");
@@ -43,11 +70,137 @@ export function AddItemForm({
     "week",
   );
   const [showExtra, setShowExtra] = useState(false);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [looking, setLooking] = useState(false);
+
+  // Handle a scanned/typed barcode: parse GS1 fields locally, then look up
+  // the product name/category for plain retail codes.
+  const handleDetect = async (raw: string) => {
+    setScanOpen(false);
+    setLooking(true);
+    try {
+      const info = await resolveBarcode(raw);
+      if (info.sku) setSku(info.sku);
+      if (info.expiry) {
+        setExpiryDate(toDateInput(info.expiry));
+        setShowExtra(true);
+      }
+      if (info.unit) setUnit((u) => u || info.unit!);
+      if (info.name) setName((prev) => prev || info.name!);
+      // Fallback auto-shelf — only when no block was picked on the floor plan
+      if (!selectedBlockId && info.category === "Food") {
+        const foodCat = categories.find((c) => FOOD_CATEGORY_RE.test(c.label));
+        if (foodCat) setFallbackCategoryId(foodCat.id);
+      }
+    } finally {
+      setLooking(false);
+    }
+  };
+
+  // Floor-plan click wins; otherwise fall back to the chosen category shelf.
+  const resolvedBlockId = selectedBlockId || fallbackCategoryId || "";
+
+  // Which category applies, and what does it imply we should track?
+  const categoryLabel = selectedBlockId
+    ? (selectedBlockLabel ??
+      categories.find((c) => c.id === selectedBlockId)?.label ??
+      "")
+    : (categories.find((c) => c.id === fallbackCategoryId)?.label ?? "");
+  const focusField: "expiry" | "useRate" | null = EXPIRY_HINT.test(categoryLabel)
+    ? "expiry"
+    : USERATE_HINT.test(categoryLabel)
+      ? "useRate"
+      : null;
+
+  // Smart quantity: refill to ~2× min stock until the user types their own
+  useEffect(() => {
+    if (quantityTouched) return;
+    const m = Number(minQuantity);
+    setQuantity(m > 0 ? m * 2 : 1);
+  }, [minQuantity, quantityTouched]);
 
   const inputClass =
     "w-full rounded-md border border-slate-300 bg-white px-3 py-2.5 text-[12px] font-mono text-slate-800 placeholder-slate-300 shadow-sm outline-none transition-all duration-150 focus:border-slate-500 focus:ring-2 focus:ring-slate-100";
 
   const runoutDays = runOutDays(useRate, useRatePeriod, quantity);
+
+  const freshDays =
+    expiryDate !== ""
+      ? Math.ceil(
+          (new Date(expiryDate).getTime() - Date.now()) /
+            (1000 * 60 * 60 * 24),
+        )
+      : null;
+
+  const resetForm = () => {
+    setName("");
+    setDescription("");
+    setQuantity(1);
+    setQuantityTouched(false);
+    setInStore(false);
+    setFallbackCategoryId("");
+    setSku("");
+    setUnit("");
+    setMinQuantity("");
+    setCost("");
+    setExpiryDate("");
+    setUseRate("");
+    setUseRatePeriod("week");
+    setShowExtra(false);
+  };
+
+  // ── Reusable field blocks (so the relevant one can be promoted inline) ──
+
+  const expiryField = (
+    <div className="flex flex-col gap-2">
+      <FieldLabel>Expiry Date</FieldLabel>
+      <input
+        type="date"
+        value={expiryDate}
+        onChange={(e) => setExpiryDate(e.target.value)}
+        className={inputClass}
+      />
+      {freshDays != null && (
+        <p className="text-[10px] font-mono text-slate-400">
+          {freshDays >= 0
+            ? `≈ fresh for ${freshDays} day${freshDays !== 1 ? "s" : ""}`
+            : "⚠ already past expiry"}
+        </p>
+      )}
+    </div>
+  );
+
+  const useRateField = (
+    <div className="flex flex-col gap-2">
+      <FieldLabel>Use Rate</FieldLabel>
+      <div className="flex gap-2">
+        <input
+          type="number"
+          min="0"
+          value={useRate}
+          placeholder="amount"
+          onChange={(e) => setUseRate(e.target.value)}
+          className={inputClass}
+        />
+        <select
+          value={useRatePeriod}
+          onChange={(e) =>
+            setUseRatePeriod(e.target.value as "day" | "week" | "month")
+          }
+          className={`${inputClass} w-28 cursor-pointer`}
+        >
+          <option value="day">/ day</option>
+          <option value="week">/ week</option>
+          <option value="month">/ month</option>
+        </select>
+      </div>
+      {runoutDays != null && (
+        <p className="text-[10px] font-mono text-slate-400">
+          ≈ runs out in {runoutDays} day{runoutDays !== 1 ? "s" : ""}
+        </p>
+      )}
+    </div>
+  );
 
   return (
     <form
@@ -63,7 +216,7 @@ export function AddItemForm({
           description,
           quantity,
           inStore,
-          selectedBlockId,
+          selectedBlockId: resolvedBlockId || null,
           sku: sku || null,
           unit: unit || null,
           minQuantity: minQuantity !== "" ? Number(minQuantity) : null,
@@ -72,22 +225,34 @@ export function AddItemForm({
           useRate: useRate !== "" ? Number(useRate) : null,
           useRatePeriod: useRate !== "" ? useRatePeriod : null,
         });
-        // Reset form
-        setName("");
-        setDescription("");
-        setQuantity(0);
-        setInStore(false);
-        setSku("");
-        setUnit("");
-        setMinQuantity("");
-        setCost("");
-        setExpiryDate("");
-        setUseRate("");
-        setUseRatePeriod("week");
-        setShowExtra(false);
+        resetForm();
       }}
       className="flex flex-col gap-6"
     >
+      {/* Scan barcode */}
+      <div className="flex flex-col gap-1.5">
+        <button
+          type="button"
+          onClick={() => setScanOpen(true)}
+          className="flex items-center justify-center gap-2 w-full py-2.5 rounded-md border border-slate-800 bg-slate-800 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-slate-700 transition-colors"
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M3 5v14M7 5v14M11 5v14M15 5v14M19 5v14M21 5v14"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            />
+          </svg>
+          Scan barcode
+        </button>
+        {looking && (
+          <p className="text-[10px] font-mono text-slate-400 text-center">
+            Looking up product…
+          </p>
+        )}
+      </div>
+
       {/* Name */}
       <div className="flex flex-col gap-2">
         <FieldLabel>Item Name</FieldLabel>
@@ -109,6 +274,45 @@ export function AddItemForm({
         )}
       </div>
 
+      {/* Assignment — floor-plan click is primary, category is the fallback */}
+      {selectedBlockId ? (
+        <div className="flex flex-col gap-2">
+          <FieldLabel>Block</FieldLabel>
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 text-[11px] font-mono text-slate-600">
+            {selectedBlockLabel || selectedBlockId}
+          </div>
+          <p className="text-[10px] font-mono text-slate-400">
+            Assigned from the floor plan. Click another block to change.
+          </p>
+        </div>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <FieldLabel>Category</FieldLabel>
+          {categories.length > 0 ? (
+            <select
+              value={fallbackCategoryId}
+              onChange={(e) => setFallbackCategoryId(e.target.value)}
+              className={`${inputClass} cursor-pointer`}
+            >
+              <option value="">Unassigned</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2.5 text-[11px] font-mono text-slate-300">
+              Click a block on the floor plan to assign, or label blocks to use
+              them as categories
+            </div>
+          )}
+          <p className="text-[10px] font-mono text-slate-400">
+            No block selected — pick a category to auto-shelf the item.
+          </p>
+        </div>
+      )}
+
       {/* Quantity + Unit */}
       <div className="flex gap-3">
         <div className="flex flex-col gap-2 flex-1">
@@ -117,7 +321,10 @@ export function AddItemForm({
             type="number"
             value={quantity}
             min={0}
-            onChange={(e) => setQuantity(Number(e.target.value))}
+            onChange={(e) => {
+              setQuantity(Number(e.target.value));
+              setQuantityTouched(true);
+            }}
             className={inputClass}
           />
         </div>
@@ -132,6 +339,34 @@ export function AddItemForm({
           />
         </div>
       </div>
+
+      {/* Min stock (drives low-stock flag + suggested quantity) */}
+      <div className="flex flex-col gap-2">
+        <FieldLabel>Min Stock</FieldLabel>
+        <input
+          type="number"
+          min="0"
+          value={minQuantity}
+          placeholder="low-stock threshold"
+          onChange={(e) => setMinQuantity(e.target.value)}
+          className={inputClass}
+        />
+        <p className="text-[10px] font-mono text-slate-400">
+          Flags the item as low and seeds a sensible starting quantity.
+        </p>
+      </div>
+
+      {/* Promoted tracking field, based on the category */}
+      {focusField && (
+        <div className="flex flex-col gap-2 rounded-md bg-amber-50/50 border border-amber-100 p-3">
+          <p className="text-[10px] font-mono text-amber-700">
+            {focusField === "expiry"
+              ? `“${categoryLabel}” items: add an expiry date to track freshness.`
+              : `“${categoryLabel}” items: add a use rate to predict run-out.`}
+          </p>
+          {focusField === "expiry" ? expiryField : useRateField}
+        </div>
+      )}
 
       {/* Description */}
       <div className="flex flex-col gap-2">
@@ -171,23 +406,6 @@ export function AddItemForm({
           </span>
         </div>
       </div>
-
-      {/* Block */}
-      {selectedBlockId ? (
-        <div className="flex flex-col gap-2">
-          <FieldLabel>Block</FieldLabel>
-          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 text-[11px] font-mono text-slate-600">
-            {selectedBlockLabel || selectedBlockId}
-          </div>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-2">
-          <FieldLabel>Block</FieldLabel>
-          <div className="rounded-md border border-dashed border-slate-200 bg-slate-50 px-3 py-2.5 text-[11px] font-mono text-slate-300">
-            Click a block on the floor plan to assign
-          </div>
-        </div>
-      )}
 
       {/* Additional details toggle */}
       <button
@@ -246,60 +464,11 @@ export function AddItemForm({
             </div>
           </div>
 
-          {/* Min stock + Expiry */}
-          <div className="flex gap-3">
-            <div className="flex flex-col gap-2 flex-1">
-              <FieldLabel>Min Stock</FieldLabel>
-              <input
-                type="number"
-                min="0"
-                value={minQuantity}
-                placeholder="low-stock threshold"
-                onChange={(e) => setMinQuantity(e.target.value)}
-                className={inputClass}
-              />
-            </div>
-            <div className="flex flex-col gap-2 flex-1">
-              <FieldLabel>Expiry Date</FieldLabel>
-              <input
-                type="date"
-                value={expiryDate}
-                onChange={(e) => setExpiryDate(e.target.value)}
-                className={inputClass}
-              />
-            </div>
-          </div>
+          {/* Expiry — shown here only if not already promoted above */}
+          {focusField !== "expiry" && expiryField}
 
-          {/* Use rate */}
-          <div className="flex flex-col gap-2">
-            <FieldLabel>Use Rate</FieldLabel>
-            <div className="flex gap-2">
-              <input
-                type="number"
-                min="0"
-                value={useRate}
-                placeholder="amount"
-                onChange={(e) => setUseRate(e.target.value)}
-                className={`${inputClass}`}
-              />
-              <select
-                value={useRatePeriod}
-                onChange={(e) =>
-                  setUseRatePeriod(e.target.value as "day" | "week" | "month")
-                }
-                className={`${inputClass} w-28 cursor-pointer`}
-              >
-                <option value="day">/ day</option>
-                <option value="week">/ week</option>
-                <option value="month">/ month</option>
-              </select>
-            </div>
-            {runoutDays != null && (
-              <p className="text-[10px] font-mono text-slate-400">
-                ≈ runs out in {runoutDays} day{runoutDays !== 1 ? "s" : ""}
-              </p>
-            )}
-          </div>
+          {/* Use rate — shown here only if not already promoted above */}
+          {focusField !== "useRate" && useRateField}
         </div>
       )}
 
@@ -310,6 +479,13 @@ export function AddItemForm({
       >
         Add Item
       </button>
+
+      {scanOpen && (
+        <BarcodeScanner
+          onDetect={handleDetect}
+          onClose={() => setScanOpen(false)}
+        />
+      )}
     </form>
   );
 }

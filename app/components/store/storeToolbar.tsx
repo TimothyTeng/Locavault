@@ -7,6 +7,7 @@ type Props = {
   storeId: string;
   onAddItem: () => void;
   onMembersToggle: () => void;
+  onPurchaseOrder: () => void;
   accessLevel: AccessLevel;
   store: CreateStoreInput | null;
   onToggleVisibility: (
@@ -14,16 +15,19 @@ type Props = {
     value: boolean,
   ) => void;
   isMobile: boolean;
+  restockCount?: number;
 };
 
 export function StoreToolbar({
   storeId,
   onAddItem,
   onMembersToggle,
+  onPurchaseOrder,
   accessLevel,
   store,
   onToggleVisibility,
   isMobile,
+  restockCount = 0,
 }: Props) {
   const navigate = useNavigate();
   const canEdit = accessLevel === "owner" || accessLevel === "editor";
@@ -83,6 +87,36 @@ export function StoreToolbar({
         )}
 
         <div className="flex-1" />
+
+        {canEdit && (
+          <button
+            onClick={onPurchaseOrder}
+            className="relative flex items-center justify-center w-8 h-8 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all"
+            title="Shopping List"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <path
+                d="M3 6h18M16 10a4 4 0 01-8 0"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            {restockCount > 0 && (
+              <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-white text-[8px] font-bold flex items-center justify-center">
+                {restockCount}
+              </span>
+            )}
+          </button>
+        )}
 
         {/* ⋯ overflow menu — owner only */}
         {isOwner && (
@@ -216,6 +250,39 @@ export function StoreToolbar({
             />
           </svg>
           Add Item
+        </button>
+      )}
+      {canEdit && (
+        <button
+          onClick={onPurchaseOrder}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-[10px] font-bold uppercase tracking-widest transition-all duration-150 ${
+            restockCount > 0
+              ? "bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100"
+              : "border-slate-300 text-slate-600 hover:bg-slate-800 hover:text-white hover:border-slate-800"
+          }`}
+        >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+            <path
+              d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M3 6h18M16 10a4 4 0 01-8 0"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          Shopping List
+          {restockCount > 0 && (
+            <span className="ml-0.5 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-white text-[9px] font-bold flex items-center justify-center">
+              {restockCount}
+            </span>
+          )}
         </button>
       )}
 

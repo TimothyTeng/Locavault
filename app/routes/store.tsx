@@ -25,8 +25,15 @@ import { AddItemPanel } from "~/components/addItem/addItemPanel";
 import { MembersPanel } from "~/components/store/membersPanel";
 import { MiniMap } from "~/components/store/minimap";
 import { blocksToBlocksMap } from "#utils/helpers/store.helper";
+import { getItemStatus } from "#utils/helpers/storeTable.helper";
 import { useIsMobile } from "~/utils/useIsMobile";
 import type { loader } from "#utils/loaders/store.loader";
+import { PurchaseOrderPanel } from "~/components/purchases/purchaseOrderPanel";
+import type { PurchaseOrderItem } from "~/types/purchaseOrderTypes";
+import {
+  type BarcodeInfo,
+  FOOD_CATEGORY_RE,
+} from "#utils/helpers/barcode.helper";
 
 export { loader, action } from "#utils/loaders/store.loader";
 
@@ -46,6 +53,7 @@ export default function StorePage() {
     members: dbMembers,
     accessLevel,
     userId,
+    purchaseOrders,
   } = useLoaderData<typeof loader>();
 
   const { state } = useLocation();
@@ -76,6 +84,13 @@ export default function StorePage() {
   const [membersPanelOpen, setMembersPanelOpen] = useState(false);
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [minimapExpanded, setMinimapExpanded] = useState(false);
+
+  const [purchaseOrder, setPurchaseOrder] = useState<PurchaseOrderItem[]>(
+    (purchaseOrders as PurchaseOrderItem[]) ?? [],
+  );
+  const [purchaseOrderOpen, setPurchaseOrderOpen] = useState(false);
+  // Ids the user has ticked off ("got it") but not yet committed to inventory
+  const [checkedPOIds, setCheckedPOIds] = useState<Set<string>>(new Set());
 
   const { zoom, setZoom } = useZoom(0.5, 3);
   const onZoomIn = () => setZoom((z: number) => Math.min(3, z + 0.1));
@@ -137,6 +152,26 @@ export default function StorePage() {
 
   const canEdit = accessLevel === "owner" || accessLevel === "editor";
   const isOwner = accessLevel === "owner";
+
+  // How many inventory items currently need restocking (low / out / expiring)
+  const restockCount = items.filter(
+    (i) => getItemStatus(i) !== "ok",
+  ).length;
+
+  // Labelled standard blocks act as categories / shelves in the add-item form
+  const categories = Object.entries(blocks)
+    .filter(
+      ([, b]) =>
+        (b.kind === "standard" || b.kind === undefined) && b.label.trim(),
+    )
+    .map(([id, b]) => ({ id, label: b.label }));
+
+  useEffect(() => {
+    // Re-sync the shopping list from the server, but not while a mutation is
+    // mid-flight (would clobber optimistic adds/edits).
+    if (!purchaseOrders || fetcher.state !== "idle") return;
+    setPurchaseOrder(purchaseOrders as PurchaseOrderItem[]);
+  }, [purchaseOrders]);
 
   // ── Handlers ──
   const handleSelectItem = (item: Item) => {
@@ -266,11 +301,264 @@ export default function StorePage() {
     );
   };
 
+  const handleAddPOItem = () => {
+    const optimisticId = crypto.randomUUID();
+    const newPO: PurchaseOrderItem = {
+      id: optimisticId,
+      itemId: null,
+      storeId: id!,
+      name: "New item",
+      quantity: 1,
+      blockId: null,
+      description: null,
+      sku: null,
+      unit: null,
+      minQuantity: null,
+      cost: null,
+      expiryDate: null,
+      useRate: null,
+      useRatePeriod: null,
+      createdAt: new Date(),
+      createdBy: userId ?? null,
+    };
+    setPurchaseOrder((prev) => [...prev, newPO]);
+    fetcher.submit(
+      { _action: "createPOItem", name: "New item", quantity: 1, optimisticId },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
+  // Add a shopping-list row from a scanned barcode
+  const handleAddScannedPOItem = (info: BarcodeInfo) => {
+    const optimisticId = crypto.randomUUID();
+
+    // Auto-shelf food to a matching block (best-effort)
+    let scannedBlockId: string | null = null;
+    if (info.category === "Food") {
+      const foodBlock = Object.entries(blocks).find(
+        ([, b]) =>
+          (b.kind === "standard" || b.kind === undefined) &&
+          FOOD_CATEGORY_RE.test(b.label),
+      );
+      if (foodBlock) scannedBlockId = foodBlock[0];
+    }
+
+    const newPO: PurchaseOrderItem = {
+      id: optimisticId,
+      itemId: null,
+      storeId: id!,
+      name: info.name || "New item",
+      quantity: 1,
+      blockId: scannedBlockId,
+      description: null,
+      sku: info.sku || null,
+      unit: info.unit ?? null,
+      minQuantity: null,
+      cost: null,
+      expiryDate: info.expiry ?? null,
+      useRate: null,
+      useRatePeriod: null,
+      createdAt: new Date(),
+      createdBy: userId ?? null,
+    };
+    setPurchaseOrder((prev) => [...prev, newPO]);
+    fetcher.submit(
+      {
+        _action: "createPOItem",
+        name: newPO.name,
+        quantity: 1,
+        blockId: scannedBlockId,
+        sku: newPO.sku,
+        unit: newPO.unit,
+        expiryDate: info.expiry ? info.expiry.toISOString() : null,
+        optimisticId,
+      },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
+  const handleUpdatePOItem = (updated: PurchaseOrderItem) => {
+    setPurchaseOrder((prev) =>
+      prev.map((p) => (p.id === updated.id ? updated : p)),
+    );
+    fetcher.submit(
+      {
+        _action: "updatePOItem",
+        id: updated.id,
+        name: updated.name,
+        quantity: updated.quantity,
+        blockId: updated.blockId ?? null,
+        description: updated.description ?? null,
+        sku: updated.sku ?? null,
+        unit: updated.unit ?? null,
+        minQuantity: updated.minQuantity ?? null,
+        cost: updated.cost ?? null,
+        expiryDate: updated.expiryDate
+          ? updated.expiryDate.toISOString()
+          : null,
+        useRate: updated.useRate ?? null,
+        useRatePeriod: updated.useRatePeriod ?? null,
+      },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
+  const handleDeletePOItem = (poId: string) => {
+    setPurchaseOrder((prev) => prev.filter((p) => p.id !== poId));
+    fetcher.submit(
+      { _action: "deletePOItem", id: poId },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
+  // Apply the optimistic inventory + list changes for buying one PO row
+  const applyBuyOptimistic = (poRow: PurchaseOrderItem) => {
+    setPurchaseOrder((prev) => prev.filter((p) => p.id !== poRow.id));
+    if (poRow.itemId) {
+      // Known item — add quantity to existing
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === poRow.itemId
+            ? { ...i, quantity: i.quantity + poRow.quantity }
+            : i,
+        ),
+      );
+    } else {
+      // New item — add to inventory
+      setItems((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          name: poRow.name,
+          quantity: poRow.quantity,
+          storeId: id!,
+          blockId: poRow.blockId,
+          description: poRow.description,
+          createdAt: new Date(),
+          isPublic: true,
+          sku: poRow.sku,
+          unit: poRow.unit,
+          minQuantity: poRow.minQuantity,
+          cost: poRow.cost,
+          expiryDate: poRow.expiryDate,
+          useRate: poRow.useRate,
+          useRatePeriod: poRow.useRatePeriod,
+        },
+      ]);
+    }
+  };
+
+  // Quick-buy: commit a single row to inventory immediately
+  const handleBuyPOItem = (poId: string) => {
+    const poRow = purchaseOrder.find((p) => p.id === poId);
+    if (!poRow) return;
+    setCheckedPOIds((prev) => {
+      if (!prev.has(poId)) return prev;
+      const next = new Set(prev);
+      next.delete(poId);
+      return next;
+    });
+    applyBuyOptimistic(poRow);
+    fetcher.submit(
+      { _action: "buyPOItem", id: poId },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
+  // Toggle a row's "got it" tick (does not touch inventory)
+  const handleTogglePOChecked = (poId: string) => {
+    setCheckedPOIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(poId)) next.delete(poId);
+      else next.add(poId);
+      return next;
+    });
+  };
+
+  // Commit every ticked row to inventory in a single request
+  const handleCommitCheckedPO = () => {
+    const rows = purchaseOrder.filter((p) => checkedPOIds.has(p.id));
+    if (!rows.length) return;
+    rows.forEach(applyBuyOptimistic);
+    setCheckedPOIds(new Set());
+    fetcher.submit(
+      { _action: "buyPOItems", ids: rows.map((r) => r.id) },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
+  // Suggested restock quantity — refill to ~2× min stock (fallback: 1)
+  const suggestedQty = (item: Item) => {
+    const target = item.minQuantity != null ? item.minQuantity * 2 : 1;
+    return Math.max(target - item.quantity, 1);
+  };
+
+  // Build an optimistic PO row + its server payload from an inventory item
+  const buildPOFromItem = (item: Item) => {
+    const optimisticId = crypto.randomUUID();
+    const quantity = suggestedQty(item);
+    const optimistic: PurchaseOrderItem = {
+      id: optimisticId,
+      itemId: item.id, // ← link to existing item
+      storeId: id!,
+      name: item.name,
+      quantity,
+      blockId: item.blockId,
+      description: item.description,
+      sku: item.sku,
+      unit: item.unit,
+      minQuantity: item.minQuantity,
+      cost: item.cost,
+      expiryDate: null,
+      useRate: item.useRate,
+      useRatePeriod: item.useRatePeriod,
+      createdAt: new Date(),
+      createdBy: userId ?? null,
+    };
+    const payload = {
+      itemId: item.id,
+      name: item.name,
+      quantity,
+      blockId: item.blockId ?? null,
+      description: item.description ?? null,
+      sku: item.sku ?? null,
+      unit: item.unit ?? null,
+      minQuantity: item.minQuantity ?? null,
+      cost: item.cost ?? null,
+      expiryDate: null,
+      useRate: item.useRate ?? null,
+      useRatePeriod: item.useRatePeriod ?? null,
+    };
+    return { optimistic, payload, optimisticId };
+  };
+
+  const handleAddPOItemFromSuggestion = (item: Item) => {
+    const { optimistic, payload, optimisticId } = buildPOFromItem(item);
+    setPurchaseOrder((prev) => [...prev, optimistic]);
+    fetcher.submit(
+      { _action: "createPOItem", ...payload, optimisticId },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
+  const handleAddAllSuggestions = (suggested: Item[]) => {
+    if (!suggested.length) return;
+    const built = suggested.map(buildPOFromItem);
+    setPurchaseOrder((prev) => [...prev, ...built.map((b) => b.optimistic)]);
+    fetcher.submit(
+      { _action: "createPOItems", items: built.map((b) => b.payload) },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
   // ── Deselect on outside click (desktop only) ──
   const tableRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (isMobile) return;
     const handler = (e: MouseEvent) => {
+      // While the Add Item / Shopping List panels are open, the highlighted
+      // block is the active assignment target — don't clear it on outside clicks.
+      if (addItemOpen || purchaseOrderOpen) return;
       if (tableRef.current && !tableRef.current.contains(e.target as Node)) {
         setSelectedItemId(null);
         setHighlightedCell(null);
@@ -278,7 +566,7 @@ export default function StorePage() {
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [isMobile]);
+  }, [isMobile, addItemOpen, purchaseOrderOpen]);
 
   // ── Early returns ──
   if (!mounted) {
@@ -310,6 +598,11 @@ export default function StorePage() {
           store={store}
           onToggleVisibility={handleToggleStoreVisibility}
           isMobile={isMobile}
+          restockCount={restockCount}
+          onPurchaseOrder={() => {
+            setAddItemOpen(false);
+            setPurchaseOrderOpen((v) => !v);
+          }}
         />
 
         <div className="flex flex-1 min-h-0 overflow-hidden relative">
@@ -409,8 +702,29 @@ export default function StorePage() {
           isOpen={addItemOpen}
           onClose={() => setAddItemOpen(false)}
           onSubmit={handleAddItem}
+          categories={categories}
           selectedBlockId={highlightedCell}
           selectedBlockLabel={blocks[highlightedCell ?? ""]?.label ?? ""}
+          isMobile={isMobile}
+        />
+      )}
+      {canEdit && (
+        <PurchaseOrderPanel
+          isOpen={purchaseOrderOpen}
+          onClose={() => setPurchaseOrderOpen(false)}
+          items={purchaseOrder}
+          blocks={blocks}
+          storeItems={items}
+          checkedIds={checkedPOIds}
+          onToggleChecked={handleTogglePOChecked}
+          onCommitChecked={handleCommitCheckedPO}
+          onAdd={handleAddPOItem}
+          onAddScanned={handleAddScannedPOItem}
+          onAddFromSuggestion={handleAddPOItemFromSuggestion}
+          onAddAll={handleAddAllSuggestions}
+          onUpdate={handleUpdatePOItem}
+          onDelete={handleDeletePOItem}
+          onBuy={handleBuyPOItem}
           isMobile={isMobile}
         />
       )}

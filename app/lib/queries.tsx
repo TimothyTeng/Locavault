@@ -7,8 +7,12 @@ import {
   storeMembers,
   storeInvites,
   itemLogs,
+  purchaseOrderItems,
+  templates,
+  templateBlocks,
 } from "./schema";
 import type { StoreWithDetails } from "~/types/dashboardTypes";
+import type { TemplateWithBlocks } from "~/types/templateTypes";
 import type {
   CreateStoreInput,
   BlockDetails,
@@ -748,4 +752,270 @@ export async function claimInvite(token: string, userId: string) {
 
     return invite.storeId;
   });
+}
+
+// ── Purchase Orders ────────────────────────────────────────
+
+export async function getPurchaseOrders(storeId: string) {
+  return db
+    .select()
+    .from(purchaseOrderItems)
+    .where(eq(purchaseOrderItems.storeId, storeId))
+    .orderBy(purchaseOrderItems.createdAt);
+}
+
+export async function createPurchaseOrder(data: {
+  itemId?: string | null;
+  storeId: string;
+  name: string;
+  quantity: number;
+  blockId?: string | null;
+  description?: string | null;
+  sku?: string | null;
+  unit?: string | null;
+  minQuantity?: number | null;
+  cost?: number | null;
+  expiryDate?: Date | null;
+  useRate?: number | null;
+  useRatePeriod?: "day" | "week" | "month" | null;
+  createdBy?: string | null;
+}) {
+  const [row] = await db.insert(purchaseOrderItems).values(data).returning();
+  return row;
+}
+
+export async function updatePurchaseOrder(
+  id: string,
+  data: Partial<
+    Omit<
+      typeof purchaseOrderItems.$inferInsert,
+      "id" | "storeId" | "createdAt" | "itemId"
+    >
+  >,
+) {
+  const [row] = await db
+    .update(purchaseOrderItems)
+    .set(data)
+    .where(eq(purchaseOrderItems.id, id))
+    .returning();
+  return row;
+}
+
+export async function deletePurchaseOrder(id: string) {
+  await db.delete(purchaseOrderItems).where(eq(purchaseOrderItems.id, id));
+}
+
+export async function getPurchaseOrderById(id: string) {
+  const [row] = await db
+    .select()
+    .from(purchaseOrderItems)
+    .where(eq(purchaseOrderItems.id, id));
+
+  return row ?? null;
+}
+
+// ── Templates ──────────────────────────────────────────────
+
+/** Map a raw template-block row to the shared BlockDetails shape */
+function toTemplateBlockDetails(
+  b: typeof templateBlocks.$inferSelect,
+): BlockDetails {
+  return {
+    block_id: b.block_id,
+    background: b.background,
+    border: b.border,
+    label: b.label,
+    height: b.height,
+    width: b.width,
+    x: b.x,
+    y: b.y,
+    kind: (b.kind ?? "standard") as BlockKind,
+  };
+}
+
+/** Fetch templates visible to a user: all public ones + their own private ones */
+export async function getTemplatesForGallery(
+  userId: string,
+): Promise<TemplateWithBlocks[]> {
+  const rows = await db
+    .select()
+    .from(templates)
+    .where(
+      sql`${templates.isPublic} = 1 OR ${templates.userId} = ${userId}`,
+    );
+  if (!rows.length) return [];
+
+  const ids = rows.map((t) => t.id);
+  const blockRows = await db
+    .select()
+    .from(templateBlocks)
+    .where(inArray(templateBlocks.templateId, ids));
+
+  const byTemplate = blockRows.reduce<Record<string, BlockDetails[]>>(
+    (acc, b) => {
+      (acc[b.templateId] ??= []).push(toTemplateBlockDetails(b));
+      return acc;
+    },
+    {},
+  );
+
+  return rows.map((t) => ({ ...t, blocks: byTemplate[t.id] ?? [] }));
+}
+
+/** Fetch a single template with its blocks */
+export async function getTemplateById(
+  id: string,
+): Promise<TemplateWithBlocks | null> {
+  const [tpl] = await db.select().from(templates).where(eq(templates.id, id));
+  if (!tpl) return null;
+  const blockRows = await db
+    .select()
+    .from(templateBlocks)
+    .where(eq(templateBlocks.templateId, id));
+  return { ...tpl, blocks: blockRows.map(toTemplateBlockDetails) };
+}
+
+/** Verify a template belongs to a user before mutating it */
+export async function verifyTemplateOwner(id: string, userId: string) {
+  const [tpl] = await db.select().from(templates).where(eq(templates.id, id));
+  if (!tpl) throw new Response("Template not found", { status: 404 });
+  if (tpl.userId !== userId)
+    throw new Response("Unauthorized", { status: 403 });
+  return tpl;
+}
+
+/** Create a template (from-scratch builder or programmatically) */
+export async function createTemplate(data: {
+  name: string;
+  userId: string;
+  description?: string | null;
+  tags?: string;
+  rows?: number;
+  cols?: number;
+  isPublic?: boolean;
+  blocks: BlockDetails[];
+}): Promise<string> {
+  return db.transaction(async (tx) => {
+    const id = crypto.randomUUID();
+    await tx.insert(templates).values({
+      id,
+      name: data.name,
+      userId: data.userId,
+      description: data.description ?? null,
+      tags: data.tags ?? "[]",
+      rows: data.rows ?? 10,
+      cols: data.cols ?? 10,
+      isPublic: data.isPublic ?? false,
+    });
+    if (data.blocks.length) {
+      await tx.insert(templateBlocks).values(
+        data.blocks.map((b) => ({
+          templateId: id,
+          background: b.background,
+          border: b.border,
+          label: b.label,
+          height: b.height,
+          width: b.width,
+          x: b.x,
+          y: b.y,
+          kind: b.kind ?? "standard",
+        })),
+      );
+    }
+    return id;
+  });
+}
+
+/** Snapshot an existing store's layout into a new template */
+export async function createTemplateFromStore(
+  storeId: string,
+  userId: string,
+  opts: { name?: string; description?: string | null; isPublic?: boolean },
+): Promise<string> {
+  const store = await getStoreById(storeId);
+  if (!store) throw new Response("Store not found", { status: 404 });
+  return createTemplate({
+    name: opts.name?.trim() || store.name,
+    userId,
+    description: opts.description ?? store.description ?? null,
+    tags: store.tags ?? "[]",
+    rows: store.rows,
+    cols: store.cols,
+    isPublic: opts.isPublic ?? false,
+    blocks: store.blocks,
+  });
+}
+
+/** Instantiate a new store from a template (the "adder"). Copies blocks with
+ *  fresh ids, adds the owner member, and bumps the template's usage count. */
+export async function createStoreFromTemplate(
+  templateId: string,
+  userId: string,
+  name?: string,
+): Promise<string> {
+  return db.transaction(async (tx) => {
+    const [tpl] = await tx
+      .select()
+      .from(templates)
+      .where(eq(templates.id, templateId));
+    if (!tpl) throw new Response("Template not found", { status: 404 });
+    if (!tpl.isPublic && tpl.userId !== userId)
+      throw new Response("Unauthorized", { status: 403 });
+
+    const newId = crypto.randomUUID();
+    await tx.insert(stores).values({
+      id: newId,
+      name: name?.trim() || tpl.name,
+      userId,
+      tags: tpl.tags,
+      description: tpl.description,
+      rows: tpl.rows,
+      cols: tpl.cols,
+    });
+
+    await tx
+      .insert(storeMembers)
+      .values({ storeId: newId, userId, role: "owner" });
+
+    const tBlocks = await tx
+      .select()
+      .from(templateBlocks)
+      .where(eq(templateBlocks.templateId, templateId));
+
+    if (tBlocks.length) {
+      await tx.insert(blocks).values(
+        tBlocks.map((b) => ({
+          storeId: newId,
+          background: b.background,
+          border: b.border,
+          label: b.label,
+          height: b.height,
+          width: b.width,
+          x: b.x,
+          y: b.y,
+          kind: b.kind ?? "standard",
+        })),
+      );
+    }
+
+    await tx
+      .update(templates)
+      .set({ usageCount: tpl.usageCount + 1 })
+      .where(eq(templates.id, templateId));
+
+    return newId;
+  });
+}
+
+/** Toggle a template between public and private */
+export async function updateTemplateVisibility(
+  id: string,
+  isPublic: boolean,
+) {
+  return db.update(templates).set({ isPublic }).where(eq(templates.id, id));
+}
+
+/** Delete a template (cascades to its blocks) */
+export async function deleteTemplate(id: string) {
+  return db.delete(templates).where(eq(templates.id, id));
 }

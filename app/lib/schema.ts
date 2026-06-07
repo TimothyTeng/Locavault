@@ -84,6 +84,73 @@ export const storeInvites = sqliteTable("store_invites", {
   createdBy: text("created_by").notNull(),
 });
 
+// ─── PURCHASE ORDER ITEMS ──────────────────────────────────
+
+export const purchaseOrderItems = sqliteTable("purchase_order_items", {
+  id:            text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  itemId: text("item_id").references(() => items.id, { onDelete: "set null" }),
+  storeId:       text("store_id").notNull().references(() => stores.id, { onDelete: "cascade" }),
+  name:          text("name").notNull(),
+  quantity:      integer("quantity").notNull().default(1),
+  blockId:       text("block_id").references(() => blocks.block_id, { onDelete: "set null" }),
+  description:   text("description"),
+  sku:           text("sku"),
+  unit:          text("unit"),
+  minQuantity:   integer("min_quantity"),
+  cost:          integer("cost"),
+  expiryDate:    integer("expiry_date", { mode: "timestamp" }),
+  useRate:       integer("use_rate"),
+  useRatePeriod: text("use_rate_period", { enum: ["day", "week", "month"] }),
+  createdAt:     integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+  createdBy:     text("created_by"),
+});
+
+export const purchaseOrderItemsRelations = relations(purchaseOrderItems, ({ one }) => ({
+  store: one(stores, { fields: [purchaseOrderItems.storeId], references: [stores.id] }),
+  block: one(blocks, { fields: [purchaseOrderItems.blockId], references: [blocks.block_id] }),
+}));
+
+// ─── TEMPLATES ─────────────────────────────────────────────
+// A reusable, shareable store layout (blocks only — no items). Any signed-in
+// user can create templates and instantiate stores from public ones.
+
+export const templates = sqliteTable("templates", {
+  id:          text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  name:        text("name").notNull(),
+  description: text("description"),
+  tags:        text("tags").notNull().default("[]"),
+  rows:        integer("rows").notNull().default(10),
+  cols:        integer("cols").notNull().default(10),
+  userId:      text("user_id").notNull(),                       // creator (Clerk id)
+  isPublic:    integer("is_public", { mode: "boolean" }).notNull().default(false),
+  usageCount:  integer("usage_count").notNull().default(0),
+  createdAt:   integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+});
+
+export const templateBlocks = sqliteTable("template_blocks", {
+  block_id:   text("block_id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  templateId: text("template_id").notNull().references(() => templates.id, { onDelete: "cascade" }),
+  background: text("background").notNull().default("#000000"),
+  border:     text("border").notNull().default("#000000"),
+  label:      text("label").notNull().default(""),
+  height:     integer("height").notNull().default(1),
+  width:      integer("width").notNull().default(1),
+  x:          integer("x").notNull().default(0),
+  y:          integer("y").notNull().default(0),
+  kind:       text("kind", { enum: ["standard", "divider", "stairs"] }).notNull().default("standard"),
+});
+
+export const templatesRelations = relations(templates, ({ many }) => ({
+  blocks: many(templateBlocks),
+}));
+
+export const templateBlocksRelations = relations(templateBlocks, ({ one }) => ({
+  template: one(templates, {
+    fields: [templateBlocks.templateId],
+    references: [templates.id],
+  }),
+}));
+
 // ─── RELATIONS ─────────────────────────────────────────────
 
 export const storesRelations = relations(stores, ({ many }) => ({
@@ -92,6 +159,7 @@ export const storesRelations = relations(stores, ({ many }) => ({
   members:  many(storeMembers),
   invites:  many(storeInvites),
   itemLogs: many(itemLogs),
+  purchaseOrderItems: many(purchaseOrderItems),
 }));
 
 export const blocksRelations = relations(blocks, ({ one }) => ({

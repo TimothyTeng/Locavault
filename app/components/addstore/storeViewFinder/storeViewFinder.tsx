@@ -26,6 +26,8 @@ import {
   handleKeyDown,
 } from "#utils/helpers/storeViewFinder.helper";
 
+import type { BlockDetails } from "#types/storeViewFinderTypes";
+
 type Props = {
   sidePanel?: React.ReactNode;
   initialData?: {
@@ -37,9 +39,25 @@ type Props = {
     cols: number;
     blocks: BlocksMap;
   };
+  /** When provided, the builder calls this on save instead of creating a store
+   *  (used by the template builder). */
+  onSave?: (payload: {
+    name: string;
+    tags: string[];
+    description: string;
+    rows: number;
+    cols: number;
+    blocks: BlockDetails[];
+  }) => void;
+  saveLabel?: string;
 };
 
-export default function StoreViewFinder({ sidePanel, initialData }: Props) {
+export default function StoreViewFinder({
+  sidePanel,
+  initialData,
+  onSave,
+  saveLabel,
+}: Props) {
   const { userId } = useLoaderData();
   const fetcher = useFetcher();
   const navigate = useNavigate();
@@ -178,6 +196,25 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
     );
 
   const submitForm = (name: string, tags: string[], description: string) => {
+    // Template builder: hand the layout up instead of creating a store
+    if (onSave) {
+      const blockArr: BlockDetails[] = Object.entries(blocks).map(
+        ([key, b]) => ({
+          block_id: key,
+          background: b.bg,
+          border: b.border,
+          label: b.label,
+          height: b.h,
+          width: b.w,
+          x: b.x,
+          y: b.y,
+          kind: b.kind,
+        }),
+      );
+      onSave({ name, tags, description, rows: ROWS, cols: COLS, blocks: blockArr });
+      return;
+    }
+
     const { isEdit, data } = buildSubmitPayload(
       name,
       tags,
@@ -305,7 +342,11 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
       <div className="flex flex-col lg:w-1/2 shrink-0 bg-white border-t lg:border-t-0 lg:border-l border-slate-200 overflow-y-auto max-h-64 lg:max-h-none px-5">
         <div className="flex items-center justify-between px-6 h-14 shrink-0 border-b border-slate-200">
           <span className="text-[10px] font-bold uppercase tracking-widest text-slate-800">
-            {initialData ? "Edit Store" : "Store View Finder"}
+            {onSave
+              ? "New Template"
+              : initialData
+                ? "Edit Store"
+                : "Store View Finder"}
           </span>
           <span className="text-[10px] text-slate-400">
             {Object.keys(blocks).length} block
@@ -338,7 +379,9 @@ export default function StoreViewFinder({ sidePanel, initialData }: Props) {
                   }
                 : undefined
             }
-            submitLabel={initialData ? "Save changes" : "Save"}
+            submitLabel={
+              onSave ? (saveLabel ?? "Save template") : initialData ? "Save changes" : "Save"
+            }
             onSubmit={(name, tags, description) =>
               submitForm(name, tags, description)
             }

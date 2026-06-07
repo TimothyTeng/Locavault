@@ -18,6 +18,7 @@ type Props = {
     useRate?: number | null;
     useRatePeriod?: "day" | "week" | "month" | null;
   }) => void;
+  categories?: { id: string; label: string }[];
   selectedBlockId?: string | null;
   selectedBlockLabel?: string;
   isMobile?: boolean;
@@ -27,6 +28,7 @@ export function AddItemPanel({
   isOpen,
   onClose,
   onSubmit,
+  categories,
   selectedBlockId,
   selectedBlockLabel,
   isMobile = false,
@@ -78,6 +80,7 @@ export function AddItemPanel({
         <div className="flex-1 overflow-y-auto px-4 py-4">
           <AddItemForm
             onSubmit={onSubmit}
+            categories={categories}
             selectedBlockId={selectedBlockId}
             selectedBlockLabel={selectedBlockLabel}
           />
