@@ -345,6 +345,21 @@ Reads items with the `edible` trait. Three jobs:
 - **Suggest recipes + list the lacking ingredients** → one tap to shopping list.
 - **Save recipes.**
 
+> ✅ *Done (v1):* per-store **Recipes panel** (`components/recipes/recipesPanel.tsx`,
+> opened from the store toolbar — desktop + mobile, open to all access levels;
+> add-to-list gated to editors). A **seeded library** (`lib/recipes.ts`, ~37
+> common home recipes) is matched against the store's edible inventory by
+> `matchRecipes` (`utils/helpers/recipes.helper.ts`) — **fuzzy, tokenized,
+> de-pluralised matching against "what you keep", never exact counts** (e.g.
+> "onion" ↔ "Red Onions"). Filters: **Cook now** (all on hand) / **Almost** (≤2
+> missing), each with a ring gauge. **Use it up** leads — recipes consuming items
+> expiring ≤30d get an amber banner + a top-of-panel nudge. One tap adds the
+> lacking ingredients to the shopping list (skips already-queued; cards show
+> what's listed) via the existing `createPOItems` action.
+> ⬜ *Remaining:* user-saved recipes; a recipe API for volume; a **"made this"**
+> tap that decrements matched items (closes the recipes → consumption →
+> prediction loop).
+
 Design rules learned from the critique:
 - **Volume comes from a seeded library and/or a recipe API** (Spoonacular /
   Edamam / Samsung Food-style) + user saves — *never* depend on the user authoring
@@ -520,6 +535,10 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
 3. **Purchase capture (the spine):** receipt/barcode/import + quick-add tiles.
 4. **Feature surfaces:** Recipes → Collections/packing (check-out/in) → Med
    reminders → Trade.
+   - ✅ *Done:* **Recipes** v1 (see §7) — seeded library + fuzzy pantry match +
+     "use it up" + one-tap missing-to-list.
+   - ⬜ *Next:* "made this" consumption tap (recipes → prediction loop); then
+     Collections / packing (check-out/in).
 
 ---
 

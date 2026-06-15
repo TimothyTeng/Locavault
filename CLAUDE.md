@@ -94,8 +94,9 @@ app/
 │   ├── home/             # landing page sections + dashboard (storecard, thumbnail…)
 │   ├── addstore/         # floor-plan editor: storeViewFinder/, blockPicker/
 │   ├── store/            # store view: table, rows, header, toolbar, minimap, members, filters
-│   ├── addItem/          # add-item slide-in panel + form + barcode scanner
+│   ├── addItem/          # add-item slide-in panel + form + barcode scanner + quick (bulk) add
 │   ├── purchases/        # shopping-list panel, list, rows, suggestions, optional fields
+│   ├── recipes/          # recipes panel: seeded library matched against pantry (see DESIGN.md §7)
 │   └── templates/        # templates gallery + card + save-from-store modal
 └── types/                # shared TS types (one file per domain)
 ```
