@@ -138,6 +138,16 @@ export const action = async (args: ActionFunctionArgs) => {
   const { userId } = await getAuth(args);
   if (!userId) throw new Response("Unauthorized", { status: 401 });
 
+  // Authorize against THIS store, not just "is signed in". Every mutation below
+  // requires edit access (owner/editor); member, invite and visibility changes
+  // are owner-only. Never trust the client to have scoped itself correctly.
+  const access = await verifyStoreAccess(params.id!, userId);
+  if (!access) throw new Response("Store not found", { status: 404 });
+  const canEdit =
+    access.accessLevel === "owner" || access.accessLevel === "editor";
+  const isOwner = access.accessLevel === "owner";
+  if (!canEdit) throw new Response("Forbidden", { status: 403 });
+
   const data = await request.json();
 
   if (data._action === "createItem") {
@@ -253,16 +263,19 @@ export const action = async (args: ActionFunctionArgs) => {
   }
 
   if (data._action === "removeMember") {
+    if (!isOwner) throw new Response("Forbidden", { status: 403 });
     await removeMember(params.id!, data.userId);
     return { ok: true };
   }
 
   if (data._action === "createInvite") {
+    if (!isOwner) throw new Response("Forbidden", { status: 403 });
     const token = await createInvite(params.id!, "editor", userId);
     return { ok: true, token };
   }
 
   if (data._action === "updateVisibility") {
+    if (!isOwner) throw new Response("Forbidden", { status: 403 });
     await updateStoreVisibility(params.id!, {
       isPublic: data.isPublic,
       canvasVisible: data.canvasVisible,
