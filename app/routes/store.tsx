@@ -25,6 +25,7 @@ import { GridCanvas } from "~/components/addstore/storeViewFinder/GridCanvas";
 import Navbar from "~/components/home/navbar";
 import { AddItemPanel } from "~/components/addItem/addItemPanel";
 import { QuickAddPanel, type QuickAddItem } from "~/components/addItem/quickAddPanel";
+import { RecipesPanel } from "~/components/recipes/recipesPanel";
 import { MembersPanel } from "~/components/store/membersPanel";
 import { MiniMap } from "~/components/store/minimap";
 import { StoreOverview } from "~/components/store/storeOverview";
@@ -100,6 +101,7 @@ export default function StorePage() {
   const [membersPanelOpen, setMembersPanelOpen] = useState(false);
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
+  const [recipesOpen, setRecipesOpen] = useState(false);
   const [minimapExpanded, setMinimapExpanded] = useState(false);
 
   const [purchaseOrder, setPurchaseOrder] = useState<PurchaseOrderItem[]>(
@@ -707,6 +709,45 @@ export default function StorePage() {
     );
   };
 
+  // Recipes → shopping list: add the lacking ingredient names (plain, unlinked
+  // PO rows), skipping any already queued. Optimistic, reconciled by polling.
+  const handleAddMissingToList = (names: string[]) => {
+    const existing = new Set(purchaseOrder.map((p) => p.name.toLowerCase()));
+    const fresh = names.filter((n) => !existing.has(n.toLowerCase()));
+    if (!fresh.length) return;
+    const built = fresh.map((name) => {
+      const optimisticId = crypto.randomUUID();
+      const optimistic: PurchaseOrderItem = {
+        id: optimisticId,
+        itemId: null,
+        storeId: id!,
+        name,
+        quantity: 1,
+        blockId: null,
+        description: null,
+        sku: null,
+        unit: null,
+        minQuantity: null,
+        cost: null,
+        expiryDate: null,
+        useRate: null,
+        useRatePeriod: null,
+        createdAt: new Date(),
+        createdBy: userId ?? null,
+      };
+      return { optimistic, payload: { name, quantity: 1 } };
+    });
+    setPurchaseOrder((prev) => [...prev, ...built.map((b) => b.optimistic)]);
+    fetcher.submit(
+      { _action: "createPOItems", items: built.map((b) => b.payload) },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
+  // Lowercase names already on the shopping list — lets recipe cards show which
+  // missing ingredients are already queued.
+  const listedNames = new Set(purchaseOrder.map((p) => p.name.toLowerCase()));
+
   // ── Deselect on outside click (desktop only) ──
   const tableRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -758,6 +799,10 @@ export default function StorePage() {
           onQuickAdd={() => {
             setAddItemOpen(false);
             setQuickAddOpen(true);
+          }}
+          onRecipes={() => {
+            setAddItemOpen(false);
+            setRecipesOpen((v) => !v);
           }}
           onMembersToggle={() => setMembersPanelOpen((v) => !v)}
           accessLevel={accessLevel}
@@ -1022,6 +1067,14 @@ export default function StorePage() {
           defaultBlockId={highlightedCell}
         />
       )}
+      <RecipesPanel
+        isOpen={recipesOpen}
+        onClose={() => setRecipesOpen(false)}
+        items={items}
+        onAddMissing={canEdit ? handleAddMissingToList : undefined}
+        listedNames={listedNames}
+        isMobile={isMobile}
+      />
       {canEdit && (
         <PurchaseOrderPanel
           isOpen={purchaseOrderOpen}

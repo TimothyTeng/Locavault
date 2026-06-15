@@ -7,6 +7,7 @@ type Props = {
   storeId: string;
   onAddItem: () => void;
   onQuickAdd: () => void;
+  onRecipes: () => void;
   onMembersToggle: () => void;
   onPurchaseOrder: () => void;
   accessLevel: AccessLevel;
@@ -19,10 +20,33 @@ type Props = {
   restockCount?: number;
 };
 
+/** Fork + knife glyph (matches the toolbar's hand-rolled SVG icons). */
+function RecipeIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+      <path
+        d="M3 1v4M2 1v3M4 1v3M3 5v6"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M9 1c-1 0-1.5 1-1.5 2.5S8 6 9 6m0-5v10"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function StoreToolbar({
   storeId,
   onAddItem,
   onQuickAdd,
+  onRecipes,
   onMembersToggle,
   onPurchaseOrder,
   accessLevel,
@@ -105,6 +129,15 @@ export function StoreToolbar({
             </svg>
           </button>
         )}
+
+        {/* Recipes */}
+        <button
+          onClick={onRecipes}
+          className="flex items-center justify-center w-8 h-8 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all"
+          title="Recipes"
+        >
+          <RecipeIcon />
+        </button>
 
         <div className="flex-1" />
 
@@ -289,6 +322,15 @@ export function StoreToolbar({
           Quick Add
         </button>
       )}
+
+      <button
+        onClick={onRecipes}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-300 text-[10px] font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-150"
+      >
+        <RecipeIcon />
+        Recipes
+      </button>
+
       {canEdit && (
         <button
           onClick={onPurchaseOrder}
