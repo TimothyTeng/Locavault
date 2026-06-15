@@ -6,6 +6,7 @@ import type { CreateStoreInput } from "~/types/storeViewFinderTypes";
 type Props = {
   storeId: string;
   onAddItem: () => void;
+  onQuickAdd: () => void;
   onMembersToggle: () => void;
   onPurchaseOrder: () => void;
   accessLevel: AccessLevel;
@@ -21,6 +22,7 @@ type Props = {
 export function StoreToolbar({
   storeId,
   onAddItem,
+  onQuickAdd,
   onMembersToggle,
   onPurchaseOrder,
   accessLevel,
@@ -80,6 +82,24 @@ export function StoreToolbar({
                 d="M6 1v10M1 6h10"
                 stroke="currentColor"
                 strokeWidth="1.6"
+                strokeLinecap="round"
+              />
+            </svg>
+          </button>
+        )}
+
+        {/* Quick add */}
+        {canEdit && (
+          <button
+            onClick={onQuickAdd}
+            className="flex items-center justify-center w-8 h-8 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all"
+            title="Quick add (bulk)"
+          >
+            <svg width="13" height="13" viewBox="0 0 12 12" fill="none">
+              <path
+                d="M2 3h8M2 6h8M2 9h5"
+                stroke="currentColor"
+                strokeWidth="1.5"
                 strokeLinecap="round"
               />
             </svg>
@@ -250,6 +270,23 @@ export function StoreToolbar({
             />
           </svg>
           Add Item
+        </button>
+      )}
+
+      {canEdit && (
+        <button
+          onClick={onQuickAdd}
+          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-300 text-[10px] font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-150"
+        >
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+            <path
+              d="M2 3h8M2 6h8M2 9h5"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+            />
+          </svg>
+          Quick Add
         </button>
       )}
       {canEdit && (

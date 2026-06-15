@@ -3,6 +3,7 @@ import { redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from "reac
 import {
   createInvite,
   createItem,
+  createItems,
   createItemLog,
   createPurchaseOrder,
   deleteItem,
@@ -156,6 +157,27 @@ export const action = async (args: ActionFunctionArgs) => {
       useRatePeriod: data.useRatePeriod ?? undefined,
     });
     return { ok: true, id: newItem.id, optimisticId: data.optimisticId };
+  }
+
+  if (data._action === "createItems") {
+    const rows = Array.isArray(data.items) ? data.items : [];
+    const ids = await createItems(
+      rows.map((r: any) => ({
+        name: r.name,
+        storeId: params.id!,
+        quantity: r.quantity ?? 1,
+        blockId: r.blockId ?? undefined,
+        itemType: r.itemType ?? undefined,
+        unit: r.unit ?? undefined,
+      })),
+    );
+    return {
+      ok: true,
+      created: rows.map((r: any, i: number) => ({
+        optimisticId: r.optimisticId,
+        id: ids[i],
+      })),
+    };
   }
 
   if (data._action === "updateItem") {

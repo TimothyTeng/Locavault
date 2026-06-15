@@ -532,6 +532,31 @@ export async function createItem(data: {
   return { id };
 }
 
+/** Bulk-create items (quick capture). Returns new ids in input order. */
+export async function createItems(
+  rows: Array<{
+    name: string;
+    storeId: string;
+    quantity?: number;
+    blockId?: string | null;
+    itemType?: ItemType;
+    unit?: string | null;
+  }>,
+): Promise<string[]> {
+  if (!rows.length) return [];
+  const values = rows.map((r) => ({
+    id: crypto.randomUUID(),
+    name: r.name,
+    storeId: r.storeId,
+    quantity: r.quantity ?? 0,
+    blockId: r.blockId ?? undefined,
+    itemType: r.itemType ?? "other",
+    unit: r.unit ?? null,
+  }));
+  await db.insert(items).values(values);
+  return values.map((v) => v.id);
+}
+
 /** Update an item */
 export async function updateItem(
   id: string,

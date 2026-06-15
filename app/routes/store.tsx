@@ -24,6 +24,7 @@ import { useZoom } from "~/utils/useZoom";
 import { GridCanvas } from "~/components/addstore/storeViewFinder/GridCanvas";
 import Navbar from "~/components/home/navbar";
 import { AddItemPanel } from "~/components/addItem/addItemPanel";
+import { QuickAddPanel, type QuickAddItem } from "~/components/addItem/quickAddPanel";
 import { MembersPanel } from "~/components/store/membersPanel";
 import { MiniMap } from "~/components/store/minimap";
 import { StoreOverview } from "~/components/store/storeOverview";
@@ -98,6 +99,7 @@ export default function StorePage() {
   const [pageView, setPageView] = useState<"map" | "inventory">("map");
   const [membersPanelOpen, setMembersPanelOpen] = useState(false);
   const [addItemOpen, setAddItemOpen] = useState(false);
+  const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [minimapExpanded, setMinimapExpanded] = useState(false);
 
   const [purchaseOrder, setPurchaseOrder] = useState<PurchaseOrderItem[]>(
@@ -157,6 +159,16 @@ export default function StorePage() {
 
   useEffect(() => {
     const result = createFetcher.data as any;
+    // Bulk quick-add: reconcile each optimistic id to its real id.
+    if (Array.isArray(result?.created)) {
+      setItems((prev) =>
+        prev.map((i) => {
+          const m = result.created.find((c: any) => c.optimisticId === i.id);
+          return m ? { ...i, id: m.id } : i;
+        }),
+      );
+      return;
+    }
     if (!result?.id || !result?.optimisticId) return;
     setItems((prev) =>
       prev.map((i) =>
@@ -355,6 +367,47 @@ export default function StorePage() {
         useRate: data.useRate ?? null,
         useRatePeriod: data.useRatePeriod ?? null,
       },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
+  // Bulk quick-capture: create many items at once (optimistic + reconciled).
+  const handleQuickAdd = (entries: QuickAddItem[], blockId: string | null) => {
+    if (!entries.length) return;
+    const built = entries.map((e) => {
+      const optimisticId = crypto.randomUUID();
+      const item: Item = {
+        id: optimisticId,
+        name: e.name,
+        description: "",
+        quantity: e.quantity,
+        storeId: id!,
+        blockId: blockId ?? null,
+        createdAt: new Date(),
+        isPublic: true,
+        itemType: e.itemType,
+        sku: null,
+        unit: null,
+        minQuantity: null,
+        cost: null,
+        expiryDate: null,
+        useRate: null,
+        useRatePeriod: null,
+      };
+      return {
+        item,
+        payload: {
+          optimisticId,
+          name: e.name,
+          quantity: e.quantity,
+          blockId: blockId ?? null,
+          itemType: e.itemType,
+        },
+      };
+    });
+    setItems((prev) => [...prev, ...built.map((b) => b.item)]);
+    createFetcher.submit(
+      { _action: "createItems", items: built.map((b) => b.payload) },
       { method: "POST", encType: "application/json" },
     );
   };
@@ -702,6 +755,10 @@ export default function StorePage() {
         <StoreToolbar
           storeId={id!}
           onAddItem={() => setAddItemOpen(true)}
+          onQuickAdd={() => {
+            setAddItemOpen(false);
+            setQuickAddOpen(true);
+          }}
           onMembersToggle={() => setMembersPanelOpen((v) => !v)}
           accessLevel={accessLevel}
           store={store}
@@ -954,6 +1011,15 @@ export default function StorePage() {
           selectedBlockId={highlightedCell}
           selectedBlockLabel={blocks[highlightedCell ?? ""]?.label ?? ""}
           isMobile={isMobile}
+        />
+      )}
+      {canEdit && (
+        <QuickAddPanel
+          isOpen={quickAddOpen}
+          onClose={() => setQuickAddOpen(false)}
+          onSubmit={handleQuickAdd}
+          categories={categories}
+          defaultBlockId={highlightedCell}
         />
       )}
       {canEdit && (
