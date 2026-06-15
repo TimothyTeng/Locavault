@@ -484,6 +484,12 @@ export async function getItemsByStore(storeId: string) {
   return db.select().from(items).where(eq(items.storeId, storeId));
 }
 
+/** Fetch all items across several stores (dashboard foresight digest). */
+export async function getItemsByStores(storeIds: string[]) {
+  if (!storeIds.length) return [];
+  return db.select().from(items).where(inArray(items.storeId, storeIds));
+}
+
 /** Fetch a single item by ID */
 export async function getItemById(id: string) {
   const result = await db.select().from(items).where(eq(items.id, id));
@@ -592,6 +598,22 @@ export async function getItemLogs(itemId: string) {
  */
 export async function getUsageLogsByStore(storeId: string, since?: Date) {
   const conds = [eq(itemLogs.storeId, storeId)];
+  if (since) conds.push(gt(itemLogs.loggedAt, since));
+  return db
+    .select({
+      itemId: itemLogs.itemId,
+      delta: itemLogs.delta,
+      loggedAt: itemLogs.loggedAt,
+    })
+    .from(itemLogs)
+    .where(and(...conds))
+    .orderBy(sql`${itemLogs.loggedAt} asc`);
+}
+
+/** Usage logs across several stores (dashboard foresight digest). */
+export async function getUsageLogsByStores(storeIds: string[], since?: Date) {
+  if (!storeIds.length) return [];
+  const conds = [inArray(itemLogs.storeId, storeIds)];
   if (since) conds.push(gt(itemLogs.loggedAt, since));
   return db
     .select({
@@ -789,6 +811,16 @@ export async function getPurchaseOrders(storeId: string) {
     .from(purchaseOrderItems)
     .where(eq(purchaseOrderItems.storeId, storeId))
     .orderBy(purchaseOrderItems.createdAt);
+}
+
+/** Item ids already on a shopping list across several stores (dedupe digest). */
+export async function getListedItemIds(storeIds: string[]): Promise<string[]> {
+  if (!storeIds.length) return [];
+  const rows = await db
+    .select({ itemId: purchaseOrderItems.itemId })
+    .from(purchaseOrderItems)
+    .where(inArray(purchaseOrderItems.storeId, storeIds));
+  return rows.map((r) => r.itemId).filter((x): x is string => !!x);
 }
 
 export async function createPurchaseOrder(data: {

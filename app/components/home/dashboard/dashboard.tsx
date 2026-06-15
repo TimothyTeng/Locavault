@@ -7,21 +7,29 @@ import type {
   StoreWithDetails,
   SortOption,
   SortDir,
+  AttentionItem,
 } from "#types/dashboardTypes";
 import { StoreCard } from "./storecard";
 import { EmptyState } from "./emptystate";
+import { AttentionDigest } from "./attentionDigest";
 import { CountUp } from "#components/common/countUp";
 
 // ── Main Dashboard ─────────────────────────────────────────
 
-type Props = { stores: StoreWithDetails[] };
+type Props = { stores: StoreWithDetails[]; attention: AttentionItem[] };
 
-export default function Dashboard({ stores: initialStores }: Props) {
+export default function Dashboard({
+  stores: initialStores,
+  attention: initialAttention,
+}: Props) {
   const { user } = useUser();
   const navigate = useNavigate();
   const fetcher = useFetcher();
+  const addFetcher = useFetcher();
 
   const [stores, setStores] = useState<StoreWithDetails[]>(initialStores);
+  const [attention, setAttention] = useState<AttentionItem[]>(initialAttention);
+  useEffect(() => setAttention(initialAttention), [initialAttention]);
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("created");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -100,6 +108,23 @@ export default function Dashboard({ stores: initialStores }: Props) {
     [fetcher],
   );
 
+  const handleAddToList = useCallback(
+    (it: AttentionItem) => {
+      addFetcher.submit(
+        { _action: "addToList", itemId: it.id, storeId: it.storeId },
+        { method: "POST", encType: "application/x-www-form-urlencoded" },
+      );
+      setAttention((prev) =>
+        prev.map((a) =>
+          a.id === it.id && a.storeId === it.storeId
+            ? { ...a, onList: true }
+            : a,
+        ),
+      );
+    },
+    [addFetcher],
+  );
+
   const handlePin = useCallback((id: string) => {
     setPinned((prev) => {
       const next = new Set(prev);
@@ -165,6 +190,9 @@ export default function Dashboard({ stores: initialStores }: Props) {
           New store
         </button>
       </div>
+
+      {/* ── Foresight digest ── */}
+      <AttentionDigest items={attention} onAdd={handleAddToList} />
 
       {/* ── Toolbar ── */}
       <div className="flex flex-col gap-3 mb-6">
