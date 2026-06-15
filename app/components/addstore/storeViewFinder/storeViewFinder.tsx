@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Layout, LayoutItem } from "react-grid-layout";
 import type { Block } from "../blockPicker/index";
 import { GridCanvas } from "./GridCanvas";
+import { GridRuler } from "./GridRuler";
 import { GridControls } from "./GridControls";
 import { ZoomControls } from "./ZoomControl";
 import { ModeToggle, handlesForMode, type Mode } from "./ModeToggle";
@@ -65,6 +66,9 @@ export default function StoreViewFinder({
   const [ROWS, setROWS] = useState(initialData?.rows ?? 10);
   const [COLS, setCOLS] = useState(initialData?.cols ?? 10);
   const [mode, setMode] = useState<Mode>("draw");
+  // Spreadsheet-style A1/B3 coordinate guides around the grid.
+  const [showRuler, setShowRuler] = useState(true);
+  const RULER = 18;
 
   const [blocks, setBlocks] = useState<BlocksMap>(initialData?.blocks ?? {});
 
@@ -314,7 +318,15 @@ export default function StoreViewFinder({
             if (!isDrawMode && !isSelectMode) setSelectedId(null);
           }}
         >
-          <div style={{ width: `${zoom * 100}%` }}>
+          <div
+            className="relative"
+            style={{
+              width: `${zoom * 100}%`,
+              paddingTop: showRuler ? RULER : 0,
+              paddingLeft: showRuler ? RULER : 0,
+            }}
+          >
+            {showRuler && <GridRuler cols={COLS} rows={ROWS} size={RULER} />}
             <GridCanvas
               key={`${COLS}-${ROWS}`}
               cols={COLS}
@@ -363,6 +375,15 @@ export default function StoreViewFinder({
               onColsChange={onColsChange}
               onRowsChange={onRowsChange}
             />
+            <label className="mt-3 flex items-center gap-2 text-[11px] font-mono text-slate-500 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={showRuler}
+                onChange={(e) => setShowRuler(e.target.checked)}
+                className="accent-slate-700"
+              />
+              Coordinate guides (A1 · B3)
+            </label>
           </div>
         </div>
 

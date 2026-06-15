@@ -424,15 +424,19 @@ export function GridCanvas({
                     item.static ?? false,
                   )}
                   style={{
-                    background: resolveBlockBg(
-                      block.border,
-                      block.bg,
-                      isDivider,
-                      isMoving,
-                      isSelected,
-                      isHovered,
-                    ),
-                    borderColor: block.border,
+                    // Dividers render as a thin bar (below), so the cell itself
+                    // is transparent — they read as a wall *between* blocks.
+                    background: isDivider
+                      ? "transparent"
+                      : resolveBlockBg(
+                          block.border,
+                          block.bg,
+                          isDivider,
+                          isMoving,
+                          isSelected,
+                          isHovered,
+                        ),
+                    borderColor: isDivider ? "transparent" : block.border,
                     pointerEvents:
                       isNonClick || drawMode || selectMode ? "none" : undefined,
                     cursor: isNonClick ? "default" : undefined,
@@ -453,6 +457,28 @@ export function GridCanvas({
                       : undefined
                   }
                 >
+                  {isDivider && (
+                    <div
+                      className="absolute rounded-[2px]"
+                      style={
+                        block.w >= block.h
+                          ? {
+                              left: 0,
+                              right: 0,
+                              top: "33%",
+                              height: "34%",
+                              background: block.border,
+                            }
+                          : {
+                              top: 0,
+                              bottom: 0,
+                              left: "33%",
+                              width: "34%",
+                              background: block.border,
+                            }
+                      }
+                    />
+                  )}
                   {block.fixture && !isDivider && (
                     <FixtureGraphic
                       fixture={block.fixture}
@@ -488,15 +514,17 @@ export function GridCanvas({
                       </span>
                     );
                   })()}
-                  <span
-                    className="text-center px-1 font-mono font-medium uppercase tracking-wide leading-tight break-words"
-                    style={{
-                      fontSize: "clamp(7px, 1.1vw, 11px)",
-                      color: isDivider ? "#ffffff" : block.border,
-                    }}
-                  >
-                    {block.label}
-                  </span>
+                  {!isDivider && (
+                    <span
+                      className="text-center px-1 font-mono font-medium uppercase tracking-wide leading-tight break-words"
+                      style={{
+                        fontSize: "clamp(7px, 1.1vw, 11px)",
+                        color: block.border,
+                      }}
+                    >
+                      {block.label}
+                    </span>
+                  )}
                 </div>
               );
             })}

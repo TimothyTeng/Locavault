@@ -5,6 +5,7 @@ import type { Item, ItemStatus } from "~/types/storeTypes";
 import type { BlocksMap, BlockState } from "~/types/storeViewFinderTypes";
 import { getItemStatus, itemRunoutDays } from "~/utils/helpers/storeTable.helper";
 import { FixtureGraphic } from "~/lib/fixtures";
+import { GridRuler } from "~/components/addstore/storeViewFinder/GridRuler";
 import { useProductImage } from "~/utils/useProductImage";
 import { TypeIcon } from "./typeIcon";
 import { ItemDetailPopup } from "./ItemDetailPopup";
@@ -113,6 +114,22 @@ export function StoreMapView({
       } catch {}
       return next;
     });
+  // A1/B3 coordinate guides around the map.
+  const [showRuler, setShowRuler] = useState(true);
+  useEffect(() => {
+    try {
+      setShowRuler(localStorage.getItem("lv-map-ruler") !== "0");
+    } catch {}
+  }, []);
+  const toggleRuler = () =>
+    setShowRuler((r) => {
+      const next = !r;
+      try {
+        localStorage.setItem("lv-map-ruler", next ? "1" : "0");
+      } catch {}
+      return next;
+    });
+  const RULER = 18;
   // Drag-to-place: the item being dragged + the shelf currently hovered.
   const [dragItemId, setDragItemId] = useState<string | null>(null);
   const [dragOverZoneId, setDragOverZoneId] = useState<string | null>(null);
@@ -242,10 +259,23 @@ export function StoreMapView({
       <div ref={ref} className="absolute inset-0 overflow-auto">
         {cell > 0 && (
           <div
-            ref={boardRef}
             className="relative mx-auto my-4"
-            style={{ width: contentW, height: contentH }}
+            style={{
+              width: contentW + (showRuler ? RULER : 0),
+              height: contentH + (showRuler ? RULER : 0),
+            }}
           >
+            {showRuler && <GridRuler cols={cols} rows={rows} size={RULER} />}
+            <div
+              ref={boardRef}
+              className="absolute"
+              style={{
+                left: showRuler ? RULER : 0,
+                top: showRuler ? RULER : 0,
+                width: contentW,
+                height: contentH,
+              }}
+            >
             {Object.entries(blocks).map(([bid, b]) => {
               const placeable =
                 b.kind !== "divider" && b.kind !== "stairs";
@@ -311,6 +341,7 @@ export function StoreMapView({
                 }}
               />
             )}
+            </div>
           </div>
         )}
       </div>
@@ -373,13 +404,26 @@ export function StoreMapView({
 
       {/* ── Floating map tools ── */}
       <div className="absolute bottom-4 right-4 z-20 flex flex-col items-end gap-2">
-        <button
-          onClick={togglePlain}
-          title={plain ? "Show furniture fixtures" : "Show plain blocks"}
-          className="rounded-lg border border-slate-200 bg-white/95 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500 shadow-sm backdrop-blur transition-colors hover:text-slate-700"
-        >
-          {plain ? "Plain" : "Detailed"}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={toggleRuler}
+            title={showRuler ? "Hide coordinate guides" : "Show coordinate guides"}
+            className={`rounded-lg border bg-white/95 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest shadow-sm backdrop-blur transition-colors ${
+              showRuler
+                ? "border-slate-400 text-slate-700"
+                : "border-slate-200 text-slate-500 hover:text-slate-700"
+            }`}
+          >
+            A1
+          </button>
+          <button
+            onClick={togglePlain}
+            title={plain ? "Show furniture fixtures" : "Show plain blocks"}
+            className="rounded-lg border border-slate-200 bg-white/95 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500 shadow-sm backdrop-blur transition-colors hover:text-slate-700"
+          >
+            {plain ? "Plain" : "Detailed"}
+          </button>
+        </div>
         {canEdit && (
           <button
             onClick={() => onAddItemToZone(null)}
@@ -493,22 +537,23 @@ function BlockTile({
   const w = block.w * cell;
   const h = block.h * cell;
 
-  // Structural elements read as architecture, not inventory — flat dark fill.
+  // Dividers render as a thin bar — a wall *between* blocks, not a solid cell.
   if (block.kind === "divider") {
+    const horizontal = block.w >= block.h;
     return (
       <div
-        className="lv-tile absolute flex items-center justify-center rounded-sm"
-        style={{ left, top, width: w, height: h, background: block.border }}
+        className="lv-tile absolute"
+        style={{ left, top, width: w, height: h }}
         title={block.label}
       >
-        {block.label && w > 34 && (
-          <span
-            className="px-1 text-center font-mono font-semibold uppercase tracking-wide leading-tight text-white/90"
-            style={{ fontSize: Math.max(7, Math.min(cell * 0.15, 10)) }}
-          >
-            {block.label}
-          </span>
-        )}
+        <div
+          className="absolute rounded-[2px]"
+          style={
+            horizontal
+              ? { left: 0, right: 0, top: "33%", height: "34%", background: block.border }
+              : { top: 0, bottom: 0, left: "33%", width: "34%", background: block.border }
+          }
+        />
       </div>
     );
   }

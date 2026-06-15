@@ -12,6 +12,24 @@ export type HitTarget =
 
 export type GhostRect = { x: number; y: number; w: number; h: number };
 
+// ── Coordinate labels (spreadsheet-style A1 / B3 addressing) ──
+
+/** Column index → letters: 0→A … 25→Z, 26→AA, 27→AB … */
+export function colLabel(i: number): string {
+  let n = i;
+  let s = "";
+  do {
+    s = String.fromCharCode(65 + (n % 26)) + s;
+    n = Math.floor(n / 26) - 1;
+  } while (n >= 0);
+  return s;
+}
+
+/** A block/cell's grid address, e.g. (1,2) → "B3". */
+export function cellAddress(x: number, y: number): string {
+  return `${colLabel(x)}${y + 1}`;
+}
+
 // ── Cell Math ─────────────────────────────────────────────
 
 export function pointerToCell(
