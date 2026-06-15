@@ -224,6 +224,7 @@ export async function createStoreWithBlocks(data: CreateStoreInput) {
           x: b.x ?? 0,
           y: b.y ?? 0,
           kind: b.kind ?? "standard",
+          fixture: b.fixture ?? null,
         })),
       );
     }
@@ -468,6 +469,7 @@ export async function updateStoreWithBlocks(
           x: b.x,
           y: b.y,
           kind: b.kind ?? "standard",
+          fixture: b.fixture ?? null,
         })),
       );
     }

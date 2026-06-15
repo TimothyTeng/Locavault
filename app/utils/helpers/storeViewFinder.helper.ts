@@ -119,6 +119,7 @@ export function handleDrawComplete(
       border: selectedBlock.color,
       label: selectedBlock.name,
       kind: selectedBlock.kind,
+      fixture: selectedBlock.fixture ?? null,
     },
   }));
 }
@@ -223,6 +224,7 @@ export function buildSubmitPayload(
     x: b.x,
     y: b.y,
     kind: b.kind,
+    fixture: b.fixture ?? null,
   }));
 
   const id = storeId ?? crypto.randomUUID();

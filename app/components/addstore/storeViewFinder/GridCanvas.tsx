@@ -13,6 +13,7 @@ import "react-resizable/css/styles.css";
 import type { BlocksMap } from "#types/storeViewFinderTypes";
 import type { BlockKind } from "#types/BlockTypes";
 import { useMemo, useState, useCallback, useRef, useEffect } from "react";
+import { FixtureGraphic } from "#lib/fixtures";
 import {
   type CellPos,
   type HitTarget,
@@ -452,6 +453,15 @@ export function GridCanvas({
                       : undefined
                   }
                 >
+                  {block.fixture && !isDivider && (
+                    <FixtureGraphic
+                      fixture={block.fixture}
+                      color={block.border}
+                      cols={block.w}
+                      rows={block.h}
+                      className="absolute inset-0 pointer-events-none"
+                    />
+                  )}
                   {(() => {
                     const badge = blockBadges?.[item.i];
                     if (!badge || isDivider) return null;

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { AddBlockModal } from "./AddBlockModal";
 import { BlockItem } from "./BlockItem";
 import { DEFAULT_BLOCKS, type Block } from "#types/BlockTypes";
+import { FixtureGraphic } from "#lib/fixtures";
 
 interface BlockPickerProps {
   onChange?: (blocks: Block[]) => void;
@@ -72,13 +73,28 @@ export const BlockPicker = ({
             borderColor: selectedBlock.color,
           }}
         >
-          <div
-            className="bp-item-swatch"
-            style={{
-              background: `${selectedBlock.color}22`,
-              borderColor: selectedBlock.color,
-            }}
-          />
+          {selectedBlock.fixture ? (
+            <div
+              className="bp-item-swatch"
+              style={{ borderColor: selectedBlock.color, overflow: "hidden", padding: 0 }}
+            >
+              <FixtureGraphic
+                fixture={selectedBlock.fixture}
+                color={selectedBlock.color}
+                cols={1}
+                rows={1}
+                className="w-full h-full"
+              />
+            </div>
+          ) : (
+            <div
+              className="bp-item-swatch"
+              style={{
+                background: `${selectedBlock.color}22`,
+                borderColor: selectedBlock.color,
+              }}
+            />
+          )}
           <span className="bp-item-name">{selectedBlock.name}</span>
           <div
             className="bp-item-pill"

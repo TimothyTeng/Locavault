@@ -30,7 +30,8 @@ export const loader = async (args: LoaderFunctionArgs) => {
         bg: b.background,
         border: b.border,
         label: b.label,
-        kind: b.kind,  // ← was missing
+        kind: b.kind,
+        fixture: b.fixture ?? null,
       },
     ]),
   );

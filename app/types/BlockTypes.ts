@@ -1,3 +1,5 @@
+import type { FixtureId } from "./fixtureTypes";
+
 export const PRESET_COLORS = [
   "#2d6b44", "#3d8a58", "#1f4d30",
   "#b8821e", "#d4a244", "#f97316",
@@ -33,6 +35,8 @@ interface BlockBase {
   id:    string;
   name:  string;
   color: string;
+  /** Optional furniture fixture; null/undefined = plain coloured block. */
+  fixture?: FixtureId | null;
 }
 
 export interface StandardBlock extends BlockBase {
@@ -53,7 +57,7 @@ export type Block = StandardBlock | DividerBlock | StairsBlock;
 
 export const DEFAULT_BLOCKS: Block[] = [
   { id: "default-door",    name: "Door",    color: "#3d8a58", kind: "divider" },
-  { id: "default-shelf",   name: "Shelf",   color: "#2d6b44", kind: "standard" },
-  { id: "default-cabinet", name: "Cabinet", color: "#b8821e", kind: "standard" },
+  { id: "default-shelf",   name: "Shelf",   color: "#2d6b44", kind: "standard", fixture: "shelf" },
+  { id: "default-cabinet", name: "Cabinet", color: "#b8821e", kind: "standard", fixture: "cabinet" },
   { id: "default-wall",    name: "Wall",    color: "#1e2520", kind: "divider" },
 ];

@@ -1,5 +1,6 @@
 import { text, integer, sqliteTable } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
+import { FIXTURE_IDS } from "~/types/fixtureTypes";
 
 // ─── STORES ────────────────────────────────────────────────
 
@@ -29,6 +30,7 @@ export const blocks = sqliteTable("blocks", {
   x:          integer("x").notNull().default(0),
   y:          integer("y").notNull().default(0),
   kind:       text("kind", { enum: ["standard", "divider", "stairs"] }).notNull().default("standard"),
+  fixture:    text("fixture", { enum: FIXTURE_IDS }),  // null = plain coloured block
 });
 
 // ─── ITEMS ─────────────────────────────────────────────────

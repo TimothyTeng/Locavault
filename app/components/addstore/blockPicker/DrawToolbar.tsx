@@ -1,6 +1,7 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import { AddBlockModal } from "./AddBlockModal";
 import { DEFAULT_BLOCKS, type Block } from "#types/BlockTypes";
+import { FixtureGraphic } from "#lib/fixtures";
 
 interface DrawToolbarProps {
   selectedBlock: Block;
@@ -243,13 +244,25 @@ export function DrawToolbar({
                       : "none",
                   }}
                 >
-                  <span
-                    className="w-2 h-2 rounded-full shrink-0 ring-1"
-                    style={{
-                      background: block.color, // always the real colour
-                      borderColor: `${displayColor}66`,
-                    }}
-                  />
+                  {block.fixture ? (
+                    <span className="w-3.5 h-3.5 shrink-0 overflow-hidden rounded-[2px]">
+                      <FixtureGraphic
+                        fixture={block.fixture}
+                        color={block.color}
+                        cols={1}
+                        rows={1}
+                        className="w-full h-full"
+                      />
+                    </span>
+                  ) : (
+                    <span
+                      className="w-2 h-2 rounded-full shrink-0 ring-1"
+                      style={{
+                        background: block.color, // always the real colour
+                        borderColor: `${displayColor}66`,
+                      }}
+                    />
+                  )}
                   {block.name}
                 </button>
 

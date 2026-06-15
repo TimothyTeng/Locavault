@@ -13,6 +13,7 @@ export function blocksToBlocksMap(blocks: CreateStoreInput["blocks"]): BlocksMap
         border: block.border,
         label: block.label,
         kind: block.kind ?? "standard",
+        fixture: block.fixture ?? null,
       },
     ]),
   );

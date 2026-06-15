@@ -1,4 +1,5 @@
 import { type Block } from "#types/BlockTypes";
+import { FixtureGraphic } from "#lib/fixtures";
 
 type Props = {
   block: Block;
@@ -14,13 +15,28 @@ export function BlockItem({ block, onClick, onRemove, selected }: Props) {
       style={selected ? { background: `${block.color}12` } : {}}
       onClick={() => onClick(block)}
     >
-      <div
-        className="bp-item-swatch"
-        style={{
-          background: `${block.color}22`,
-          borderColor: block.color,
-        }}
-      />
+      {block.fixture ? (
+        <div
+          className="bp-item-swatch"
+          style={{ borderColor: block.color, overflow: "hidden", padding: 0 }}
+        >
+          <FixtureGraphic
+            fixture={block.fixture}
+            color={block.color}
+            cols={1}
+            rows={1}
+            className="w-full h-full"
+          />
+        </div>
+      ) : (
+        <div
+          className="bp-item-swatch"
+          style={{
+            background: `${block.color}22`,
+            borderColor: block.color,
+          }}
+        />
+      )}
       <span className="bp-item-name">{block.name}</span>
       <div
         className="bp-item-pill"

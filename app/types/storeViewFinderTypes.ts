@@ -1,4 +1,5 @@
 import type { BlockKind } from "./BlockTypes";
+import type { FixtureId } from "./fixtureTypes";
 
 /** Single source of truth for a block — position, size, appearance, and kind */
 export type BlockState = {
@@ -10,6 +11,8 @@ export type BlockState = {
   border: string;
   label:  string;
   kind:   BlockKind;
+  /** Optional furniture fixture (shelf/fridge/…); null/undefined = plain block. */
+  fixture?: FixtureId | null;
 };
 
 /** Keyed map of all blocks in the editor: blockId → BlockState */
@@ -29,6 +32,7 @@ export type BlockDetails = {
   x:          number;
   y:          number;
   kind:       BlockKind;
+  fixture?:   FixtureId | null;
 };
 
 export type CreateStoreInput = {

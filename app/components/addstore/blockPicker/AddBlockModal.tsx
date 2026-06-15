@@ -5,6 +5,8 @@ import {
   type Block,
   type BlockKind,
 } from "#types/BlockTypes";
+import type { FixtureId } from "#types/fixtureTypes";
+import { FIXTURE_IDS, FIXTURE_META, FixtureGraphic } from "#lib/fixtures";
 
 type Props = {
   onAdd: (b: Omit<Block, "id">) => void;
@@ -64,6 +66,7 @@ export function AddBlockModal({ onAdd, onClose }: Props) {
   const [name, setName] = useState("");
   const [color, setColor] = useState(PRESET_COLORS[0]);
   const [kind, setKind] = useState<BlockKind>("standard");
+  const [fixture, setFixture] = useState<FixtureId | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -72,8 +75,13 @@ export function AddBlockModal({ onAdd, onClose }: Props) {
 
   const handleAdd = () => {
     if (!name.trim()) return;
-    const base = { name: name.trim(), color };
-    onAdd(kind === "divider" ? { ...base, kind } : { ...base, kind });
+    // Fixtures only apply to standard blocks; dividers/stairs stay plain.
+    onAdd({
+      name: name.trim(),
+      color,
+      kind,
+      fixture: kind === "standard" ? fixture : null,
+    });
     onClose();
   };
 
@@ -154,6 +162,69 @@ export function AddBlockModal({ onAdd, onClose }: Props) {
               })}
             </div>
           </div>
+
+          {/* Fixture (standard blocks only) */}
+          {kind === "standard" && (
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                Looks like
+              </label>
+              <div className="grid grid-cols-4 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setFixture(null)}
+                  className={`flex flex-col items-center gap-1 py-2 px-1 rounded-lg border-2 transition-all cursor-pointer ${
+                    fixture === null
+                      ? "border-gray-700"
+                      : "border-gray-200 hover:border-gray-300"
+                  }`}
+                >
+                  <div
+                    className="w-7 h-7 rounded"
+                    style={{ background: `${color}22`, border: `1.5px solid ${color}` }}
+                  />
+                  <span className="text-gray-600" style={{ fontSize: "10px" }}>
+                    Plain
+                  </span>
+                </button>
+                {FIXTURE_IDS.map((f) => {
+                  const active = fixture === f;
+                  return (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => {
+                        setFixture(f);
+                        setColor(FIXTURE_META[f].defaultColor);
+                        if (!name.trim()) setName(FIXTURE_META[f].label);
+                      }}
+                      className={`flex flex-col items-center gap-1 py-2 px-1 rounded-lg border-2 transition-all cursor-pointer ${
+                        active
+                          ? "border-gray-700"
+                          : "border-gray-200 hover:border-gray-300"
+                      }`}
+                    >
+                      <div className="w-7 h-7 rounded overflow-hidden bg-gray-50">
+                        <FixtureGraphic
+                          fixture={f}
+                          color={active ? color : FIXTURE_META[f].defaultColor}
+                          cols={1}
+                          rows={1}
+                          className="w-full h-full"
+                        />
+                      </div>
+                      <span
+                        className="text-gray-600 text-center leading-tight"
+                        style={{ fontSize: "10px" }}
+                      >
+                        {FIXTURE_META[f].label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Name */}
           <div className="flex flex-col gap-1.5">
@@ -252,10 +323,22 @@ export function AddBlockModal({ onAdd, onClose }: Props) {
                 className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl border"
                 style={{ background: `${color}1a`, borderColor: color }}
               >
-                <div
-                  className="w-2.5 h-2.5 rounded-full shrink-0"
-                  style={{ background: color }}
-                />
+                {fixture ? (
+                  <div className="w-7 h-7 rounded overflow-hidden shrink-0 bg-white">
+                    <FixtureGraphic
+                      fixture={fixture}
+                      color={color}
+                      cols={1}
+                      rows={1}
+                      className="w-full h-full"
+                    />
+                  </div>
+                ) : (
+                  <div
+                    className="w-2.5 h-2.5 rounded-full shrink-0"
+                    style={{ background: color }}
+                  />
+                )}
                 <span className="text-sm font-medium" style={{ color }}>
                   {name || "Block name"}
                 </span>

@@ -4,6 +4,7 @@ import { Plus, Minus, X } from "lucide-react";
 import type { Item, ItemStatus } from "~/types/storeTypes";
 import type { BlocksMap, BlockState } from "~/types/storeViewFinderTypes";
 import { getItemStatus, itemRunoutDays } from "~/utils/helpers/storeTable.helper";
+import { FixtureGraphic } from "~/lib/fixtures";
 import { useProductImage } from "~/utils/useProductImage";
 import { TypeIcon } from "./typeIcon";
 import { ItemDetailPopup } from "./ItemDetailPopup";
@@ -97,6 +98,21 @@ export function StoreMapView({
   const [openZoneId, setOpenZoneId] = useState<string | null>(null);
   const [unassignedOpen, setUnassignedOpen] = useState(false);
   const [detailItem, setDetailItem] = useState<Item | null>(null);
+  // "Plain blocks" view preference (flat coloured blocks, no fixtures).
+  const [plain, setPlain] = useState(false);
+  useEffect(() => {
+    try {
+      setPlain(localStorage.getItem("lv-map-plain") === "1");
+    } catch {}
+  }, []);
+  const togglePlain = () =>
+    setPlain((p) => {
+      const next = !p;
+      try {
+        localStorage.setItem("lv-map-plain", next ? "1" : "0");
+      } catch {}
+      return next;
+    });
   // Drag-to-place: the item being dragged + the shelf currently hovered.
   const [dragItemId, setDragItemId] = useState<string | null>(null);
   const [dragOverZoneId, setDragOverZoneId] = useState<string | null>(null);
@@ -241,6 +257,7 @@ export function StoreMapView({
                   stat={zoneStats[bid]}
                   sampleItems={itemsByZone[bid] ?? []}
                   active={openZoneId === bid}
+                  plain={plain}
                   dragging={!!dragItemId && placeable}
                   dropActive={dragOverZoneId === bid}
                   onClick={() => {
@@ -356,6 +373,13 @@ export function StoreMapView({
 
       {/* ── Floating map tools ── */}
       <div className="absolute bottom-4 right-4 z-20 flex flex-col items-end gap-2">
+        <button
+          onClick={togglePlain}
+          title={plain ? "Show furniture fixtures" : "Show plain blocks"}
+          className="rounded-lg border border-slate-200 bg-white/95 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500 shadow-sm backdrop-blur transition-colors hover:text-slate-700"
+        >
+          {plain ? "Plain" : "Detailed"}
+        </button>
         {canEdit && (
           <button
             onClick={() => onAddItemToZone(null)}
@@ -443,6 +467,7 @@ function BlockTile({
   stat,
   sampleItems,
   active,
+  plain,
   dragging,
   dropActive,
   onClick,
@@ -455,6 +480,7 @@ function BlockTile({
   stat?: ZoneStat;
   sampleItems: Item[];
   active: boolean;
+  plain: boolean;
   dragging: boolean;
   dropActive: boolean;
   onClick: () => void;
@@ -565,6 +591,15 @@ function BlockTile({
         boxShadow,
       }}
     >
+      {block.fixture && !plain && (
+        <FixtureGraphic
+          fixture={block.fixture}
+          color={block.border}
+          cols={block.w}
+          rows={block.h}
+          className="absolute inset-0 pointer-events-none"
+        />
+      )}
       {/* attention badge */}
       {attention > 0 && (
         <span
