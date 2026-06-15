@@ -8,18 +8,19 @@ const client = createClient({
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
-const info = await client.execute("PRAGMA table_info(blocks)");
-const hasFixture = info.rows.some((r) => r.name === "fixture");
-
-if (hasFixture) {
-  console.log("blocks.fixture already exists — nothing to do.");
-} else {
-  await client.execute("ALTER TABLE blocks ADD COLUMN fixture TEXT");
-  console.log("Added blocks.fixture (TEXT, nullable).");
+for (const table of ["blocks", "template_blocks"]) {
+  const info = await client.execute(`PRAGMA table_info(${table})`);
+  const hasFixture = info.rows.some((r) => r.name === "fixture");
+  if (hasFixture) {
+    console.log(`${table}.fixture already exists — nothing to do.`);
+  } else {
+    await client.execute(`ALTER TABLE ${table} ADD COLUMN fixture TEXT`);
+    console.log(`Added ${table}.fixture (TEXT, nullable).`);
+  }
 }
 
 const counts = await client.execute(
   "SELECT fixture, COUNT(*) AS n FROM blocks GROUP BY fixture",
 );
-console.log("Current fixture distribution:");
+console.log("blocks fixture distribution:");
 for (const r of counts.rows) console.log(`  ${r.fixture ?? "(plain)"}: ${r.n}`);

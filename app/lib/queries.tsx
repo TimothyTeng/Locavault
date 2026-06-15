@@ -35,6 +35,7 @@ function toBlockDetails(b: typeof blocks.$inferSelect): BlockDetails {
     x: b.x,
     y: b.y,
     kind: (b.kind ?? "standard") as BlockKind,
+    fixture: b.fixture ?? null,
   };
 }
 
@@ -856,6 +857,7 @@ function toTemplateBlockDetails(
     x: b.x,
     y: b.y,
     kind: (b.kind ?? "standard") as BlockKind,
+    fixture: b.fixture ?? null,
   };
 }
 
@@ -945,6 +947,7 @@ export async function createTemplate(data: {
           x: b.x,
           y: b.y,
           kind: b.kind ?? "standard",
+          fixture: b.fixture ?? null,
         })),
       );
     }
@@ -1020,6 +1023,7 @@ export async function createStoreFromTemplate(
           x: b.x,
           y: b.y,
           kind: b.kind ?? "standard",
+          fixture: b.fixture ?? null,
         })),
       );
     }
