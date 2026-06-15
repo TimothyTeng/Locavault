@@ -71,10 +71,25 @@ export const KIND_ICONS: Record<BlockKind, React.ReactNode> = {
       />
     </svg>
   ),
+  room: (
+    <svg viewBox="0 0 20 20" fill="none" className="w-6 h-6">
+      <rect
+        x="2.5"
+        y="3.5"
+        width="15"
+        height="13"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeDasharray="3 2.5"
+      />
+    </svg>
+  ),
 };
 
 export const KIND_PLACEHOLDERS: Record<BlockKind, string> = {
   standard: "e.g. Freezer, Rack, Counter…",
   divider: "e.g. Section Break, Zone Border…",
   stairs: "e.g. Main Stairs, Emergency Exit…",
+  room: "e.g. Kitchen, Garage, Bedroom…",
 };

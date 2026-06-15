@@ -9,7 +9,7 @@ export const PRESET_COLORS = [
 
 // ─── Block kinds ──────────────────────────────────────────────────────────────
 
-export type BlockKind = "standard" | "divider" | "stairs";
+export type BlockKind = "standard" | "divider" | "stairs" | "room";
 
 export const BLOCK_KIND_META: Record<
   BlockKind,
@@ -26,6 +26,10 @@ export const BLOCK_KIND_META: Record<
   stairs: {
     label: "Stairs",
     description: "A stepped transition between levels",
+  },
+  room: {
+    label: "Room",
+    description: "An area that groups blocks; zoomable",
   },
 };
 
@@ -51,7 +55,11 @@ export interface StairsBlock extends BlockBase {
   kind: "stairs";
 }
 
-export type Block = StandardBlock | DividerBlock | StairsBlock;
+export interface RoomBlock extends BlockBase {
+  kind: "room";
+}
+
+export type Block = StandardBlock | DividerBlock | StairsBlock | RoomBlock;
 
 // ─── Default blocks ───────────────────────────────────────────────────────────
 
@@ -60,4 +68,5 @@ export const DEFAULT_BLOCKS: Block[] = [
   { id: "default-shelf",   name: "Shelf",   color: "#2d6b44", kind: "standard", fixture: "shelf" },
   { id: "default-cabinet", name: "Cabinet", color: "#b8821e", kind: "standard", fixture: "cabinet" },
   { id: "default-wall",    name: "Wall",    color: "#1e2520", kind: "divider" },
+  { id: "default-room",    name: "Room",    color: "#64748b", kind: "room" },
 ];

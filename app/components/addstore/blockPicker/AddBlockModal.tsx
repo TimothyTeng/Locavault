@@ -54,12 +54,27 @@ const KIND_ICONS: Record<BlockKind, React.ReactNode> = {
       />
     </svg>
   ),
+  room: (
+    <svg viewBox="0 0 20 20" fill="none" className="w-6 h-6">
+      <rect
+        x="2.5"
+        y="3.5"
+        width="15"
+        height="13"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeDasharray="3 2.5"
+      />
+    </svg>
+  ),
 };
 
 const KIND_PLACEHOLDERS: Record<BlockKind, string> = {
   standard: "e.g. Freezer, Rack, Counter…",
   divider: "e.g. Section Break, Zone Border…",
   stairs: "e.g. Main Stairs, Emergency Exit…",
+  room: "e.g. Kitchen, Garage, Bedroom…",
 };
 
 export function AddBlockModal({ onAdd, onClose }: Props) {
@@ -130,7 +145,7 @@ export function AddBlockModal({ onAdd, onClose }: Props) {
             <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">
               Type
             </label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-4 gap-2">
               {(Object.keys(BLOCK_KIND_META) as BlockKind[]).map((k) => {
                 const active = kind === k;
                 return (

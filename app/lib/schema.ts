@@ -29,7 +29,7 @@ export const blocks = sqliteTable("blocks", {
   width:      integer("width").notNull().default(1),
   x:          integer("x").notNull().default(0),
   y:          integer("y").notNull().default(0),
-  kind:       text("kind", { enum: ["standard", "divider", "stairs"] }).notNull().default("standard"),
+  kind:       text("kind", { enum: ["standard", "divider", "stairs", "room"] }).notNull().default("standard"),
   fixture:    text("fixture", { enum: FIXTURE_IDS }),  // null = plain coloured block
 });
 
@@ -140,7 +140,7 @@ export const templateBlocks = sqliteTable("template_blocks", {
   width:      integer("width").notNull().default(1),
   x:          integer("x").notNull().default(0),
   y:          integer("y").notNull().default(0),
-  kind:       text("kind", { enum: ["standard", "divider", "stairs"] }).notNull().default("standard"),
+  kind:       text("kind", { enum: ["standard", "divider", "stairs", "room"] }).notNull().default("standard"),
   fixture:    text("fixture", { enum: FIXTURE_IDS }),  // null = plain coloured block
 });
 

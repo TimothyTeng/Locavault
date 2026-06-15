@@ -337,16 +337,19 @@ export function GridCanvas({
 
   const layout = useMemo<LayoutItem[]>(
     () =>
-      Object.entries(blocks).map(([id, b]) => ({
-        i: id,
-        x: b.x,
-        y: b.y,
-        w: b.w,
-        h: b.h,
-        minW: 1,
-        minH: 1,
-        static: readOnly || drawMode || selectMode,
-      })),
+      Object.entries(blocks)
+        // Rooms are a passive grouping layer, not RGL items (see region layer).
+        .filter(([, b]) => b.kind !== "room")
+        .map(([id, b]) => ({
+          i: id,
+          x: b.x,
+          y: b.y,
+          w: b.w,
+          h: b.h,
+          minW: 1,
+          minH: 1,
+          static: readOnly || drawMode || selectMode,
+        })),
     [blocks, readOnly, drawMode, selectMode],
   );
 
@@ -384,6 +387,36 @@ export function GridCanvas({
             color="#e2e8f0"
             borderRadius={2}
           />
+
+          {/* ── Room regions (passive grouping layer, behind blocks) ── */}
+          {Object.entries(blocks)
+            .filter(([, b]) => b.kind === "room")
+            .map(([id, b]) => {
+              const isSel = selectMode
+                ? selectedIds.has(id)
+                : id === selectedId;
+              return (
+              <div
+                key={id}
+                className="absolute pointer-events-none rounded-md"
+                style={{
+                  left: b.x * cellSize,
+                  top: b.y * cellSize,
+                  width: b.w * cellSize,
+                  height: b.h * cellSize,
+                  background: `${b.border}${isSel ? "1f" : "0e"}`,
+                  border: `1.5px ${isSel ? "solid" : "dashed"} ${b.border}${isSel ? "" : "66"}`,
+                }}
+              >
+                <span
+                  className="absolute left-1 top-1 rounded bg-white/80 px-1 font-mono uppercase tracking-wide leading-none"
+                  style={{ fontSize: 9, color: b.border, paddingBlock: 1 }}
+                >
+                  {b.label}
+                </span>
+              </div>
+              );
+            })}
 
           <ReactGridLayout
             layout={responsiveLayout}

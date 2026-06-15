@@ -130,6 +130,8 @@ export function StoreMapView({
       return next;
     });
   const RULER = 18;
+  // Zoom-to-room: which room to scroll into view after a (possible) zoom change.
+  const [focusRoomId, setFocusRoomId] = useState<string | null>(null);
   // Drag-to-place: the item being dragged + the shelf currently hovered.
   const [dragItemId, setDragItemId] = useState<string | null>(null);
   const [dragOverZoneId, setDragOverZoneId] = useState<string | null>(null);
@@ -169,6 +171,15 @@ export function StoreMapView({
     [items],
   );
 
+  // Rooms are a passive grouping layer (kind "room") — used for zoom-to-room.
+  const rooms = useMemo(
+    () =>
+      Object.entries(blocks)
+        .filter(([, b]) => b.kind === "room")
+        .map(([id, b]) => ({ id, ...b })),
+    [blocks],
+  );
+
   // Move an item onto a shelf (or off the map). Persisted via onSaveItem.
   const placeItem = (itemId: string, blockId: string | null) => {
     const item = items.find((i) => i.id === itemId);
@@ -184,6 +195,27 @@ export function StoreMapView({
   const cell = baseCell * zoom;
   const contentW = cell * cols;
   const contentH = cell * rows;
+
+  // Zoom the view so a room fills most of the viewport, then scroll to it.
+  const zoomToRoom = (room: { id: string; x: number; y: number; w: number; h: number }) => {
+    if (baseCell > 0 && size.w > 0 && size.h > 0) {
+      const fit = Math.min(
+        (size.w * 0.85) / (room.w * baseCell),
+        (size.h * 0.85) / (room.h * baseCell),
+      );
+      setZoom(Math.max(0.6, Math.min(2.5, +fit.toFixed(2))));
+    }
+    setFocusRoomId(room.id);
+  };
+
+  // After a zoom-to-room (and the resulting re-layout), scroll it into view.
+  useEffect(() => {
+    if (!focusRoomId) return;
+    const el = boardRef.current?.querySelector(
+      `[data-room-id="${focusRoomId}"]`,
+    );
+    el?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+  }, [focusRoomId, cell]);
 
   // ── Entrance: shelves rise & fade in with a stagger (once, on first paint) ──
   useEffect(() => {
@@ -276,7 +308,32 @@ export function StoreMapView({
                 height: contentH,
               }}
             >
+            {/* Room regions — passive grouping layer, behind tiles */}
+            {rooms.map((r) => (
+              <div
+                key={r.id}
+                data-room-id={r.id}
+                className="absolute rounded-md pointer-events-none"
+                style={{
+                  left: r.x * cell,
+                  top: r.y * cell,
+                  width: r.w * cell,
+                  height: r.h * cell,
+                  background: `${r.border}0e`,
+                  border: `1.5px dashed ${r.border}59`,
+                }}
+              >
+                <span
+                  className="absolute left-1 top-1 rounded bg-white/80 px-1 font-mono uppercase tracking-wide leading-none"
+                  style={{ fontSize: 9, color: r.border, paddingBlock: 1 }}
+                >
+                  {r.label}
+                </span>
+              </div>
+            ))}
+
             {Object.entries(blocks).map(([bid, b]) => {
+              if (b.kind === "room") return null;
               const placeable =
                 b.kind !== "divider" && b.kind !== "stairs";
               return (
@@ -460,6 +517,35 @@ export function StoreMapView({
       {dragItemId && (
         <div className="pointer-events-none absolute left-1/2 top-3 z-30 -translate-x-1/2 rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 shadow-sm">
           Drop on a shelf to place it
+        </div>
+      )}
+
+      {/* ── Room selector (zoom into a room) ── */}
+      {rooms.length > 0 && (
+        <div className="absolute top-3 left-3 z-20 flex max-w-[55%] items-center gap-1.5 overflow-x-auto rounded-lg border border-slate-200 bg-white/90 px-2 py-1.5 shadow-sm backdrop-blur">
+          <span className="shrink-0 text-[9px] font-bold uppercase tracking-widest text-slate-300">
+            Rooms
+          </span>
+          <button
+            onClick={() => {
+              setFocusRoomId(null);
+              setZoom(1);
+            }}
+            className="shrink-0 rounded-md px-2 py-0.5 text-[10px] font-mono text-slate-500 hover:bg-slate-100"
+          >
+            All
+          </button>
+          {rooms.map((r) => (
+            <button
+              key={r.id}
+              onClick={() => zoomToRoom(r)}
+              title={`Zoom to ${r.label || "room"}`}
+              className="shrink-0 rounded-md px-2 py-0.5 text-[10px] font-mono transition-all hover:brightness-95"
+              style={{ color: r.border, background: `${r.border}14` }}
+            >
+              {r.label || "Room"}
+            </button>
+          ))}
         </div>
       )}
 

@@ -56,6 +56,8 @@ export function cornersToRect(a: CellPos, b: CellPos): GhostRect {
 
 export function blockAtCell(col: number, row: number, blocks: BlocksMap): string | null {
   for (const [id, b] of Object.entries(blocks)) {
+    // Rooms are a passive grouping layer — they never intercept pointer hits.
+    if (b.kind === "room") continue;
     if (col >= b.x && col < b.x + b.w && row >= b.y && row < b.y + b.h) return id;
   }
   return null;
