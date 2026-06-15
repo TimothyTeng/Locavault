@@ -11,11 +11,13 @@ import type {
 } from "../types/storeViewFinderTypes";
 import type { Route } from "./+types/home";
 import { useState, useEffect, useRef } from "react";
+import { Map as MapIcon, List as ListIcon } from "lucide-react";
 import { StoreHeader } from "~/components/store/storeHeader";
 import { StoreLoading } from "~/components/store/storeLoading";
 import { StoreToolbar } from "~/components/store/storeToolbar";
 import { StoreTable } from "~/components/store/storeTable";
-import { type Item } from "~/types/storeTypes";
+import { type Item, type ItemStatus } from "~/types/storeTypes";
+import type { ItemType } from "~/types/itemTypeTypes";
 import type { StoreMember } from "~/types/memberTypes";
 import { handlesForMode } from "~/components/addstore/storeViewFinder/ModeToggle";
 import { useZoom } from "~/utils/useZoom";
@@ -24,6 +26,10 @@ import Navbar from "~/components/home/navbar";
 import { AddItemPanel } from "~/components/addItem/addItemPanel";
 import { MembersPanel } from "~/components/store/membersPanel";
 import { MiniMap } from "~/components/store/minimap";
+import { StoreOverview } from "~/components/store/storeOverview";
+import { StoreMapView } from "~/components/store/storeMapView";
+import { ItemCardGrid } from "~/components/store/itemCardGrid";
+import { GlobalSearch } from "~/components/store/globalSearch";
 import { blocksToBlocksMap } from "#utils/helpers/store.helper";
 import { getItemStatus } from "#utils/helpers/storeTable.helper";
 import { useIsMobile } from "~/utils/useIsMobile";
@@ -81,6 +87,15 @@ export default function StorePage() {
   );
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [highlightedCell, setHighlightedCell] = useState<string | null>(null);
+  // The zone whose contents the right pane is scoped to (canvas-primary). Null =
+  // show the whole store (overview + all items).
+  const [focusedZoneId, setFocusedZoneId] = useState<string | null>(null);
+  // Optional status filter driven by the overview chips (all-items view).
+  const [statusFilter, setStatusFilter] = useState<ItemStatus | null>(null);
+  // All-items view: cards (visual, default) or table (sort/filter power).
+  const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
+  // Top-level surface: the map IS the app (default), or the flat inventory list.
+  const [pageView, setPageView] = useState<"map" | "inventory">("map");
   const [membersPanelOpen, setMembersPanelOpen] = useState(false);
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [minimapExpanded, setMinimapExpanded] = useState(false);
@@ -158,6 +173,40 @@ export default function StorePage() {
     (i) => getItemStatus(i) !== "ok",
   ).length;
 
+  // Per-zone status badges for the canvas: worst severity + count of items
+  // needing attention, so the floor plan reads as a triage dashboard.
+  const blockBadges = items.reduce<
+    Record<string, { count: number; tone: "critical" | "attention" }>
+  >((acc, item) => {
+    if (!item.blockId) return acc;
+    const status = getItemStatus(item);
+    if (status === "ok") return acc;
+    const tone: "critical" | "attention" =
+      status === "out" ? "critical" : "attention";
+    const cur = acc[item.blockId];
+    if (!cur) acc[item.blockId] = { count: 1, tone };
+    else {
+      cur.count += 1;
+      if (tone === "critical") cur.tone = "critical";
+    }
+    return acc;
+  }, {});
+
+  // Right-pane scoping: when a zone is focused, show only its items.
+  const zoneLabel = focusedZoneId ? blocks[focusedZoneId]?.label : null;
+  const visibleItems = focusedZoneId
+    ? items.filter((i) => i.blockId === focusedZoneId)
+    : items;
+
+  // Out/low items not already queued on the shopping list — "add all" targets.
+  const restockCandidates = items.filter((i) => {
+    const s = getItemStatus(i);
+    return (
+      (s === "out" || s === "low") &&
+      !purchaseOrder.some((p) => p.itemId === i.id)
+    );
+  });
+
   // Labelled standard blocks act as categories / shelves in the add-item form
   const categories = Object.entries(blocks)
     .filter(
@@ -179,6 +228,28 @@ export default function StorePage() {
     setHighlightedCell(item.blockId);
   };
 
+  // Clicking a zone on the canvas scopes the right pane to that zone's contents.
+  const handleZoneClick = (blockId: string) => {
+    setHighlightedCell(blockId);
+    setFocusedZoneId(blockId);
+    setStatusFilter(null);
+  };
+
+  // Global-search "jump": surface the item on the map — open & pulse its zone.
+  const handleJumpToItem = (item: Item) => {
+    setStatusFilter(null);
+    setSelectedItemId(item.id);
+    setFocusedZoneId(item.blockId ?? null);
+    setHighlightedCell(item.blockId ?? null);
+    if (item.blockId) setPageView("map");
+  };
+
+  // Open the add-item panel pre-targeted to a zone (or unassigned).
+  const handleAddItemToZone = (blockId: string | null) => {
+    setHighlightedCell(blockId);
+    setAddItemOpen(true);
+  };
+
   const handleSaveItem = (updated: Item) => {
     setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
     fetcher.submit(
@@ -190,6 +261,7 @@ export default function StorePage() {
         description: updated.description,
         quantity: updated.quantity,
         blockId: updated.blockId,
+        itemType: updated.itemType,
         sku: updated.sku ?? null,
         unit: updated.unit ?? null,
         minQuantity: updated.minQuantity ?? null,
@@ -213,12 +285,30 @@ export default function StorePage() {
     );
   };
 
+  // One-tap "we're out": zero the quantity locally, queue a restock, and let the
+  // server log the depletion (which trains the usage estimate).
+  const handleMarkItemOut = (item: Item) => {
+    const restockQty = suggestedQty(item);
+    setItems((prev) =>
+      prev.map((i) => (i.id === item.id ? { ...i, quantity: 0 } : i)),
+    );
+    if (!purchaseOrder.some((p) => p.itemId === item.id)) {
+      const { optimistic } = buildPOFromItem(item);
+      setPurchaseOrder((prev) => [...prev, optimistic]);
+    }
+    fetcher.submit(
+      { _action: "markItemOut", id: item.id, restockQty },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
   const handleAddItem = (data: {
     name: string;
     description: string;
     quantity: number;
     selectedBlockId?: string | null;
     inStore: boolean;
+    itemType: ItemType;
     sku?: string | null;
     unit?: string | null;
     minQuantity?: number | null;
@@ -237,6 +327,7 @@ export default function StorePage() {
       blockId: data.selectedBlockId ?? null,
       createdAt: new Date(),
       isPublic: true,
+      itemType: data.itemType,
       sku: data.sku ?? null,
       unit: data.unit ?? null,
       minQuantity: data.minQuantity ?? null,
@@ -254,6 +345,7 @@ export default function StorePage() {
         description: data.description,
         quantity: data.quantity,
         blockId: data.selectedBlockId ?? null,
+        itemType: data.itemType,
         optimisticId,
         sku: data.sku ?? null,
         unit: data.unit ?? null,
@@ -436,6 +528,7 @@ export default function StorePage() {
           description: poRow.description,
           createdAt: new Date(),
           isPublic: true,
+          itemType: "other",
           sku: poRow.sku,
           unit: poRow.unit,
           minQuantity: poRow.minQuantity,
@@ -487,8 +580,18 @@ export default function StorePage() {
     );
   };
 
-  // Suggested restock quantity — refill to ~2× min stock (fallback: 1)
+  // Suggested restock quantity.
+  // If we've learned a usage rate, buy enough to cover the next ~30 days (while
+  // staying above min stock). Otherwise fall back to refilling to ~2× min.
+  const RESTOCK_HORIZON_DAYS = 30;
   const suggestedQty = (item: Item) => {
+    const rate = item.usage?.dailyRate ?? null;
+    if (rate && rate > 0) {
+      const horizonNeed = Math.ceil(rate * RESTOCK_HORIZON_DAYS) - item.quantity;
+      const minNeed =
+        item.minQuantity != null ? item.minQuantity - item.quantity : 0;
+      return Math.max(horizonNeed, minNeed, 1);
+    }
     const target = item.minQuantity != null ? item.minQuantity * 2 : 1;
     return Math.max(target - item.quantity, 1);
   };
@@ -556,6 +659,8 @@ export default function StorePage() {
   useEffect(() => {
     if (isMobile) return;
     const handler = (e: MouseEvent) => {
+      // The map manages its own selection/highlight lifecycle.
+      if (pageView === "map") return;
       // While the Add Item / Shopping List panels are open, the highlighted
       // block is the active assignment target — don't clear it on outside clicks.
       if (addItemOpen || purchaseOrderOpen) return;
@@ -566,7 +671,7 @@ export default function StorePage() {
     };
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
-  }, [isMobile, addItemOpen, purchaseOrderOpen]);
+  }, [isMobile, addItemOpen, purchaseOrderOpen, pageView]);
 
   // ── Early returns ──
   if (!mounted) {
@@ -584,6 +689,10 @@ export default function StorePage() {
     accessLevel === "editor" ||
     accessLevel === "viewer" ||
     (accessLevel === "public" && store?.canvasVisible);
+
+  // The map is the primary surface, but only when a canvas is actually available.
+  const effectiveView: "map" | "inventory" =
+    showCanvas && pageView === "map" ? "map" : "inventory";
 
   // ── Render ──
   return (
@@ -605,7 +714,54 @@ export default function StorePage() {
           }}
         />
 
+        {/* Global item search — always available, jumps to an item's zone */}
+        <div className="flex items-center gap-3 px-4 md:px-6 h-11 border-b border-slate-200 bg-white shrink-0">
+          <GlobalSearch
+            items={items}
+            blocks={blocks}
+            onJump={handleJumpToItem}
+          />
+          <div className="flex-1" />
+          {showCanvas && (
+            <div className="flex items-center rounded-md border border-slate-200 overflow-hidden shrink-0">
+              <SurfaceBtn
+                active={pageView === "map"}
+                onClick={() => setPageView("map")}
+                label="Map"
+                icon={<MapIcon size={13} />}
+              />
+              <SurfaceBtn
+                active={pageView === "inventory"}
+                onClick={() => setPageView("inventory")}
+                label="Inventory"
+                icon={<ListIcon size={13} />}
+              />
+            </div>
+          )}
+        </div>
+
         <div className="flex flex-1 min-h-0 overflow-hidden relative">
+          {effectiveView === "map" && store ? (
+            /* ── Map-first surface: the floor plan IS the app ── */
+            <StoreMapView
+              blocks={blocks}
+              cols={store.cols}
+              rows={store.rows}
+              items={items}
+              canEdit={canEdit}
+              isOwner={isOwner}
+              storeIsPublic={store?.isPublic ?? false}
+              pulseZoneId={highlightedCell}
+              pulseItemId={selectedItemId}
+              onSaveItem={handleSaveItem}
+              onDeleteItem={handleDeleteItem}
+              onMarkOut={canEdit ? handleMarkItemOut : undefined}
+              onAddToList={canEdit ? handleAddPOItemFromSuggestion : undefined}
+              onToggleVisibility={handleToggleItemVisibility}
+              onAddItemToZone={handleAddItemToZone}
+            />
+          ) : (
+          <>
           {/* ── Desktop canvas (left pane) ── */}
           {!isMobile && (
             <div
@@ -635,9 +791,10 @@ export default function StorePage() {
                     blocks={blocks}
                     handles={handles}
                     selectedId={highlightedCell}
-                    onClick={(_, blockId) => setHighlightedCell(blockId)}
+                    onClick={(_, blockId) => handleZoneClick(blockId)}
                     readOnly={true}
                     nonClickableKinds={["divider", "stairs"]}
+                    blockBadges={blockBadges}
                   />
                 </div>
               </div>
@@ -651,19 +808,109 @@ export default function StorePage() {
               !isMobile && showCanvas ? "w-1/2" : "w-full"
             }`}
           >
-            <StoreTable
-              items={items}
-              selectedItemId={selectedItemId}
-              onSelect={handleSelectItem}
-              onSave={handleSaveItem}
-              onDelete={handleDeleteItem}
-              accessLevel={accessLevel}
-              storeIsPublic={store?.isPublic ?? false}
-              onToggleItemVisibility={handleToggleItemVisibility}
-              isMobile={isMobile}
-              minimapExpanded={minimapExpanded}
-            />
+            {focusedZoneId ? (
+              // ── Zone-scoped contents: type-aware cards ──
+              <>
+                <div className="px-3 py-2 border-b border-slate-100 bg-white shrink-0 flex items-center gap-2">
+                  <button
+                    onClick={() => setFocusedZoneId(null)}
+                    className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-700 transition-colors"
+                  >
+                    <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
+                      <path
+                        d="M6 1L2 5l4 4"
+                        stroke="currentColor"
+                        strokeWidth="1.6"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                    All items
+                  </button>
+                  <span className="text-slate-200">/</span>
+                  <span className="text-[11px] font-mono font-semibold text-slate-700 truncate">
+                    {zoneLabel || "Zone"}
+                  </span>
+                  <span className="text-[9px] font-mono text-slate-300">
+                    {visibleItems.length} item
+                    {visibleItems.length !== 1 ? "s" : ""}
+                  </span>
+                </div>
+                <ItemCardGrid
+                  items={visibleItems}
+                  onSave={handleSaveItem}
+                  onDelete={handleDeleteItem}
+                  onMarkOut={canEdit ? handleMarkItemOut : undefined}
+                  onAddToList={
+                    canEdit ? handleAddPOItemFromSuggestion : undefined
+                  }
+                  isOwner={isOwner}
+                  storeIsPublic={store?.isPublic ?? false}
+                  onToggleVisibility={handleToggleItemVisibility}
+                  emptyLabel="Nothing in this zone yet"
+                  bottomPad={isMobile && minimapExpanded}
+                />
+              </>
+            ) : (
+              // ── Whole-store: overview action queue + cards / table ──
+              <>
+                <StoreOverview
+                  items={items}
+                  restockCandidates={restockCandidates}
+                  onAddAll={canEdit ? handleAddAllSuggestions : undefined}
+                  activeStatus={statusFilter}
+                  onSelectStatus={(s) =>
+                    setStatusFilter((prev) => (prev === s ? null : s))
+                  }
+                  viewMode={viewMode}
+                  onViewModeChange={setViewMode}
+                />
+                {viewMode === "cards" ? (
+                  <ItemCardGrid
+                    items={
+                      statusFilter
+                        ? items.filter((i) => getItemStatus(i) === statusFilter)
+                        : items
+                    }
+                    onSave={handleSaveItem}
+                    onDelete={handleDeleteItem}
+                    onMarkOut={canEdit ? handleMarkItemOut : undefined}
+                    onAddToList={
+                      canEdit ? handleAddPOItemFromSuggestion : undefined
+                    }
+                    isOwner={isOwner}
+                    storeIsPublic={store?.isPublic ?? false}
+                    onToggleVisibility={handleToggleItemVisibility}
+                    emptyLabel="No items yet"
+                    bottomPad={isMobile && minimapExpanded}
+                  />
+                ) : (
+                  <StoreTable
+                    items={
+                      statusFilter
+                        ? items.filter((i) => getItemStatus(i) === statusFilter)
+                        : items
+                    }
+                    selectedItemId={selectedItemId}
+                    onSelect={handleSelectItem}
+                    onSave={handleSaveItem}
+                    onDelete={handleDeleteItem}
+                    onMarkOut={canEdit ? handleMarkItemOut : undefined}
+                    onAddToList={
+                      canEdit ? handleAddPOItemFromSuggestion : undefined
+                    }
+                    accessLevel={accessLevel}
+                    storeIsPublic={store?.isPublic ?? false}
+                    onToggleItemVisibility={handleToggleItemVisibility}
+                    isMobile={isMobile}
+                    minimapExpanded={minimapExpanded}
+                  />
+                )}
+              </>
+            )}
           </div>
+          </>
+          )}
 
           {/* Members panel */}
           {isOwner && (
@@ -677,8 +924,8 @@ export default function StorePage() {
         </div>
       </div>
 
-      {/* ── Mobile minimap (floating bottom-left) ── */}
-      {isMobile && showCanvas && store && (
+      {/* ── Mobile minimap (floating bottom-left) — only in the list view ── */}
+      {isMobile && showCanvas && store && effectiveView === "inventory" && (
         <MiniMap
           blocks={blocks}
           cols={store.cols}
@@ -693,6 +940,7 @@ export default function StorePage() {
           zoom={zoom}
           onZoomIn={onZoomIn}
           onZoomOut={onZoomOut}
+          blockBadges={blockBadges}
         />
       )}
 
@@ -729,5 +977,35 @@ export default function StorePage() {
         />
       )}
     </div>
+  );
+}
+
+/** Map / Inventory surface toggle in the search bar. */
+function SurfaceBtn({
+  active,
+  onClick,
+  label,
+  icon,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  icon: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`${label} view`}
+      aria-label={`${label} view`}
+      className={`flex items-center gap-1.5 px-2.5 h-7 text-[10px] font-bold uppercase tracking-widest transition-colors ${
+        active
+          ? "bg-slate-900 text-white"
+          : "bg-white text-slate-400 hover:text-slate-700"
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
   );
 }

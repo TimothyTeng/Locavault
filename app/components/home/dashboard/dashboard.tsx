@@ -1,4 +1,6 @@
-import { useMemo, useState, useCallback } from "react";
+import { useMemo, useState, useCallback, useRef, useEffect } from "react";
+import gsap from "gsap";
+import { Plus, Search, ArrowDown, X } from "lucide-react";
 import { useNavigate, useFetcher } from "react-router";
 import { useUser } from "@clerk/react-router";
 import type {
@@ -8,6 +10,7 @@ import type {
 } from "#types/dashboardTypes";
 import { StoreCard } from "./storecard";
 import { EmptyState } from "./emptystate";
+import { CountUp } from "#components/common/countUp";
 
 // ── Main Dashboard ─────────────────────────────────────────
 
@@ -110,16 +113,45 @@ export default function Dashboard({ stores: initialStores }: Props) {
 
   const pinnedCount = stores.filter((s) => pinned.has(s.id)).length;
 
+  // ── Entrance: header + cards reveal once on mount ──
+  const rootRef = useRef<HTMLDivElement>(null);
+  const didAnim = useRef(false);
+  useEffect(() => {
+    if (didAnim.current || !rootRef.current) return;
+    didAnim.current = true;
+    const ctx = gsap.context(() => {
+      gsap.from(".lv-dash-head", {
+        opacity: 0,
+        y: -12,
+        duration: 0.5,
+        ease: "power3.out",
+      });
+      gsap.from(".lv-store-card", {
+        opacity: 0,
+        y: 18,
+        duration: 0.5,
+        ease: "power3.out",
+        stagger: 0.06,
+        delay: 0.08,
+        clearProps: "all",
+      });
+    }, rootRef);
+    return () => ctx.revert();
+  }, []);
+
   return (
-    <div className="min-h-screen bg-slate-50 px-4 sm:px-8 py-10 max-w-7xl mx-auto">
+    <div
+      ref={rootRef}
+      className="min-h-screen bg-slate-50 px-4 sm:px-8 py-10 max-w-7xl mx-auto"
+    >
       {/* ── Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
+      <div className="lv-dash-head flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
             {user?.firstName ? `${user.firstName}'s` : "Your"} stores
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            {stores.length} {stores.length === 1 ? "location" : "locations"}
+            <CountUp value={stores.length} /> {stores.length === 1 ? "location" : "locations"}
             {pinnedCount > 0 && ` · ${pinnedCount} pinned`}
           </p>
         </div>
@@ -129,14 +161,7 @@ export default function Dashboard({ stores: initialStores }: Props) {
                      text-white text-sm font-semibold rounded-xl transition-colors
                      shadow-sm shadow-emerald-900/10 self-start sm:self-auto"
         >
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-            <path
-              d="M7 1v12M1 7h12"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            />
-          </svg>
+          <Plus size={15} strokeWidth={2.4} />
           New store
         </button>
       </div>
@@ -147,27 +172,10 @@ export default function Dashboard({ stores: initialStores }: Props) {
         <div className="flex gap-2">
           {/* Search */}
           <div className="relative flex-1">
-            <svg
+            <Search
+              size={15}
               className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-              width="15"
-              height="15"
-              viewBox="0 0 15 15"
-              fill="none"
-            >
-              <circle
-                cx="7"
-                cy="7"
-                r="4.5"
-                stroke="currentColor"
-                strokeWidth="1.4"
-              />
-              <path
-                d="M10.5 10.5l2.5 2.5"
-                stroke="currentColor"
-                strokeWidth="1.4"
-                strokeLinecap="round"
-              />
-            </svg>
+            />
             <input
               type="text"
               placeholder="Search stores or tags…"
@@ -184,14 +192,7 @@ export default function Dashboard({ stores: initialStores }: Props) {
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400
                            hover:text-slate-600 transition-colors"
               >
-                <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                  <path
-                    d="M1 1l10 10M11 1L1 11"
-                    stroke="currentColor"
-                    strokeWidth="1.5"
-                    strokeLinecap="round"
-                  />
-                </svg>
+                <X size={13} />
               </button>
             )}
           </div>
@@ -215,24 +216,13 @@ export default function Dashboard({ stores: initialStores }: Props) {
             className="px-3 py-2 bg-white border border-slate-200 rounded-xl text-slate-500
                        hover:border-slate-300 hover:text-slate-700 transition"
           >
-            <svg
-              width="14"
-              height="14"
-              viewBox="0 0 14 14"
-              fill="none"
+            <ArrowDown
+              size={15}
               style={{
                 transform: sortDir === "asc" ? "rotate(180deg)" : "none",
                 transition: "transform 0.2s",
               }}
-            >
-              <path
-                d="M7 2v10M3 8l4 4 4-4"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
+            />
           </button>
         </div>
 
@@ -281,13 +271,14 @@ export default function Dashboard({ stores: initialStores }: Props) {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filtered.map((store) => (
-            <StoreCard
-              key={store.id}
-              store={store}
-              pinned={pinned.has(store.id)}
-              onDelete={handleDelete}
-              onPin={handlePin}
-            />
+            <div key={store.id} className="lv-store-card">
+              <StoreCard
+                store={store}
+                pinned={pinned.has(store.id)}
+                onDelete={handleDelete}
+                onPin={handlePin}
+              />
+            </div>
           ))}
         </div>
       )}

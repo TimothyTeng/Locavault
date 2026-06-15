@@ -43,6 +43,7 @@ export const items = sqliteTable("items", {
   createdAt:     integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
   isPublic:      integer("is_public", { mode: "boolean" }).notNull().default(true),
   // ── New fields ──
+  itemType:      text("item_type", { enum: ["food", "medication", "supplies", "equipment", "clothing", "document", "other"] }).notNull().default("other"),
   sku:           text("sku"),
   unit:          text("unit"),
   minQuantity:   integer("min_quantity"),

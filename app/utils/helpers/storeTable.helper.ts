@@ -33,23 +33,35 @@ export function formatUseRate(
   return `${rate} / ${period}`;
 }
 
+/**
+ * Best available "days until run-out" for an item: prefers the server-computed
+ * usage estimate (learned from history), falling back to the manual use-rate.
+ */
+export function itemRunoutDays(item: Item): number | null {
+  if (item.usage?.runoutDays != null) return item.usage.runoutDays;
+  if (item.useRate && item.useRatePeriod) {
+    return remainingDays(
+      item.createdAt,
+      item.useRate.toString(),
+      item.useRatePeriod,
+      item.quantity,
+    );
+  }
+  return null;
+}
+
 export function getItemStatus(item: Item): ItemStatus {
   if (item.quantity <= 0) return "out";
-  const runoutDaysVal =
-    item.useRate && item.useRatePeriod
-      ? remainingDays(
-          item.createdAt,
-          item.useRate.toString(),
-          item.useRatePeriod,
-          item.quantity,
-        )
-      : null;
+  const runoutDaysVal = itemRunoutDays(item);
+  // Only an evidence-backed estimate (real history or a user-entered rate) may
+  // raise a low-stock alert — a `prior` guess stays silent ("still learning").
+  const evidenceBased =
+    item.usage == null
+      ? item.useRate != null && item.useRatePeriod != null
+      : item.usage.source === "history" || item.usage.source === "manual";
   if (
     (item.minQuantity != null && item.quantity <= item.minQuantity) ||
-    (item.useRate != null &&
-      item.useRatePeriod != null &&
-      runoutDaysVal != null &&
-      runoutDaysVal <= 7)
+    (evidenceBased && runoutDaysVal != null && runoutDaysVal <= 7)
   ) {
     return "low";
   }
@@ -85,17 +97,7 @@ export function getSortValue(item: Item, key: SortKey): number | string {
       return d ?? Infinity;
     }
     case "depletion": {
-      const d =
-        item.useRate && item.useRatePeriod
-          ? Number(
-              remainingDays(
-                item.createdAt,
-                item.useRate.toString(),
-                item.useRatePeriod,
-                item.quantity,
-              ),
-            )
-          : null;
+      const d = itemRunoutDays(item);
       return d ?? Infinity;
     }
     case "status":

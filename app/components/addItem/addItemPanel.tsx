@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { AddItemForm } from "#components/addItem/addItemForm";
+import type { ItemType } from "~/lib/itemTypes";
 
 type Props = {
   isOpen: boolean;
@@ -10,6 +11,7 @@ type Props = {
     quantity: number;
     inStore: boolean;
     selectedBlockId?: string | null;
+    itemType: ItemType;
     sku?: string | null;
     unit?: string | null;
     minQuantity?: number | null;
@@ -123,6 +125,7 @@ export function AddItemPanel({
       <div className="flex-1 overflow-y-auto px-6 py-6">
         <AddItemForm
           onSubmit={onSubmit}
+          categories={categories}
           selectedBlockId={selectedBlockId}
           selectedBlockLabel={selectedBlockLabel}
         />

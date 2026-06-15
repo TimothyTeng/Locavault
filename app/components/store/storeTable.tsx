@@ -18,6 +18,8 @@ type Props = {
   onSelect: (item: Item) => void;
   onSave: (updated: Item) => void;
   onDelete: (itemId: string) => void;
+  onMarkOut?: (item: Item) => void;
+  onAddToList?: (item: Item) => void;
   accessLevel: AccessLevel;
   storeIsPublic: boolean;
   onToggleItemVisibility: (itemId: string, isPublic: boolean) => void;
@@ -31,6 +33,8 @@ export function StoreTable({
   onSelect,
   onSave,
   onDelete,
+  onMarkOut,
+  onAddToList,
   accessLevel,
   storeIsPublic,
   onToggleItemVisibility,
@@ -304,6 +308,8 @@ export function StoreTable({
                   onSelect={onSelect}
                   onSave={onSave}
                   onDelete={onDelete}
+                  onMarkOut={onMarkOut}
+                  onAddToList={onAddToList}
                   isOwner={isOwner}
                   storeIsPublic={storeIsPublic}
                   onToggleVisibility={onToggleItemVisibility}

@@ -28,15 +28,17 @@ export const runOutDays = ((useRate: string, useRatePeriod: "day" | "week" | "mo
     return Math.floor(quantity / daily);
   });
 
-export const remainingDays = (createdAt: Date | null, useRate: string, useRatePeriod: "day" | "week" | "month", quantity: number) => {
+/**
+ * Days until an item runs out, measured from *now* using the current quantity.
+ * `runOutDays` already returns "days of stock left at the given rate", so the
+ * remaining days from today is exactly that — the old version anchored the
+ * run-out date to `createdAt`, which wrongly drove long-lived items to 0.
+ * (`_createdAt` kept for call-site compatibility.)
+ */
+export const remainingDays = (_createdAt: Date | null, useRate: string, useRatePeriod: "day" | "week" | "month", quantity: number) => {
   const daysToRunOut = runOutDays(useRate, useRatePeriod, quantity);
   if (daysToRunOut === null) return null;
-  const runOutDate = createdAt ? new Date(createdAt) : new Date();
-  runOutDate.setDate(runOutDate.getDate() + daysToRunOut);
-  const today = new Date();
-  const msDiff = runOutDate.getTime() - today.getTime();
-  const daysRemaining = Math.ceil(msDiff / (1000 * 60 * 60 * 24));
-  return daysRemaining >= 0 ? daysRemaining : 0;
+  return daysToRunOut >= 0 ? daysToRunOut : 0;
 }
 
 export const expiryDateRemainingDays = (expiryDate: Date | null) => {

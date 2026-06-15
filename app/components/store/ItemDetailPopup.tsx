@@ -1,29 +1,41 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import type { Item } from "~/types/storeTypes";
-import { remainingDays } from "~/utils/helpers/store.helper";
+import {
+  fieldsForType,
+  ITEM_TYPES,
+  TYPE_META,
+  type ItemType,
+} from "~/lib/itemTypes";
 import {
   formatCost,
   formatExpiry,
   formatUseRate,
+  itemRunoutDays,
 } from "~/utils/helpers/storeTable.helper";
+import { describeUsage } from "~/utils/helpers/usage.helper";
 
 export function ItemDetailPopup({
   item,
   onClose,
   onSave,
   onDelete,
+  onMarkOut,
+  onAddToList,
 }: {
   item: Item;
   onClose: () => void;
   onSave: (updated: Item) => void;
   onDelete: (itemId: string) => void;
+  onMarkOut?: (item: Item) => void;
+  onAddToList?: (item: Item) => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Editable fields
   const [name, setName] = useState(item.name);
+  const [itemType, setItemType] = useState<ItemType>(item.itemType);
   const [quantity, setQuantity] = useState(item.quantity);
   const [description, setDescription] = useState(item.description ?? "");
   const [sku, setSku] = useState(item.sku ?? "");
@@ -47,20 +59,21 @@ export function ItemDetailPopup({
   >(item.useRatePeriod ?? "");
 
   const expiry = formatExpiry(item.expiryDate);
-  const runoutDaysVal =
-    item.useRate && item.useRatePeriod
-      ? remainingDays(
-          item.createdAt,
-          item.useRate.toString(),
-          item.useRatePeriod,
-          item.quantity,
-        )
-      : null;
+  const runoutDaysVal = itemRunoutDays(item);
+
+  // The type's traits decide which tracking fields are relevant. Keep showing a
+  // field if the item already holds a value for it, so editing never hides data.
+  const fields = fieldsForType(itemType);
+  const showUnit = fields.unit || item.unit != null;
+  const showMin = fields.minQuantity || item.minQuantity != null;
+  const showExpiry = fields.expiry || item.expiryDate != null;
+  const showUseRate = fields.useRate || item.useRate != null;
 
   const handleSave = () => {
     onSave({
       ...item,
       name: name.trim() || item.name,
+      itemType,
       quantity: Number(quantity) || 0,
       description: description || null,
       sku: sku || null,
@@ -76,6 +89,7 @@ export function ItemDetailPopup({
 
   const handleCancelEdit = () => {
     setName(item.name);
+    setItemType(item.itemType);
     setQuantity(item.quantity);
     setDescription(item.description ?? "");
     setSku(item.sku ?? "");
@@ -171,6 +185,23 @@ export function ItemDetailPopup({
             }
           />
           <DetailRow
+            label="Type"
+            value={TYPE_META[item.itemType].label}
+            editContent={
+              <select
+                className={inputClass}
+                value={itemType}
+                onChange={(e) => setItemType(e.target.value as ItemType)}
+              >
+                {ITEM_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {TYPE_META[t].label}
+                  </option>
+                ))}
+              </select>
+            }
+          />
+          <DetailRow
             label="Quantity"
             value={`${item.quantity}${item.unit ? ` ${item.unit}` : ""}`}
             editContent={
@@ -199,18 +230,20 @@ export function ItemDetailPopup({
               />
             }
           />
-          <DetailRow
-            label="Unit"
-            value={item.unit ?? "—"}
-            editContent={
-              <input
-                className={inputClass}
-                value={unit}
-                onChange={(e) => setUnit(e.target.value)}
-                placeholder="e.g. kg, pcs"
-              />
-            }
-          />
+          {showUnit && (
+            <DetailRow
+              label="Unit"
+              value={item.unit ?? "—"}
+              editContent={
+                <input
+                  className={inputClass}
+                  value={unit}
+                  onChange={(e) => setUnit(e.target.value)}
+                  placeholder="e.g. kg, pcs"
+                />
+              }
+            />
+          )}
           <DetailRow
             label="Cost"
             value={formatCost(item.cost)}
@@ -225,23 +258,26 @@ export function ItemDetailPopup({
               />
             }
           />
-          <DetailRow
-            label="Min Stock"
-            value={
-              item.minQuantity != null
-                ? `${item.minQuantity}${item.unit ? ` ${item.unit}` : ""}`
-                : "—"
-            }
-            editContent={
-              <input
-                className={inputClass}
-                type="number"
-                value={minQuantity}
-                onChange={(e) => setMinQuantity(e.target.value)}
-                placeholder="—"
-              />
-            }
-          />
+          {showMin && (
+            <DetailRow
+              label="Min Stock"
+              value={
+                item.minQuantity != null
+                  ? `${item.minQuantity}${item.unit ? ` ${item.unit}` : ""}`
+                  : "—"
+              }
+              editContent={
+                <input
+                  className={inputClass}
+                  type="number"
+                  value={minQuantity}
+                  onChange={(e) => setMinQuantity(e.target.value)}
+                  placeholder="—"
+                />
+              }
+            />
+          )}
+          {showExpiry && (
           <DetailRow
             label="Expiry"
             value={
@@ -272,6 +308,8 @@ export function ItemDetailPopup({
               />
             }
           />
+          )}
+          {showUseRate && (
           <DetailRow
             label="Use Rate"
             value={formatUseRate(item.useRate, item.useRatePeriod)}
@@ -301,6 +339,7 @@ export function ItemDetailPopup({
               </div>
             }
           />
+          )}
           <DetailRow
             label="Runs Out"
             value={
@@ -323,6 +362,28 @@ export function ItemDetailPopup({
               )
             }
           />
+          {item.usage && item.usage.dailyRate != null && item.usage.dailyRate > 0 && (
+            <DetailRow
+              label="Est. usage"
+              value={
+                <span
+                  className="text-slate-600"
+                  title={describeUsage(item.usage)}
+                >
+                  {item.usage.dailyRate >= 1
+                    ? `~${item.usage.dailyRate.toFixed(1)}/day`
+                    : `~${(item.usage.dailyRate * 7).toFixed(1)}/week`}
+                  <span className="ml-1.5 text-[10px] text-slate-400 uppercase tracking-wide">
+                    {item.usage.source === "history"
+                      ? `learned · ${item.usage.confidence}`
+                      : item.usage.source === "prior"
+                        ? "still learning"
+                        : "manual"}
+                  </span>
+                </span>
+              }
+            />
+          )}
           {item.minQuantity != null && item.quantity <= item.minQuantity && (
             <DetailRow
               label="Alert"
@@ -365,6 +426,30 @@ export function ItemDetailPopup({
             >
               Close
             </button>
+          </div>
+        )}
+
+        {/* Restock actions — one-tap "we're out" + add to the shopping list */}
+        {!isEditing && (onMarkOut || onAddToList) && (
+          <div className="flex gap-2">
+            {onMarkOut && (
+              <button
+                onClick={() => onMarkOut(item)}
+                title="Mark as finished and add to your shopping list"
+                className="flex-1 px-4 py-2 rounded-md border border-amber-200 bg-amber-50 text-amber-700 text-[10px] font-bold uppercase tracking-widest hover:bg-amber-100 transition-all"
+              >
+                We're out
+              </button>
+            )}
+            {onAddToList && (
+              <button
+                onClick={() => onAddToList(item)}
+                title="Add to your shopping list"
+                className="flex-1 px-4 py-2 rounded-md border border-slate-200 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:bg-slate-50 transition-all"
+              >
+                Add to list
+              </button>
+            )}
           </div>
         )}
 

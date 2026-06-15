@@ -69,11 +69,20 @@ export function TemplatesGallery({
     }
     if (activeTag)
       result = result.filter((t) => parsedTags.get(t.id)?.includes(activeTag));
-    return result.sort(
-      (a, b) =>
+    // Food-first: surface kitchen/food layouts first (our flagship use case),
+    // then most-recent within each group.
+    const foodRe = /food|kitchen|pantry|fridge|grocer|meal/i;
+    const isFood = (t: (typeof result)[number]) =>
+      foodRe.test(t.name) ||
+      (parsedTags.get(t.id) ?? []).some((tag) => foodRe.test(tag));
+    return result.sort((a, b) => {
+      const rank = (isFood(a) ? 0 : 1) - (isFood(b) ? 0 : 1);
+      if (rank !== 0) return rank;
+      return (
         new Date(b.createdAt ?? 0).getTime() -
-        new Date(a.createdAt ?? 0).getTime(),
-    );
+        new Date(a.createdAt ?? 0).getTime()
+      );
+    });
   }, [templates, scope, search, activeTag, parsedTags, userId]);
 
   // ── Actions ──

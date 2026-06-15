@@ -9,14 +9,15 @@ export default function Hero() {
       </div>
 
       <h1 className="hero-title">
-        Know exactly what
+        Never run out of the
         <br />
-        you have, <span className="hero-title-accent">and where.</span>
+        things your home <span className="hero-title-accent">runs on.</span>
       </h1>
 
       <p className="hero-sub">
-        Locavault lets homes and workplaces build interactive stores, catalogue
-        every item, and instantly find anything — across all your locations.
+        Locavault maps your home, learns how fast you go through things, and
+        flags what's running low or about to expire — so you find anything in
+        seconds and never run out. Without logging your life.
       </p>
 
       <div className="hero-ctas">
@@ -47,7 +48,7 @@ export default function Hero() {
         <div>
           <div className="hero-stars">{"★★★★★"}</div>
           <div className="hero-proof-text">
-            <strong>2,400+ teams</strong> already organised
+            <strong>2,400+ homes</strong> already stocked
           </div>
         </div>
       </div>

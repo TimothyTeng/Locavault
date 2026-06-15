@@ -1,10 +1,8 @@
 import { useState } from "react";
 import type { Item, ItemStatus } from "#types/storeTypes";
-import {
-  expiryDateRemainingDays,
-  remainingDays,
-} from "~/utils/helpers/store.helper";
-import { getItemStatus } from "~/utils/helpers/storeTable.helper";
+import { expiryDateRemainingDays } from "~/utils/helpers/store.helper";
+import { getItemStatus, itemRunoutDays } from "~/utils/helpers/storeTable.helper";
+import { describeUsage } from "~/utils/helpers/usage.helper";
 import { ItemDetailPopup } from "./ItemDetailPopup";
 
 type Props = {
@@ -14,6 +12,8 @@ type Props = {
   onSelect: (item: Item) => void;
   onSave: (updated: Item) => void;
   onDelete: (itemId: string) => void;
+  onMarkOut?: (item: Item) => void;
+  onAddToList?: (item: Item) => void;
   isOwner: boolean;
   storeIsPublic: boolean;
   onToggleVisibility: (itemId: string, isPublic: boolean) => void;
@@ -43,6 +43,8 @@ export function StoreTableRow({
   onSelect,
   onSave,
   onDelete,
+  onMarkOut,
+  onAddToList,
   isOwner,
   storeIsPublic,
   onToggleVisibility,
@@ -56,15 +58,11 @@ export function StoreTableRow({
   const { pill, label: statusLabel } = STATUS_STYLES[status];
 
   const expiryDays = expiryDateRemainingDays(item.expiryDate);
-  const depletionDays =
-    item.useRate && item.useRatePeriod
-      ? remainingDays(
-          item.createdAt,
-          item.useRate.toString(),
-          item.useRatePeriod,
-          item.quantity,
-        )
-      : null;
+  const depletionDays = itemRunoutDays(item);
+  // Learned-from-history estimates get a small dot; manual ones don't.
+  const isLearned = item.usage?.source === "history";
+  // A `prior` estimate is just a "still learning" guess — render it muted.
+  const isPrior = item.usage?.source === "prior";
 
   const expiryColor = isSelected
     ? "text-slate-300"
@@ -74,13 +72,14 @@ export function StoreTableRow({
         ? "text-amber-500"
         : "text-slate-400";
 
-  const depletionColor = isSelected
-    ? "text-slate-300"
-    : depletionDays != null && Number(depletionDays) <= 7
-      ? "text-red-500"
-      : depletionDays != null && Number(depletionDays) <= 30
-        ? "text-amber-500"
-        : "text-slate-400";
+  const depletionColor =
+    isSelected || isPrior
+      ? "text-slate-300"
+      : depletionDays != null && Number(depletionDays) <= 7
+        ? "text-red-500"
+        : depletionDays != null && Number(depletionDays) <= 30
+          ? "text-amber-500"
+          : "text-slate-400";
 
   const cellClass = "px-3 py-2.5 text-[11px]";
 
@@ -94,6 +93,20 @@ export function StoreTableRow({
     setShowDetail(false);
   };
 
+  const handleMarkOutAndClose = onMarkOut
+    ? (i: Item) => {
+        onMarkOut(i);
+        setShowDetail(false);
+      }
+    : undefined;
+
+  const handleAddToListAndClose = onAddToList
+    ? (i: Item) => {
+        onAddToList(i);
+        setShowDetail(false);
+      }
+    : undefined;
+
   return (
     <>
       {showDetail && (
@@ -102,6 +115,8 @@ export function StoreTableRow({
           onClose={() => setShowDetail(false)}
           onSave={handleSaveAndClose}
           onDelete={handleDeleteAndClose}
+          onMarkOut={handleMarkOutAndClose}
+          onAddToList={handleAddToListAndClose}
         />
       )}
 
@@ -161,9 +176,18 @@ export function StoreTableRow({
         {!isMobile && (
           <td
             className={`${cellClass} w-24 text-right text-[10px] font-mono tabular-nums ${depletionColor}`}
+            title={item.usage ? describeUsage(item.usage) : undefined}
           >
             {depletionDays != null ? (
-              `${depletionDays}d`
+              <span className="inline-flex items-center gap-1 justify-end">
+                {isLearned && (
+                  <span
+                    className="w-1 h-1 rounded-full bg-emerald-400"
+                    aria-label="learned from usage history"
+                  />
+                )}
+                {isPrior ? `~${depletionDays}d` : `${depletionDays}d`}
+              </span>
             ) : (
               <span className="opacity-30">—</span>
             )}

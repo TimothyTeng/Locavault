@@ -3,9 +3,11 @@ import { redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from "reac
 import {
   createInvite,
   createItem,
+  createItemLog,
   createPurchaseOrder,
   deleteItem,
   deletePurchaseOrder,
+  getUsageLogsByStore,
   getItemById,
   getItemsByStore,
   getMembersByStore,
@@ -18,6 +20,11 @@ import {
   updateStoreVisibility,
   verifyStoreAccess,
 } from "~/lib/queries";
+import { estimateUsage } from "~/utils/helpers/usage.helper";
+import type { UsageLog } from "~/types/storeTypes";
+
+/** Window of consumption history (days) pulled to estimate usage. */
+const USAGE_WINDOW_DAYS = 120;
 
 /**
  * Commit a single purchase-order row to inventory:
@@ -25,7 +32,10 @@ import {
  * - unlinked    → create a fresh item
  * Then delete the PO row. Returns false if the row/linked item is missing.
  */
-async function commitPurchaseOrderRow(poId: string): Promise<boolean> {
+async function commitPurchaseOrderRow(
+  poId: string,
+  loggedBy?: string,
+): Promise<boolean> {
   const poRow = await getPurchaseOrderById(poId);
   if (!poRow) return false;
 
@@ -46,6 +56,16 @@ async function commitPurchaseOrderRow(poId: string): Promise<boolean> {
       useRate: poRow.useRate ?? undefined,
       useRatePeriod: poRow.useRatePeriod ?? undefined,
     });
+    // Record the restock (positive delta) so usage history stays complete.
+    if (poRow.quantity > 0) {
+      await createItemLog(
+        poRow.itemId,
+        poRow.storeId,
+        poRow.quantity,
+        loggedBy,
+        "restock",
+      );
+    }
   } else {
     await createItem({
       name: poRow.name,
@@ -79,18 +99,34 @@ export const loader = async (args: LoaderFunctionArgs) => {
 
   if (accessLevel === "none") throw redirect("/");
 
-  const [allItems, purchaseOrders, members] = await Promise.all([
+  const usageSince = new Date(Date.now() - USAGE_WINDOW_DAYS * 86_400_000);
+  const [allItems, purchaseOrders, members, usageLogs] = await Promise.all([
     getItemsByStore(params.id!),
     getPurchaseOrders(params.id!),
     accessLevel === "owner"
       ? getMembersByStore(params.id!)
       : Promise.resolve([]),
+    getUsageLogsByStore(params.id!, usageSince),
   ]);
 
-  const items =
+  // Group usage logs by item so usage can be estimated in one pass.
+  const logsByItem = new Map<string, UsageLog[]>();
+  for (const log of usageLogs) {
+    const arr = logsByItem.get(log.itemId);
+    if (arr) arr.push(log);
+    else logsByItem.set(log.itemId, [log]);
+  }
+
+  const visibleItems =
     accessLevel === "public" || accessLevel === "viewer"
       ? allItems.filter((i) => i.isPublic)
       : allItems;
+
+  const now = new Date();
+  const items = visibleItems.map((item) => ({
+    ...item,
+    usage: estimateUsage(item, logsByItem.get(item.id) ?? [], now),
+  }));
 
   return { accessLevel, store, items, members, userId, purchaseOrders };
 };
@@ -110,6 +146,7 @@ export const action = async (args: ActionFunctionArgs) => {
       quantity: data.quantity,
       description: data.description,
       blockId: data.blockId ?? undefined,
+      itemType: data.itemType ?? undefined,
       sku: data.sku ?? undefined,
       unit: data.unit ?? undefined,
       minQuantity: data.minQuantity ?? undefined,
@@ -122,12 +159,15 @@ export const action = async (args: ActionFunctionArgs) => {
   }
 
   if (data._action === "updateItem") {
+    // Capture the quantity change as a usage log so predictions can learn.
+    const prev = await getItemById(data.id);
     await updateItem(data.id, {
       name: data.name,
       quantity: data.quantity,
       description: data.description,
       storeId: data.storeId,
       blockId: data.blockId,
+      ...(data.itemType ? { itemType: data.itemType } : {}),
       sku: data.sku ?? null,
       unit: data.unit ?? null,
       minQuantity: data.minQuantity ?? null,
@@ -136,11 +176,57 @@ export const action = async (args: ActionFunctionArgs) => {
       useRate: data.useRate ?? null,
       useRatePeriod: data.useRatePeriod ?? null,
     });
+    if (prev && typeof data.quantity === "number") {
+      const delta = data.quantity - prev.quantity;
+      if (delta !== 0) {
+        await createItemLog(
+          data.id,
+          data.storeId ?? params.id!,
+          delta,
+          userId,
+          "edit",
+        );
+      }
+    }
     return { ok: true };
   }
 
   if (data._action === "deleteItem") {
     await deleteItem(data.id);
+    return { ok: true };
+  }
+
+  // One-tap "we're out": the sanctioned outflow signal. Zero the quantity, log
+  // the depletion (a strong calibration point for usage prediction), and queue a
+  // restock on the shopping list if one isn't already there.
+  if (data._action === "markItemOut") {
+    const item = await getItemById(data.id);
+    if (!item) return { ok: false };
+    if (item.quantity > 0) {
+      await createItemLog(item.id, item.storeId, -item.quantity, userId, "out");
+      await updateItem(item.id, { quantity: 0 });
+    }
+    const existing = await getPurchaseOrders(params.id!);
+    if (!existing.some((p) => p.itemId === item.id)) {
+      const fallback =
+        item.minQuantity != null ? Math.max(item.minQuantity * 2, 1) : 1;
+      await createPurchaseOrder({
+        itemId: item.id,
+        storeId: item.storeId,
+        name: item.name,
+        quantity: Number(data.restockQty) || fallback,
+        blockId: item.blockId ?? null,
+        description: item.description ?? null,
+        sku: item.sku ?? null,
+        unit: item.unit ?? null,
+        minQuantity: item.minQuantity ?? null,
+        cost: item.cost ?? null,
+        expiryDate: null,
+        useRate: item.useRate ?? null,
+        useRatePeriod: item.useRatePeriod ?? null,
+        createdBy: userId ?? null,
+      });
+    }
     return { ok: true };
   }
 
@@ -233,7 +319,7 @@ if (data._action === "deletePOItem") {
 }
 
 if (data._action === "buyPOItem") {
-  const ok = await commitPurchaseOrderRow(data.id);
+  const ok = await commitPurchaseOrderRow(data.id, userId);
   return { ok, optimisticId: data.optimisticId };
 }
 
@@ -241,7 +327,7 @@ if (data._action === "buyPOItems") {
   const ids: string[] = Array.isArray(data.ids) ? data.ids : [];
   let committed = 0;
   for (const id of ids) {
-    if (await commitPurchaseOrderRow(id)) committed++;
+    if (await commitPurchaseOrderRow(id, userId)) committed++;
   }
   return { ok: true, committed };
 }

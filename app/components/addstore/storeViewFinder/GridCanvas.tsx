@@ -54,6 +54,9 @@ type Props = {
    *  while still allowing scroll on the padding area around the canvas. */
   captureTouches?: boolean;
   nonClickableKinds?: BlockKind[];
+  /** Per-block status badge (store view only) — turns the map into a dashboard.
+   *  Keyed by block id; absent blocks show no badge. */
+  blockBadges?: Record<string, { count: number; tone: "critical" | "attention" }>;
 };
 
 export function GridCanvas({
@@ -75,6 +78,7 @@ export function GridCanvas({
   selectMode = false,
   captureTouches = false,
   nonClickableKinds = [],
+  blockBadges,
 }: Props) {
   const { width, containerRef, mounted } = useContainerWidth();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
@@ -448,6 +452,32 @@ export function GridCanvas({
                       : undefined
                   }
                 >
+                  {(() => {
+                    const badge = blockBadges?.[item.i];
+                    if (!badge || isDivider) return null;
+                    const critical = badge.tone === "critical";
+                    return (
+                      <span
+                        className="absolute top-0.5 right-0.5 z-10 inline-flex items-center gap-0.5 rounded-full bg-white/95 px-1 py-px shadow-sm border pointer-events-none"
+                        style={{
+                          borderColor: critical ? "#fecaca" : "#fde68a",
+                          fontSize: "8px",
+                        }}
+                        title={`${badge.count} item${badge.count !== 1 ? "s" : ""} need${badge.count === 1 ? "s" : ""} attention`}
+                      >
+                        <span
+                          className="w-1 h-1 rounded-full"
+                          style={{ background: critical ? "#ef4444" : "#f59e0b" }}
+                        />
+                        <span
+                          className="font-mono font-bold leading-none"
+                          style={{ color: critical ? "#dc2626" : "#d97706" }}
+                        >
+                          {badge.count}
+                        </span>
+                      </span>
+                    );
+                  })()}
                   <span
                     className="text-center px-1 font-mono font-medium uppercase tracking-wide leading-tight break-words"
                     style={{

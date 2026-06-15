@@ -5,6 +5,14 @@ import {
   resolveBarcode,
   FOOD_CATEGORY_RE,
 } from "~/utils/helpers/barcode.helper";
+import {
+  DEFAULT_ITEM_TYPE,
+  fieldsForType,
+  inferTypeFromLabel,
+  ITEM_TYPES,
+  TYPE_META,
+  type ItemType,
+} from "~/lib/itemTypes";
 import { BarcodeScanner } from "./BarcodeScanner";
 
 /** Format a Date as the YYYY-MM-DD value an <input type="date"> expects */
@@ -22,6 +30,7 @@ type Props = {
     quantity: number;
     inStore: boolean;
     selectedBlockId?: string | null;
+    itemType: ItemType;
     sku?: string | null;
     unit?: string | null;
     minQuantity?: number | null;
@@ -36,13 +45,6 @@ type Props = {
   selectedBlockLabel?: string;
 };
 
-// Heuristics: which tracking field matters for a given category label.
-// Keyword-based so it works with user-defined labels (not hardcoded names).
-const EXPIRY_HINT =
-  /food|grocer|pantry|fridge|freezer|perish|fresh|dairy|produce|snack|drink|beverage|fruit|veg|meat|medic|pharma|cosmetic/i;
-const USERATE_HINT =
-  /clean|laundry|detergent|toiletr|hygiene|paper|consumable|suppl|soap|shampoo|tissue|refill/i;
-
 export function AddItemForm({
   onSubmit,
   categories = [],
@@ -55,6 +57,11 @@ export function AddItemForm({
   const [quantityTouched, setQuantityTouched] = useState(false);
   const [inStore, setInStore] = useState(false);
   const [nameError, setNameError] = useState(false);
+
+  // Item type drives which fields are shown (via its traits). Auto-inferred from
+  // the assigned zone/category until the user picks one explicitly.
+  const [itemType, setItemType] = useState<ItemType>(DEFAULT_ITEM_TYPE);
+  const [typeTouched, setTypeTouched] = useState(false);
 
   // Extended fields
   // Fallback category (a block id) used only when no block is selected on the
@@ -87,10 +94,14 @@ export function AddItemForm({
       }
       if (info.unit) setUnit((u) => u || info.unit!);
       if (info.name) setName((prev) => prev || info.name!);
-      // Fallback auto-shelf — only when no block was picked on the floor plan
-      if (!selectedBlockId && info.category === "Food") {
-        const foodCat = categories.find((c) => FOOD_CATEGORY_RE.test(c.label));
-        if (foodCat) setFallbackCategoryId(foodCat.id);
+      if (info.category === "Food") {
+        // A food barcode is a strong type signal — unless the user already chose.
+        if (!typeTouched) setItemType("food");
+        // Fallback auto-shelf — only when no block was picked on the floor plan
+        if (!selectedBlockId) {
+          const foodCat = categories.find((c) => FOOD_CATEGORY_RE.test(c.label));
+          if (foodCat) setFallbackCategoryId(foodCat.id);
+        }
       }
     } finally {
       setLooking(false);
@@ -100,17 +111,22 @@ export function AddItemForm({
   // Floor-plan click wins; otherwise fall back to the chosen category shelf.
   const resolvedBlockId = selectedBlockId || fallbackCategoryId || "";
 
-  // Which category applies, and what does it imply we should track?
+  // Which category/zone applies — used to auto-infer the item type.
   const categoryLabel = selectedBlockId
     ? (selectedBlockLabel ??
       categories.find((c) => c.id === selectedBlockId)?.label ??
       "")
     : (categories.find((c) => c.id === fallbackCategoryId)?.label ?? "");
-  const focusField: "expiry" | "useRate" | null = EXPIRY_HINT.test(categoryLabel)
-    ? "expiry"
-    : USERATE_HINT.test(categoryLabel)
-      ? "useRate"
-      : null;
+
+  // The type's traits decide which fields are relevant (no expiry on a wrench).
+  const fields = fieldsForType(itemType);
+
+  // Auto-pick a type from the zone/category label until the user overrides it.
+  useEffect(() => {
+    if (typeTouched) return;
+    const inferred = inferTypeFromLabel(categoryLabel);
+    if (inferred) setItemType(inferred);
+  }, [categoryLabel, typeTouched]);
 
   // Smart quantity: refill to ~2× min stock until the user types their own
   useEffect(() => {
@@ -138,6 +154,8 @@ export function AddItemForm({
     setQuantity(1);
     setQuantityTouched(false);
     setInStore(false);
+    setItemType(DEFAULT_ITEM_TYPE);
+    setTypeTouched(false);
     setFallbackCategoryId("");
     setSku("");
     setUnit("");
@@ -217,6 +235,7 @@ export function AddItemForm({
           quantity,
           inStore,
           selectedBlockId: resolvedBlockId || null,
+          itemType,
           sku: sku || null,
           unit: unit || null,
           minQuantity: minQuantity !== "" ? Number(minQuantity) : null,
@@ -274,6 +293,28 @@ export function AddItemForm({
         )}
       </div>
 
+      {/* Type — drives which tracking fields are shown */}
+      <div className="flex flex-col gap-2">
+        <FieldLabel>Type</FieldLabel>
+        <select
+          value={itemType}
+          onChange={(e) => {
+            setItemType(e.target.value as ItemType);
+            setTypeTouched(true);
+          }}
+          className={`${inputClass} cursor-pointer`}
+        >
+          {ITEM_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {TYPE_META[t].label}
+            </option>
+          ))}
+        </select>
+        <p className="text-[10px] font-mono text-slate-400">
+          {TYPE_META[itemType].hint}
+        </p>
+      </div>
+
       {/* Assignment — floor-plan click is primary, category is the fallback */}
       {selectedBlockId ? (
         <div className="flex flex-col gap-2">
@@ -313,7 +354,7 @@ export function AddItemForm({
         </div>
       )}
 
-      {/* Quantity + Unit */}
+      {/* Quantity + Unit (unit only for edible types) */}
       <div className="flex gap-3">
         <div className="flex flex-col gap-2 flex-1">
           <FieldLabel>Quantity</FieldLabel>
@@ -328,45 +369,41 @@ export function AddItemForm({
             className={inputClass}
           />
         </div>
-        <div className="flex flex-col gap-2 w-28">
-          <FieldLabel>Unit</FieldLabel>
+        {fields.unit && (
+          <div className="flex flex-col gap-2 w-28">
+            <FieldLabel>Unit</FieldLabel>
+            <input
+              type="text"
+              value={unit}
+              placeholder="kg, pcs…"
+              onChange={(e) => setUnit(e.target.value)}
+              className={inputClass}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Min stock — only for types that deplete (drives low-stock + suggested qty) */}
+      {fields.minQuantity && (
+        <div className="flex flex-col gap-2">
+          <FieldLabel>Min Stock</FieldLabel>
           <input
-            type="text"
-            value={unit}
-            placeholder="kg, pcs…"
-            onChange={(e) => setUnit(e.target.value)}
+            type="number"
+            min="0"
+            value={minQuantity}
+            placeholder="low-stock threshold"
+            onChange={(e) => setMinQuantity(e.target.value)}
             className={inputClass}
           />
-        </div>
-      </div>
-
-      {/* Min stock (drives low-stock flag + suggested quantity) */}
-      <div className="flex flex-col gap-2">
-        <FieldLabel>Min Stock</FieldLabel>
-        <input
-          type="number"
-          min="0"
-          value={minQuantity}
-          placeholder="low-stock threshold"
-          onChange={(e) => setMinQuantity(e.target.value)}
-          className={inputClass}
-        />
-        <p className="text-[10px] font-mono text-slate-400">
-          Flags the item as low and seeds a sensible starting quantity.
-        </p>
-      </div>
-
-      {/* Promoted tracking field, based on the category */}
-      {focusField && (
-        <div className="flex flex-col gap-2 rounded-md bg-amber-50/50 border border-amber-100 p-3">
-          <p className="text-[10px] font-mono text-amber-700">
-            {focusField === "expiry"
-              ? `“${categoryLabel}” items: add an expiry date to track freshness.`
-              : `“${categoryLabel}” items: add a use rate to predict run-out.`}
+          <p className="text-[10px] font-mono text-slate-400">
+            Flags the item as low and seeds a sensible starting quantity.
           </p>
-          {focusField === "expiry" ? expiryField : useRateField}
         </div>
       )}
+
+      {/* Tracking fields relevant to the chosen type, promoted inline */}
+      {fields.expiry && expiryField}
+      {fields.useRate && useRateField}
 
       {/* Description */}
       <div className="flex flex-col gap-2">
@@ -464,11 +501,10 @@ export function AddItemForm({
             </div>
           </div>
 
-          {/* Expiry — shown here only if not already promoted above */}
-          {focusField !== "expiry" && expiryField}
-
-          {/* Use rate — shown here only if not already promoted above */}
-          {focusField !== "useRate" && useRateField}
+          {/* Expiry / use-rate escape hatch — only when the type didn't promote
+              them above, so they stay reachable for edge cases. */}
+          {!fields.expiry && expiryField}
+          {!fields.useRate && useRateField}
         </div>
       )}
 

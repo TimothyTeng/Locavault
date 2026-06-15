@@ -16,6 +16,7 @@ type Props = {
   zoom: number;
   onZoomIn: () => void;
   onZoomOut: () => void;
+  blockBadges?: Record<string, { count: number; tone: "critical" | "attention" }>;
 };
 
 export function MiniMap({
@@ -31,6 +32,7 @@ export function MiniMap({
   zoom,
   onZoomIn,
   onZoomOut,
+  blockBadges,
 }: Props) {
   const isExpanded = expanded || forceExpanded;
 
@@ -79,6 +81,7 @@ export function MiniMap({
               onClick={onClick}
               readOnly={true}
               nonClickableKinds={["divider", "stairs"]}
+              blockBadges={blockBadges}
             />
           </div>
         </div>

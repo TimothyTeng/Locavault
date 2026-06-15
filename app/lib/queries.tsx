@@ -19,6 +19,7 @@ import type {
 } from "~/types/storeViewFinderTypes";
 import type { AccessLevel, StoreRole } from "~/types/memberTypes";
 import type { BlockKind } from "~/types/BlockTypes";
+import type { ItemType } from "~/types/itemTypeTypes";
 
 // ─── Helpers ───────────────────────────────────────────────
 
@@ -493,6 +494,7 @@ export async function createItem(data: {
   quantity?: number;
   description?: string;
   blockId?: string;
+  itemType?: ItemType;
   sku?: string;
   unit?: string;
   minQuantity?: number;
@@ -509,6 +511,7 @@ export async function createItem(data: {
     quantity: data.quantity ?? 0,
     description: data.description ?? null,
     blockId: data.blockId,
+    itemType: data.itemType ?? "other",
     sku: data.sku ?? null,
     unit: data.unit ?? null,
     minQuantity: data.minQuantity ?? null,
@@ -529,6 +532,7 @@ export async function updateItem(
     quantity: number;
     description: string;
     blockId: string | null;
+    itemType: ItemType;
     sku: string | null;
     unit: string | null;
     minQuantity: number | null;
@@ -575,6 +579,26 @@ export async function getItemLogs(itemId: string) {
     .from(itemLogs)
     .where(eq(itemLogs.itemId, itemId))
     .orderBy(sql`${itemLogs.loggedAt} desc`);
+}
+
+/**
+ * Fetch usage logs (every quantity change — both consumption and restocks) for
+ * an entire store in one query, oldest first. The estimator learns outflow from
+ * negative deltas and inflow cadence from the spacing of positive (restock)
+ * deltas. Optionally bounded to logs after `since` so we only pull the window.
+ */
+export async function getUsageLogsByStore(storeId: string, since?: Date) {
+  const conds = [eq(itemLogs.storeId, storeId)];
+  if (since) conds.push(gt(itemLogs.loggedAt, since));
+  return db
+    .select({
+      itemId: itemLogs.itemId,
+      delta: itemLogs.delta,
+      loggedAt: itemLogs.loggedAt,
+    })
+    .from(itemLogs)
+    .where(and(...conds))
+    .orderBy(sql`${itemLogs.loggedAt} asc`);
 }
 
 /**

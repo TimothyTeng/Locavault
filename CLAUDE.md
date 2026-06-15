@@ -4,12 +4,18 @@ Guidance for working in the **Locavault** codebase.
 
 ## What Locavault is
 
-Locavault is an inventory-management web app. A user creates **stores** (physical
-locations — a pantry, a warehouse, a garage), draws a **floor plan** of that store
-out of positioned **blocks** (shelves, zones, dividers, stairs), and tracks
-**items** placed in those blocks. Stores can be shared with collaborators, made
-public (read-only), and items can be restocked via a **purchase-order** workflow
-that also predicts when stock will run out.
+Locavault is a **home inventory** web app, **food-first** (see `DESIGN.md` for the
+full product direction). The promise: *know what you're running out of before you
+do, find anything in seconds, and restock without logging your life.* It stays
+broad (the engine is category-agnostic) — food is the flagship use case and
+onboarding hook, not a hard scope limit.
+
+Mechanically: a user creates **stores** (physical locations — a pantry, a kitchen,
+a garage), draws a **floor plan** of that store out of positioned **blocks**
+(shelves, zones, dividers, stairs), and tracks **items** placed in those blocks.
+Stores can be shared with collaborators, made public (read-only), and items can be
+restocked via a **shopping-list / purchase-order** workflow that also predicts when
+stock will run out.
 
 ## Tech stack
 
@@ -135,8 +141,11 @@ All ids are `text` UUIDs (`crypto.randomUUID()`). Timestamps are `integer` epoch
 - **blocks** — a rectangle on the store grid: `x`/`y`/`width`/`height`, colors,
   `label`, and `kind` ∈ `{standard, divider, stairs}`. FK → store (cascade delete).
 - **items** — `name`, `quantity`, `blockId` (nullable → `set null` if block removed),
-  `isPublic`, plus inventory fields: `sku`, `unit`, `minQuantity`, `cost` (**cents**),
-  `expiryDate`, `useRate` + `useRatePeriod` ∈ `{day, week, month}`.
+  `isPublic`, `itemType` ∈ `{food, medication, supplies, equipment, clothing,
+  document, other}` (default `other`), plus inventory fields: `sku`, `unit`,
+  `minQuantity`, `cost` (**cents**), `expiryDate`, `useRate` + `useRatePeriod` ∈
+  `{day, week, month}`. `itemType` maps to **traits** (`app/lib/itemTypes.ts`)
+  that drive which form fields/behaviours apply — see `DESIGN.md` §5.
 - **itemLogs** — append-only quantity changes: `delta` (negative = consumed,
   positive = restocked), `note`, `loggedBy`. Used by `predictRunoutDays`.
 - **storeMembers** — `(storeId, userId, role)` with role ∈ `{owner, editor, viewer}`.

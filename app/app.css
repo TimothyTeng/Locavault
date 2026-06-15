@@ -705,6 +705,13 @@ body::after {
   to { transform: rotate(360deg); }
 }
 
+/* Store map — gentle attention glow on shelves needing restock/expiring */
+@keyframes lvpulse {
+  0%   { opacity: 0.9; }
+  50%  { opacity: 0.25; }
+  100% { opacity: 0.9; }
+}
+
 /* ─── EMPTY STATE ──────────────────────────────────────────── */
 .dash-empty {
   text-align: center;
