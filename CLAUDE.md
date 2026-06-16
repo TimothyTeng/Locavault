@@ -97,6 +97,7 @@ app/
 │   ├── addItem/          # add-item slide-in panel + form + barcode scanner + quick (bulk) add
 │   ├── purchases/        # shopping-list panel, list, rows, suggestions, optional fields
 │   ├── recipes/          # recipes panel: seeded library matched against pantry (see DESIGN.md §7)
+│   ├── collections/      # collections / packing panel: group items, pick assist, check-out/in (DESIGN.md §7)
 │   └── templates/        # templates gallery + card + save-from-store modal
 └── types/                # shared TS types (one file per domain)
 ```
@@ -162,9 +163,18 @@ All ids are `text` UUIDs (`crypto.randomUUID()`). Timestamps are `integer` epoch
   to everyone. `createStoreFromTemplate` instantiates a store (copies blocks with
   fresh ids, adds the owner member, bumps `usageCount`).
 - **templateBlocks** — mirrors `blocks`, FK → template (cascade delete).
+- **collections** — a named set of item references for a *purpose* (DESIGN.md §7),
+  distinct from the shopping list: name, description, `kind` ∈ `{packing, trade,
+  custom}`, `checkedOut` (the set is taken out), `userId`, FK → store (cascade).
+  Per-store v1 but the model is store-agnostic for a future global layer.
+- **collectionItems** — a row in a collection: `name` (denormalised), `desiredQty`,
+  `checked` ("packed" tick), optional `itemId` linking an owned item (`set null`;
+  null = a free-text gap). FK → collection (cascade delete).
+- **items.checkedOut** — transient "packed/out" loan state, set while the item is
+  in a checked-out collection. Does **not** decrement quantity; cleared on check-in.
 
 Relations are declared at the bottom of `schema.ts`. FKs cascade on store delete;
-item/block references on PO rows use `set null`.
+item/block references on PO and collection rows use `set null`.
 
 ## Access control
 

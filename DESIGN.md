@@ -399,6 +399,23 @@ is per-store.
   collection = a set of things (owned or not) for a *purpose*. A packing list
   *generates* shopping-list entries for gaps — they link, they don't merge.
 
+> ✅ *Done (v1, per-store):* **Collections panel**
+> (`components/collections/collectionsPanel.tsx`, store toolbar — desktop +
+> mobile, open to all access levels; mutations gated to editors). Tables
+> `collections` + `collection_items` (kind `packing`/`trade`/`custom`); items
+> gained a `checkedOut` flag. Create collections; add items by **linking an owned
+> store item** (autocomplete) or a **free-text** entry. **Pick assistance** —
+> each linked item shows its zone; tapping jumps to + highlights it on the map.
+> Per-item **packed** ticks; one-tap **Check out / Check in** flags the set + its
+> linked items as out (transient loan state) **without decrementing quantity**
+> (DECIDED — keeps stock honest and the home `blockId` intact for put-away).
+> **Gaps** (unlinked / out-of-stock) add to the shopping list in one tap. Ids
+> are client-generated; collection actions live in `store.loader`, each guarded
+> to the current store.
+> ⬜ *Remaining:* preset/reusable lists; **put-away zone suggestion** on check-in;
+> a visible "packed/out" badge on item cards & the map; global / cross-store
+> collections (model is already store-agnostic); the Trade surface below.
+
 ### Trade / loan (OUTPUT) — later, global/social
 
 Items flagged `surplus` (or qty over a "keep" threshold) become eligible for a
@@ -537,8 +554,11 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
    reminders → Trade.
    - ✅ *Done:* **Recipes** v1 (see §7) — seeded library + fuzzy pantry match +
      "use it up" + one-tap missing-to-list.
-   - ⬜ *Next:* "made this" consumption tap (recipes → prediction loop); then
-     Collections / packing (check-out/in).
+   - ✅ *Done:* **Collections / packing** v1 (see §7) — per-store collections,
+     link/free-text items, pick assistance, check-out/in (flag, don't
+     decrement), gaps → list.
+   - ⬜ *Next:* "made this" consumption tap (recipes → prediction loop); put-away
+     suggestion on check-in; then Med reminders → Trade.
 
 ---
 
@@ -553,7 +573,9 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
   input the whole product balances on (receipt OCR vs. barcode-at-unpack vs.
   accounting-style import; which leads onboarding?).
 - Recipe data source (seed vs. API; licensing/cost).
-- Collections: per-store v1 vs. global from the start.
+- ~~Collections: per-store v1 vs. global from the start.~~ **Resolved:** shipped
+  **per-store v1** with a store-agnostic model, so promoting to global/cross-store
+  later is a small step.
 - Whether the "out / low" tap and shopping-list "add" should be the same gesture.
 
 ---
