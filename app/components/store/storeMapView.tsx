@@ -962,6 +962,11 @@ function ItemRow({
       <span className="flex-1 truncate text-[11px] font-semibold text-slate-800">
         {item.name}
       </span>
+      {item.checkedOut && (
+        <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wide text-amber-700">
+          Out
+        </span>
+      )}
       {runout != null && (
         <span
           className={`font-mono text-[9px] tabular-nums ${

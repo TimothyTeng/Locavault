@@ -97,7 +97,11 @@ export function ItemCard({
 
       <div
         onClick={() => setShowDetail(true)}
-        className="group flex flex-col gap-2 rounded-xl border border-slate-200 bg-white p-3 cursor-pointer hover:border-emerald-300 hover:shadow-sm transition-all"
+        className={`group flex flex-col gap-2 rounded-xl border bg-white p-3 cursor-pointer hover:shadow-sm transition-all ${
+          item.checkedOut
+            ? "border-amber-300 bg-amber-50/30"
+            : "border-slate-200 hover:border-emerald-300"
+        }`}
       >
         <div className="flex items-start justify-between gap-2">
           <div className="flex items-center gap-1.5 min-w-0">
@@ -118,11 +122,17 @@ export function ItemCard({
               {item.name}
             </span>
           </div>
-          <span
-            className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-widest ${STATUS_PILL[status]}`}
-          >
-            {STATUS_LABEL[status]}
-          </span>
+          {item.checkedOut ? (
+            <span className="shrink-0 rounded-full border border-amber-200 bg-amber-100 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-widest text-amber-700">
+              Out
+            </span>
+          ) : (
+            <span
+              className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-widest ${STATUS_PILL[status]}`}
+            >
+              {STATUS_LABEL[status]}
+            </span>
+          )}
         </div>
 
         <div className="flex items-baseline gap-1">

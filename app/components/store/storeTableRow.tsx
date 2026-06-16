@@ -141,6 +141,11 @@ export function StoreTableRow({
         <td className={`${cellClass} font-semibold`}>
           <div className="flex items-center gap-2">
             {item.name}
+            {item.checkedOut && (
+              <span className="text-[8px] font-bold uppercase tracking-widest text-amber-700 border border-amber-200 bg-amber-50 rounded px-1 py-0.5 leading-none">
+                out
+              </span>
+            )}
             {isLowStock && (
               <span className="text-[8px] font-bold uppercase tracking-widest text-red-400 border border-red-200 rounded px-1 py-0.5 leading-none">
                 low
