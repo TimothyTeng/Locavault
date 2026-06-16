@@ -20,6 +20,9 @@ export type Item = {
   useRatePeriod: "day" | "week" | "month" | null;
   // Transient "packed/out" loan state — true while in a checked-out collection.
   checkedOut?: boolean;
+  // Trade: listed on the global Bazaar + optional "looking for…" note.
+  forTrade?: boolean;
+  tradeNote?: string | null;
   // Derived (server-computed) — usage prediction. Absent on optimistic rows.
   usage?: UsageEstimate;
 };

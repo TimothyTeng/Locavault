@@ -57,6 +57,10 @@ export const items = sqliteTable("items", {
   // collection (it physically left the store but keeps its home blockId for
   // put-away on return). See DESIGN.md §7. Does NOT decrement quantity.
   checkedOut:    integer("checked_out", { mode: "boolean" }).notNull().default(false),
+  // Trade / loan (DESIGN.md §7): owner opts a surplus item onto the global
+  // Bazaar. `tradeNote` is the optional "looking for…" (wants) line.
+  forTrade:      integer("for_trade", { mode: "boolean" }).notNull().default(false),
+  tradeNote:     text("trade_note"),
 });
 
 // ─── ITEM LOGS ─────────────────────────────────────────────
@@ -200,6 +204,31 @@ export const collectionItemsRelations = relations(collectionItems, ({ one }) => 
     references: [collections.id],
   }),
   item: one(items, { fields: [collectionItems.itemId], references: [items.id] }),
+}));
+
+// ─── TRADE OFFERS ──────────────────────────────────────────
+// Steam-style trade offers on a Bazaar listing: a requester proposes a swap for
+// someone else's listed item, optionally offering one of their own listings in
+// return. Names are denormalised so an offer still reads if an item is later
+// deleted/unlisted. See DESIGN.md §7.
+
+export const tradeOffers = sqliteTable("trade_offers", {
+  id:             text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  listingItemId:  text("listing_item_id").references(() => items.id, { onDelete: "set null" }),
+  listingStoreId: text("listing_store_id").references(() => stores.id, { onDelete: "set null" }),
+  listingName:    text("listing_name").notNull(),
+  offeredItemId:  text("offered_item_id").references(() => items.id, { onDelete: "set null" }),
+  offeredName:    text("offered_name"),
+  fromUserId:     text("from_user_id").notNull(),   // requester
+  toUserId:       text("to_user_id").notNull(),      // listing owner
+  message:        text("message"),
+  status:         text("status", { enum: ["pending", "accepted", "declined", "cancelled"] }).notNull().default("pending"),
+  createdAt:      integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+});
+
+export const tradeOffersRelations = relations(tradeOffers, ({ one }) => ({
+  listingItem: one(items, { fields: [tradeOffers.listingItemId], references: [items.id] }),
+  listingStore: one(stores, { fields: [tradeOffers.listingStoreId], references: [stores.id] }),
 }));
 
 // ─── RELATIONS ─────────────────────────────────────────────

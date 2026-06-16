@@ -1,4 +1,4 @@
-import { eq, sql, inArray, and, isNull, gt } from "drizzle-orm";
+import { eq, sql, inArray, and, isNull, gt, desc, ne } from "drizzle-orm";
 import { db } from "./db";
 import {
   stores,
@@ -12,8 +12,14 @@ import {
   templateBlocks,
   collections,
   collectionItems,
+  tradeOffers,
 } from "./schema";
 import type { Collection, CollectionKind } from "~/types/collectionTypes";
+import type {
+  TradeListing,
+  TradeOffer,
+  TradeOfferStatus,
+} from "~/types/tradeTypes";
 import type { StoreWithDetails } from "~/types/dashboardTypes";
 import type { TemplateWithBlocks } from "~/types/templateTypes";
 import type {
@@ -1276,4 +1282,136 @@ export async function setCollectionCheckedOut(
       .set({ checked: true })
       .where(eq(collectionItems.collectionId, collectionId));
   }
+}
+
+// ── Trade / Bazaar ─────────────────────────────────────────
+
+/** Every item currently listed for trade, with its store context. */
+export async function getTradeListings(): Promise<TradeListing[]> {
+  const rows = await db
+    .select({
+      itemId: items.id,
+      name: items.name,
+      quantity: items.quantity,
+      unit: items.unit,
+      itemType: items.itemType,
+      sku: items.sku,
+      tradeNote: items.tradeNote,
+      storeId: stores.id,
+      storeName: stores.name,
+      storeIsPublic: stores.isPublic,
+      ownerUserId: stores.userId,
+    })
+    .from(items)
+    .innerJoin(stores, eq(items.storeId, stores.id))
+    .where(eq(items.forTrade, true));
+  return rows as TradeListing[];
+}
+
+/** Store + owner of an item, for authorizing trade listing. */
+export async function getItemOwnerContext(
+  itemId: string,
+): Promise<{ storeId: string; ownerUserId: string } | null> {
+  const [row] = await db
+    .select({ storeId: items.storeId, ownerUserId: stores.userId })
+    .from(items)
+    .innerJoin(stores, eq(items.storeId, stores.id))
+    .where(eq(items.id, itemId));
+  return row ?? null;
+}
+
+export async function setItemForTrade(
+  itemId: string,
+  forTrade: boolean,
+  tradeNote?: string | null,
+) {
+  await db
+    .update(items)
+    .set({
+      forTrade,
+      ...(tradeNote !== undefined ? { tradeNote } : {}),
+      // Unlisting clears the wants note.
+      ...(!forTrade ? { tradeNote: null } : {}),
+    })
+    .where(eq(items.id, itemId));
+}
+
+export async function createTradeOffer(data: {
+  listingItemId: string;
+  listingStoreId: string | null;
+  listingName: string;
+  offeredItemId?: string | null;
+  offeredName?: string | null;
+  fromUserId: string;
+  toUserId: string;
+  message?: string | null;
+}) {
+  const [row] = await db
+    .insert(tradeOffers)
+    .values({
+      listingItemId: data.listingItemId,
+      listingStoreId: data.listingStoreId,
+      listingName: data.listingName,
+      offeredItemId: data.offeredItemId ?? null,
+      offeredName: data.offeredName ?? null,
+      fromUserId: data.fromUserId,
+      toUserId: data.toUserId,
+      message: data.message ?? null,
+    })
+    .returning();
+  return row;
+}
+
+/** Offers where the user is either the requester or the listing owner. */
+export async function getTradeOffersForUser(
+  userId: string,
+): Promise<TradeOffer[]> {
+  const rows = await db
+    .select()
+    .from(tradeOffers)
+    .where(
+      sql`${tradeOffers.fromUserId} = ${userId} OR ${tradeOffers.toUserId} = ${userId}`,
+    )
+    .orderBy(desc(tradeOffers.createdAt));
+  return rows as TradeOffer[];
+}
+
+export async function getTradeOfferById(id: string) {
+  const [row] = await db
+    .select()
+    .from(tradeOffers)
+    .where(eq(tradeOffers.id, id));
+  return row ?? null;
+}
+
+export async function setTradeOfferStatus(id: string, status: TradeOfferStatus) {
+  await db.update(tradeOffers).set({ status }).where(eq(tradeOffers.id, id));
+}
+
+/**
+ * Accept an offer: mark it accepted, take the listing off the Bazaar, and
+ * auto-decline the other pending offers competing for the same item (first
+ * accepted wins). Returns the offer (or null if missing).
+ */
+export async function acceptTradeOffer(id: string) {
+  const offer = await getTradeOfferById(id);
+  if (!offer) return null;
+  await setTradeOfferStatus(id, "accepted");
+  if (offer.listingItemId) {
+    await db
+      .update(items)
+      .set({ forTrade: false, tradeNote: null })
+      .where(eq(items.id, offer.listingItemId));
+    await db
+      .update(tradeOffers)
+      .set({ status: "declined" })
+      .where(
+        and(
+          eq(tradeOffers.listingItemId, offer.listingItemId),
+          eq(tradeOffers.status, "pending"),
+          ne(tradeOffers.id, id),
+        ),
+      );
+  }
+  return offer;
 }

@@ -8,5 +8,6 @@ export default [
   route("/invite/:token",      "routes/invite.tsx"),
   route("/templates",          "routes/templates.tsx"),
   route("/templates/new",      "routes/templates.new.tsx"),
+  route("/trade",              "routes/trade.tsx"),
   route("/api/barcode",        "routes/api.barcode.ts"),
 ] satisfies RouteConfig;
