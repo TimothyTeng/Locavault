@@ -18,6 +18,8 @@ export type Item = {
   expiryDate: Date | null;
   useRate: number | null;
   useRatePeriod: "day" | "week" | "month" | null;
+  // Transient "packed/out" loan state — true while in a checked-out collection.
+  checkedOut?: boolean;
   // Derived (server-computed) — usage prediction. Absent on optimistic rows.
   usage?: UsageEstimate;
 };

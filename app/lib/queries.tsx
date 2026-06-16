@@ -10,7 +10,10 @@ import {
   purchaseOrderItems,
   templates,
   templateBlocks,
+  collections,
+  collectionItems,
 } from "./schema";
+import type { Collection, CollectionKind } from "~/types/collectionTypes";
 import type { StoreWithDetails } from "~/types/dashboardTypes";
 import type { TemplateWithBlocks } from "~/types/templateTypes";
 import type {
@@ -1105,4 +1108,172 @@ export async function updateTemplateVisibility(
 /** Delete a template (cascades to its blocks) */
 export async function deleteTemplate(id: string) {
   return db.delete(templates).where(eq(templates.id, id));
+}
+
+// ── Collections / packing ──────────────────────────────────
+
+/** Fetch a store's collections, each with its items (newest collection first). */
+export async function getCollections(storeId: string): Promise<Collection[]> {
+  const cols = await db
+    .select()
+    .from(collections)
+    .where(eq(collections.storeId, storeId))
+    .orderBy(collections.createdAt);
+  if (!cols.length) return [];
+
+  const ids = cols.map((c) => c.id);
+  const ciRows = await db
+    .select()
+    .from(collectionItems)
+    .where(inArray(collectionItems.collectionId, ids))
+    .orderBy(collectionItems.createdAt);
+
+  const byCollection = new Map<string, typeof ciRows>();
+  for (const r of ciRows) {
+    const arr = byCollection.get(r.collectionId);
+    if (arr) arr.push(r);
+    else byCollection.set(r.collectionId, [r]);
+  }
+
+  return cols
+    .map((c) => ({
+      id: c.id,
+      storeId: c.storeId,
+      name: c.name,
+      description: c.description,
+      kind: c.kind as CollectionKind,
+      checkedOut: c.checkedOut,
+      userId: c.userId,
+      createdAt: c.createdAt,
+      items: (byCollection.get(c.id) ?? []).map((r) => ({
+        id: r.id,
+        collectionId: r.collectionId,
+        itemId: r.itemId,
+        name: r.name,
+        desiredQty: r.desiredQty,
+        checked: r.checked,
+        createdAt: r.createdAt,
+      })),
+    }))
+    .reverse(); // newest first
+}
+
+export async function createCollection(data: {
+  id?: string;
+  storeId: string;
+  name: string;
+  kind?: CollectionKind;
+  description?: string | null;
+  userId: string;
+}) {
+  const [row] = await db
+    .insert(collections)
+    .values({
+      ...(data.id ? { id: data.id } : {}),
+      storeId: data.storeId,
+      name: data.name,
+      kind: data.kind ?? "packing",
+      description: data.description ?? null,
+      userId: data.userId,
+    })
+    .returning();
+  return row;
+}
+
+export async function updateCollection(
+  id: string,
+  data: Partial<{ name: string; description: string | null; kind: CollectionKind }>,
+) {
+  const [row] = await db
+    .update(collections)
+    .set(data)
+    .where(eq(collections.id, id))
+    .returning();
+  return row;
+}
+
+export async function deleteCollection(id: string) {
+  await db.delete(collections).where(eq(collections.id, id));
+}
+
+/** The store a collection belongs to — used to authorize collection mutations. */
+export async function getCollectionStoreId(id: string): Promise<string | null> {
+  const [row] = await db
+    .select({ storeId: collections.storeId })
+    .from(collections)
+    .where(eq(collections.id, id));
+  return row?.storeId ?? null;
+}
+
+export async function addCollectionItem(data: {
+  id?: string;
+  collectionId: string;
+  itemId?: string | null;
+  name: string;
+  desiredQty?: number;
+}) {
+  const [row] = await db
+    .insert(collectionItems)
+    .values({
+      ...(data.id ? { id: data.id } : {}),
+      collectionId: data.collectionId,
+      itemId: data.itemId ?? null,
+      name: data.name,
+      desiredQty: data.desiredQty ?? 1,
+    })
+    .returning();
+  return row;
+}
+
+export async function updateCollectionItem(
+  id: string,
+  data: Partial<{ name: string; desiredQty: number; checked: boolean }>,
+) {
+  const [row] = await db
+    .update(collectionItems)
+    .set(data)
+    .where(eq(collectionItems.id, id))
+    .returning();
+  return row;
+}
+
+export async function removeCollectionItem(id: string) {
+  await db.delete(collectionItems).where(eq(collectionItems.id, id));
+}
+
+/**
+ * Check a collection out (taken away) or back in. Flags the collection and the
+ * transient loan state on every linked item — without touching quantities. On
+ * check-out, also tick everything as "packed". See DESIGN.md §7.
+ */
+export async function setCollectionCheckedOut(
+  collectionId: string,
+  checkedOut: boolean,
+) {
+  await db
+    .update(collections)
+    .set({ checkedOut })
+    .where(eq(collections.id, collectionId));
+
+  const linked = await db
+    .select({ itemId: collectionItems.itemId })
+    .from(collectionItems)
+    .where(eq(collectionItems.collectionId, collectionId));
+  const itemIds = linked
+    .map((r) => r.itemId)
+    .filter((x): x is string => !!x);
+
+  if (itemIds.length) {
+    await db
+      .update(items)
+      .set({ checkedOut })
+      .where(inArray(items.id, itemIds));
+  }
+
+  if (checkedOut) {
+    await db
+      .update(collectionItems)
+      .set({ checked: true })
+      .where(eq(collectionItems.collectionId, collectionId));
+  }
 }

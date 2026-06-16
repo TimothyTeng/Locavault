@@ -26,6 +26,8 @@ import Navbar from "~/components/home/navbar";
 import { AddItemPanel } from "~/components/addItem/addItemPanel";
 import { QuickAddPanel, type QuickAddItem } from "~/components/addItem/quickAddPanel";
 import { RecipesPanel } from "~/components/recipes/recipesPanel";
+import { CollectionsPanel } from "~/components/collections/collectionsPanel";
+import type { Collection, CollectionKind } from "~/types/collectionTypes";
 import { MembersPanel } from "~/components/store/membersPanel";
 import { MiniMap } from "~/components/store/minimap";
 import { StoreOverview } from "~/components/store/storeOverview";
@@ -62,6 +64,7 @@ export default function StorePage() {
     accessLevel,
     userId,
     purchaseOrders,
+    collections: dbCollections,
   } = useLoaderData<typeof loader>();
 
   const { state } = useLocation();
@@ -108,6 +111,11 @@ export default function StorePage() {
     (purchaseOrders as PurchaseOrderItem[]) ?? [],
   );
   const [purchaseOrderOpen, setPurchaseOrderOpen] = useState(false);
+
+  const [collections, setCollections] = useState<Collection[]>(
+    (dbCollections as Collection[]) ?? [],
+  );
+  const [collectionsOpen, setCollectionsOpen] = useState(false);
   // Ids the user has ticked off ("got it") but not yet committed to inventory
   const [checkedPOIds, setCheckedPOIds] = useState<Set<string>>(new Set());
 
@@ -117,19 +125,21 @@ export default function StorePage() {
   const handles = handlesForMode("select");
   const fetcher = useFetcher();
   const createFetcher = useFetcher();
+  const collectionFetcher = useFetcher();
 
   // ── Polling ──
   useEffect(() => {
     const interval = setInterval(() => {
       if (
         document.visibilityState !== "visible" ||
-        createFetcher.state !== "idle"
+        createFetcher.state !== "idle" ||
+        collectionFetcher.state !== "idle"
       )
         return;
       revalidate();
     }, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [revalidate, createFetcher.state]);
+  }, [revalidate, createFetcher.state, collectionFetcher.state]);
 
   // ── Effects ──
   useEffect(() => {
@@ -158,6 +168,14 @@ export default function StorePage() {
     if (!dbMembers) return;
     setMembers(dbMembers as StoreMember[]);
   }, [dbMembers]);
+
+  // Re-sync collections from the server, but not while a collection mutation is
+  // mid-flight (would clobber optimistic changes). Ids are client-generated, so
+  // local and server rows reconcile cleanly.
+  useEffect(() => {
+    if (!dbCollections || collectionFetcher.state !== "idle") return;
+    setCollections(dbCollections as Collection[]);
+  }, [dbCollections]);
 
   useEffect(() => {
     const result = createFetcher.data as any;
@@ -748,6 +766,139 @@ export default function StorePage() {
   // missing ingredients are already queued.
   const listedNames = new Set(purchaseOrder.map((p) => p.name.toLowerCase()));
 
+  // ── Collections / packing ──
+  const submitCollection = (
+    payload: Record<string, string | number | boolean | null>,
+  ) =>
+    collectionFetcher.submit(payload, {
+      method: "POST",
+      encType: "application/json",
+    });
+
+  const patchCollection = (id: string, fn: (c: Collection) => Collection) =>
+    setCollections((prev) => prev.map((c) => (c.id === id ? fn(c) : c)));
+
+  const handleCreateCollection = (
+    cid: string,
+    name: string,
+    kind: CollectionKind,
+  ) => {
+    setCollections((prev) => [
+      {
+        id: cid,
+        storeId: id!,
+        name,
+        description: null,
+        kind,
+        checkedOut: false,
+        userId: userId ?? "",
+        createdAt: new Date(),
+        items: [],
+      },
+      ...prev,
+    ]);
+    submitCollection({ _action: "createCollection", id: cid, name, kind });
+  };
+
+  const handleRenameCollection = (cid: string, name: string) => {
+    patchCollection(cid, (c) => ({ ...c, name }));
+    submitCollection({ _action: "updateCollection", id: cid, name });
+  };
+
+  const handleSetCollectionKind = (cid: string, kind: CollectionKind) => {
+    patchCollection(cid, (c) => ({ ...c, kind }));
+    submitCollection({ _action: "updateCollection", id: cid, kind });
+  };
+
+  const handleDeleteCollection = (cid: string) => {
+    setCollections((prev) => prev.filter((c) => c.id !== cid));
+    submitCollection({ _action: "deleteCollection", id: cid });
+  };
+
+  const handleAddCollectionItem = (
+    cid: string,
+    entry: { id: string; itemId: string | null; name: string },
+  ) => {
+    patchCollection(cid, (c) => ({
+      ...c,
+      items: [
+        ...c.items,
+        {
+          id: entry.id,
+          collectionId: cid,
+          itemId: entry.itemId,
+          name: entry.name,
+          desiredQty: 1,
+          checked: false,
+          createdAt: new Date(),
+        },
+      ],
+    }));
+    submitCollection({
+      _action: "addCollectionItem",
+      id: entry.id,
+      collectionId: cid,
+      itemId: entry.itemId,
+      name: entry.name,
+    });
+  };
+
+  const handleToggleCollectionPacked = (
+    cid: string,
+    ciId: string,
+    checked: boolean,
+  ) => {
+    patchCollection(cid, (c) => ({
+      ...c,
+      items: c.items.map((ci) =>
+        ci.id === ciId ? { ...ci, checked } : ci,
+      ),
+    }));
+    submitCollection({
+      _action: "updateCollectionItem",
+      id: ciId,
+      collectionId: cid,
+      checked,
+    });
+  };
+
+  const handleRemoveCollectionItem = (cid: string, ciId: string) => {
+    patchCollection(cid, (c) => ({
+      ...c,
+      items: c.items.filter((ci) => ci.id !== ciId),
+    }));
+    submitCollection({
+      _action: "removeCollectionItem",
+      id: ciId,
+      collectionId: cid,
+    });
+  };
+
+  const handleCheckoutCollection = (cid: string, checkedOut: boolean) => {
+    const target = collections.find((c) => c.id === cid);
+    const linkedItemIds = new Set(
+      (target?.items ?? [])
+        .map((ci) => ci.itemId)
+        .filter((x): x is string => !!x),
+    );
+    patchCollection(cid, (c) => ({
+      ...c,
+      checkedOut,
+      items: checkedOut ? c.items.map((ci) => ({ ...ci, checked: true })) : c.items,
+    }));
+    // Reflect the transient loan state on the linked inventory items.
+    setItems((prev) =>
+      prev.map((i) =>
+        linkedItemIds.has(i.id) ? { ...i, checkedOut } : i,
+      ),
+    );
+    submitCollection({
+      _action: "setCollectionCheckedOut",
+      id: cid,
+      checkedOut,
+    });
+  };
+
   // ── Deselect on outside click (desktop only) ──
   const tableRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -803,6 +954,10 @@ export default function StorePage() {
           onRecipes={() => {
             setAddItemOpen(false);
             setRecipesOpen((v) => !v);
+          }}
+          onCollections={() => {
+            setAddItemOpen(false);
+            setCollectionsOpen((v) => !v);
           }}
           onMembersToggle={() => setMembersPanelOpen((v) => !v)}
           accessLevel={accessLevel}
@@ -1073,6 +1228,25 @@ export default function StorePage() {
         items={items}
         onAddMissing={canEdit ? handleAddMissingToList : undefined}
         listedNames={listedNames}
+        isMobile={isMobile}
+      />
+      <CollectionsPanel
+        isOpen={collectionsOpen}
+        onClose={() => setCollectionsOpen(false)}
+        collections={collections}
+        items={items}
+        blocks={blocks}
+        canEdit={canEdit}
+        onCreate={handleCreateCollection}
+        onRename={handleRenameCollection}
+        onSetKind={handleSetCollectionKind}
+        onDelete={handleDeleteCollection}
+        onAddItem={handleAddCollectionItem}
+        onTogglePacked={handleToggleCollectionPacked}
+        onRemoveItem={handleRemoveCollectionItem}
+        onCheckout={handleCheckoutCollection}
+        onAddGapsToList={canEdit ? handleAddMissingToList : undefined}
+        onLocate={handleJumpToItem}
         isMobile={isMobile}
       />
       {canEdit && (

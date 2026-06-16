@@ -20,6 +20,15 @@ import {
   updatePurchaseOrder,
   updateStoreVisibility,
   verifyStoreAccess,
+  getCollections,
+  createCollection,
+  updateCollection,
+  deleteCollection,
+  addCollectionItem,
+  updateCollectionItem,
+  removeCollectionItem,
+  setCollectionCheckedOut,
+  getCollectionStoreId,
 } from "~/lib/queries";
 import { estimateUsage } from "~/utils/helpers/usage.helper";
 import type { UsageLog } from "~/types/storeTypes";
@@ -101,14 +110,16 @@ export const loader = async (args: LoaderFunctionArgs) => {
   if (accessLevel === "none") throw redirect("/");
 
   const usageSince = new Date(Date.now() - USAGE_WINDOW_DAYS * 86_400_000);
-  const [allItems, purchaseOrders, members, usageLogs] = await Promise.all([
-    getItemsByStore(params.id!),
-    getPurchaseOrders(params.id!),
-    accessLevel === "owner"
-      ? getMembersByStore(params.id!)
-      : Promise.resolve([]),
-    getUsageLogsByStore(params.id!, usageSince),
-  ]);
+  const [allItems, purchaseOrders, members, usageLogs, collections] =
+    await Promise.all([
+      getItemsByStore(params.id!),
+      getPurchaseOrders(params.id!),
+      accessLevel === "owner"
+        ? getMembersByStore(params.id!)
+        : Promise.resolve([]),
+      getUsageLogsByStore(params.id!, usageSince),
+      getCollections(params.id!),
+    ]);
 
   // Group usage logs by item so usage can be estimated in one pass.
   const logsByItem = new Map<string, UsageLog[]>();
@@ -129,7 +140,15 @@ export const loader = async (args: LoaderFunctionArgs) => {
     usage: estimateUsage(item, logsByItem.get(item.id) ?? [], now),
   }));
 
-  return { accessLevel, store, items, members, userId, purchaseOrders };
+  return {
+    accessLevel,
+    store,
+    items,
+    members,
+    userId,
+    purchaseOrders,
+    collections,
+  };
 };
 
 // ── Action ─────────────────────────────────────────────────
@@ -366,6 +385,80 @@ if (data._action === "buyPOItems") {
   }
   return { ok: true, committed };
 }
+
+  // ── Collections / packing ──
+  // Item-level ops carry their collectionId so we can confirm the collection
+  // actually belongs to THIS store before mutating (cross-store guard).
+  const ensureCollectionInStore = async (collectionId: string) => {
+    const sid = await getCollectionStoreId(collectionId);
+    if (sid !== params.id) throw new Response("Forbidden", { status: 403 });
+  };
+
+  if (data._action === "createCollection") {
+    const row = await createCollection({
+      id: data.id ?? undefined,
+      storeId: params.id!,
+      name: data.name || "Untitled",
+      kind: data.kind ?? "packing",
+      description: data.description ?? null,
+      userId,
+    });
+    return { ok: true, id: row.id };
+  }
+
+  if (data._action === "updateCollection") {
+    await ensureCollectionInStore(data.id);
+    await updateCollection(data.id, {
+      ...(data.name != null ? { name: data.name } : {}),
+      ...(data.description !== undefined
+        ? { description: data.description }
+        : {}),
+      ...(data.kind ? { kind: data.kind } : {}),
+    });
+    return { ok: true };
+  }
+
+  if (data._action === "deleteCollection") {
+    await ensureCollectionInStore(data.id);
+    await deleteCollection(data.id);
+    return { ok: true };
+  }
+
+  if (data._action === "addCollectionItem") {
+    await ensureCollectionInStore(data.collectionId);
+    const row = await addCollectionItem({
+      id: data.id ?? undefined,
+      collectionId: data.collectionId,
+      itemId: data.itemId ?? null,
+      name: data.name,
+      desiredQty: data.desiredQty != null ? Number(data.desiredQty) : 1,
+    });
+    return { ok: true, id: row.id };
+  }
+
+  if (data._action === "updateCollectionItem") {
+    await ensureCollectionInStore(data.collectionId);
+    await updateCollectionItem(data.id, {
+      ...(data.name != null ? { name: data.name } : {}),
+      ...(data.desiredQty != null
+        ? { desiredQty: Number(data.desiredQty) }
+        : {}),
+      ...(data.checked != null ? { checked: !!data.checked } : {}),
+    });
+    return { ok: true };
+  }
+
+  if (data._action === "removeCollectionItem") {
+    await ensureCollectionInStore(data.collectionId);
+    await removeCollectionItem(data.id);
+    return { ok: true };
+  }
+
+  if (data._action === "setCollectionCheckedOut") {
+    await ensureCollectionInStore(data.id);
+    await setCollectionCheckedOut(data.id, !!data.checkedOut);
+    return { ok: true };
+  }
 
   return { ok: false };
 };

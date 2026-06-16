@@ -53,6 +53,10 @@ export const items = sqliteTable("items", {
   expiryDate:    integer("expiry_date", { mode: "timestamp" }),
   useRate:       integer("use_rate"),                                                // units per period
   useRatePeriod: text("use_rate_period", { enum: ["day", "week", "month"] }),
+  // Transient "loan" state: true while the item is packed/checked-out in a
+  // collection (it physically left the store but keeps its home blockId for
+  // put-away on return). See DESIGN.md §7. Does NOT decrement quantity.
+  checkedOut:    integer("checked_out", { mode: "boolean" }).notNull().default(false),
 });
 
 // ─── ITEM LOGS ─────────────────────────────────────────────
@@ -155,6 +159,49 @@ export const templateBlocksRelations = relations(templateBlocks, ({ one }) => ({
   }),
 }));
 
+// ─── COLLECTIONS / PACKING ─────────────────────────────────
+// A named set of item references for a purpose (packing a trip, a trade pile,
+// a custom group) — distinct from the shopping list (things to acquire). v1 is
+// per-store but the model is kept store-agnostic so a later global / cross-store
+// layer is a small step. See DESIGN.md §7.
+
+export const collections = sqliteTable("collections", {
+  id:          text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  storeId:     text("store_id").notNull().references(() => stores.id, { onDelete: "cascade" }),
+  name:        text("name").notNull(),
+  description: text("description"),
+  kind:        text("kind", { enum: ["packing", "trade", "custom"] }).notNull().default("packing"),
+  // Collection-level state: true once it's been "checked out" (taken out).
+  checkedOut:  integer("checked_out", { mode: "boolean" }).notNull().default(false),
+  userId:      text("user_id").notNull(),                       // creator (Clerk id)
+  createdAt:   integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+});
+
+export const collectionItems = sqliteTable("collection_items", {
+  id:           text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
+  collectionId: text("collection_id").notNull().references(() => collections.id, { onDelete: "cascade" }),
+  // Link to an owned item (for pick assistance + check-out), or null for a
+  // free-text desired thing (gap → shopping list).
+  itemId:       text("item_id").references(() => items.id, { onDelete: "set null" }),
+  name:         text("name").notNull(),                          // denormalised label
+  desiredQty:   integer("desired_qty").notNull().default(1),
+  checked:      integer("checked", { mode: "boolean" }).notNull().default(false),  // "packed" tick
+  createdAt:    integer("created_at", { mode: "timestamp" }).$defaultFn(() => new Date()),
+});
+
+export const collectionsRelations = relations(collections, ({ one, many }) => ({
+  store: one(stores, { fields: [collections.storeId], references: [stores.id] }),
+  items: many(collectionItems),
+}));
+
+export const collectionItemsRelations = relations(collectionItems, ({ one }) => ({
+  collection: one(collections, {
+    fields: [collectionItems.collectionId],
+    references: [collections.id],
+  }),
+  item: one(items, { fields: [collectionItems.itemId], references: [items.id] }),
+}));
+
 // ─── RELATIONS ─────────────────────────────────────────────
 
 export const storesRelations = relations(stores, ({ many }) => ({
@@ -164,6 +211,7 @@ export const storesRelations = relations(stores, ({ many }) => ({
   invites:  many(storeInvites),
   itemLogs: many(itemLogs),
   purchaseOrderItems: many(purchaseOrderItems),
+  collections: many(collections),
 }));
 
 export const blocksRelations = relations(blocks, ({ one }) => ({

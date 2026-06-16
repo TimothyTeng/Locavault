@@ -8,6 +8,7 @@ type Props = {
   onAddItem: () => void;
   onQuickAdd: () => void;
   onRecipes: () => void;
+  onCollections: () => void;
   onMembersToggle: () => void;
   onPurchaseOrder: () => void;
   accessLevel: AccessLevel;
@@ -42,11 +43,36 @@ function RecipeIcon() {
   );
 }
 
+/** Stacked-boxes glyph for Collections. */
+function CollectionsIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+      <rect
+        x="1.5"
+        y="4.5"
+        width="9"
+        height="6"
+        rx="0.8"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <path
+        d="M3 4.5V3h6v1.5M4.5 2.5h3"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 export function StoreToolbar({
   storeId,
   onAddItem,
   onQuickAdd,
   onRecipes,
+  onCollections,
   onMembersToggle,
   onPurchaseOrder,
   accessLevel,
@@ -137,6 +163,15 @@ export function StoreToolbar({
           title="Recipes"
         >
           <RecipeIcon />
+        </button>
+
+        {/* Collections */}
+        <button
+          onClick={onCollections}
+          className="flex items-center justify-center w-8 h-8 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all"
+          title="Collections"
+        >
+          <CollectionsIcon />
         </button>
 
         <div className="flex-1" />
@@ -329,6 +364,14 @@ export function StoreToolbar({
       >
         <RecipeIcon />
         Recipes
+      </button>
+
+      <button
+        onClick={onCollections}
+        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-300 text-[10px] font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-150"
+      >
+        <CollectionsIcon />
+        Collections
       </button>
 
       {canEdit && (
