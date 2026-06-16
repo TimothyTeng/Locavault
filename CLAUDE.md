@@ -98,6 +98,7 @@ app/
 │   ├── purchases/        # shopping-list panel, list, rows, suggestions, optional fields
 │   ├── recipes/          # recipes panel: seeded library matched against pantry (see DESIGN.md §7)
 │   ├── collections/      # collections / packing panel: group items, pick assist, check-out/in (DESIGN.md §7)
+│   ├── trade/            # the Bazaar: global trade board + offers (DESIGN.md §7)
 │   └── templates/        # templates gallery + card + save-from-store modal
 └── types/                # shared TS types (one file per domain)
 ```
@@ -131,6 +132,7 @@ export { loader, action } from "#utils/loaders/store.loader";
 | `/invite/:token` | `invite.tsx` | Claims an invite then redirects to the store; prompts sign-in if needed. |
 | `/templates` | `templates.tsx` | Signed-in gallery of layout templates (public + your own private). Action handles `useTemplate` (→ new store), `createFromStore`, `setVisibility`, `deleteTemplate`. |
 | `/templates/new` | `templates.new.tsx` | From-scratch template builder; reuses `StoreViewFinder` via its `onSave` prop. Creates a **private** template (toggle public in the gallery). |
+| `/trade` | `trade.tsx` | Signed-in **global Bazaar** (DESIGN.md §7): browse all `forTrade` listings, list/unlist your own, and make/accept/decline/cancel trade offers. Action authorizes per-offer (owner vs requester). |
 | `/api/barcode` | `api.barcode.ts` | Resource route (no UI). `GET ?code=` → Open Food Facts product lookup for barcode scanning. |
 
 ## Data model (`app/lib/schema.ts`)
@@ -172,6 +174,13 @@ All ids are `text` UUIDs (`crypto.randomUUID()`). Timestamps are `integer` epoch
   null = a free-text gap). FK → collection (cascade delete).
 - **items.checkedOut** — transient "packed/out" loan state, set while the item is
   in a checked-out collection. Does **not** decrement quantity; cleared on check-in.
+- **items.forTrade / tradeNote** — owner-opted onto the global Bazaar (DESIGN.md §7),
+  with an optional "looking for…" wants note (cleared on unlist).
+- **tradeOffers** — a Steam-style offer on a listing: `listingItemId` (requested),
+  optional `offeredItemId` (offered in return), `fromUserId`/`toUserId`, `message`,
+  `status` ∈ `{pending, accepted, declined, cancelled}`. Item names are
+  denormalised so an offer still reads after an item is deleted/unlisted.
+  Accepting unlists the item and auto-declines competing pending offers.
 
 Relations are declared at the bottom of `schema.ts`. FKs cascade on store delete;
 item/block references on PO and collection rows use `set null`.

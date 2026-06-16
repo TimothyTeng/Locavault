@@ -413,13 +413,31 @@ is per-store.
 > are client-generated; collection actions live in `store.loader`, each guarded
 > to the current store.
 > ⬜ *Remaining:* preset/reusable lists; **put-away zone suggestion** on check-in;
-> a visible "packed/out" badge on item cards & the map; global / cross-store
-> collections (model is already store-agnostic); the Trade surface below.
+> global / cross-store collections (model is already store-agnostic).
+> ✅ *Also done:* a visible **"out" badge** for the loan state on item cards, map
+> item rows, and the inventory table (not just inside the panel).
 
-### Trade / loan (OUTPUT) — later, global/social
+### Trade / loan (OUTPUT) — global/social
 
 Items flagged `surplus` (or qty over a "keep" threshold) become eligible for a
 trade list → a global Trade surface. Reuses existing public-store/sharing infra.
+
+> ✅ *Done (v1, "the Bazaar"):* global **`/trade` route**
+> (`components/trade/tradeBoard.tsx`, `utils/loaders/trade.loader.ts`) — three
+> tabs: **Bazaar** (search a card grid of everyone's listings; owner's store
+> linked when public), **My listings** (list/unlist any of your items with an
+> optional "looking for…" note), **Offers** (incoming accept/decline · outgoing
+> cancel). Mechanics borrowed from game/marketplace trade systems:
+> **Steam-style offers** (propose with a message + optionally one of your items
+> in return); accepting takes the listing off the board and **auto-declines
+> competing offers** (first accepted wins). Model: `items.forTrade` +
+> `tradeNote`; a `trade_offers` table with denormalised names. Authorized in the
+> loader (only the owner lists; only the owner accepts/declines; only the
+> requester cancels; no offers on your own listing). Identity shown by **store
+> name** — no Clerk user-name lookup; coordination via the public-store link.
+> ⬜ *Remaining:* notifications; a reputation/“trades completed” signal; in-app
+> messaging or contact exchange on accept; surplus auto-suggestions; a
+> contextual "List for trade" from the store item detail.
 
 ---
 
@@ -556,9 +574,11 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
      "use it up" + one-tap missing-to-list.
    - ✅ *Done:* **Collections / packing** v1 (see §7) — per-store collections,
      link/free-text items, pick assistance, check-out/in (flag, don't
-     decrement), gaps → list.
+     decrement), gaps → list; loan state surfaced as an "out" badge everywhere.
+   - ✅ *Done:* **Trade** v1 — the global Bazaar (see §7): list/unlist, browse,
+     Steam-style offers, accept/decline/cancel.
    - ⬜ *Next:* "made this" consumption tap (recipes → prediction loop); put-away
-     suggestion on check-in; then Med reminders → Trade.
+     suggestion on check-in; Med reminders; trade notifications/reputation.
 
 ---
 
