@@ -38,10 +38,17 @@ npm run dev        # react-router dev server (Vite) — http://localhost:5173
 npm run build      # production build
 npm run start      # serve the production build (build/server/index.js)
 npm run typecheck  # react-router typegen && tsc
+npm run lint       # eslint (flat config; 0 errors expected, some warnings)
+npm run format     # prettier --write .   (format:check to verify)
+npm test           # vitest run  (unit tests for pure helpers)
 
 npx drizzle-kit generate   # generate a migration from schema.ts
 npx drizzle-kit migrate    # apply migrations to Turso
 ```
+
+> CI (`.github/workflows/ci.yml`) runs typecheck · lint · format:check · test ·
+> build on every push to `main` and PR. Keep them green. Tests live next to the
+> helper they cover (`app/utils/helpers/*.test.ts`); add tests for new pure logic.
 
 > **Migrations are baselined.** The journal was squashed to a single baseline
 > (`drizzle/0000_baseline.sql`) that mirrors `schema.ts`, so the normal flow now

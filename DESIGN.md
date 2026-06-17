@@ -580,6 +580,20 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
    - ⬜ *Next:* "made this" consumption tap (recipes → prediction loop); put-away
      suggestion on check-in; Med reminders; trade notifications/reputation.
 
+5. **Engineering hygiene (turning the hobby app professional):**
+   - ✅ *Done (P0 hardening):* authorization audited & fixed — store mutations
+     scoped to their store (no cross-store IDOR), private POs/collections no
+     longer leak to viewers/public, action inputs validated/coerced, store
+     creation authenticated. **Migration journal baselined** (one baseline +
+     `scripts/baseline-mark-applied.mjs`).
+   - ✅ *Done (foundation):* ESLint + Prettier, **Vitest** unit tests for the
+     prediction/recipe/parse/validate helpers, `.env.example`, a real README,
+     and **GitHub Actions CI** (typecheck · lint · format · test · build).
+   - ⬜ *Next (from the audit):* dead-link cleanup (`/purchases`, `/settings`) +
+     error/loading/empty states + a toast layer for failed mutations; then a
+     shared panel/modal/button component pass and accessibility (focus trap,
+     Escape, alt text); rate-limit `/api/barcode`; error monitoring.
+
 ---
 
 ## 12. Open questions / risks **[OPEN]**
