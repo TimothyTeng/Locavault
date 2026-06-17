@@ -589,10 +589,15 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
    - ✅ *Done (foundation):* ESLint + Prettier, **Vitest** unit tests for the
      prediction/recipe/parse/validate helpers, `.env.example`, a real README,
      and **GitHub Actions CI** (typecheck · lint · format · test · build).
-   - ⬜ *Next (from the audit):* dead-link cleanup (`/purchases`, `/settings`) +
-     error/loading/empty states + a toast layer for failed mutations; then a
-     shared panel/modal/button component pass and accessibility (focus trap,
-     Escape, alt text); rate-limit `/api/barcode`; error monitoring.
+   - ✅ *Done (UX safety net):* removed dead nav links; friendly **error
+     boundaries** (shared `ErrorState`, per-route) + a **navigation progress
+     bar**; a **toast layer** with `toActionResult` turning expected 4xx into
+     `{ ok:false }` so failed optimistic mutations toast + roll back instead of
+     failing silently or blanking the page.
+   - ⬜ *Next (from the audit):* shared panel/modal/button/empty-state component
+     pass (dedupe the hand-rolled variants) and accessibility (focus trap,
+     Escape on all modals, image alt text); rate-limit `/api/barcode`; error
+     monitoring; chip away at the 28 lint warnings.
 
 ---
 
