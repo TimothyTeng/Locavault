@@ -57,7 +57,10 @@ type Props = {
   nonClickableKinds?: BlockKind[];
   /** Per-block status badge (store view only) — turns the map into a dashboard.
    *  Keyed by block id; absent blocks show no badge. */
-  blockBadges?: Record<string, { count: number; tone: "critical" | "attention" }>;
+  blockBadges?: Record<
+    string,
+    { count: number; tone: "critical" | "attention" }
+  >;
 };
 
 export function GridCanvas({
@@ -396,25 +399,25 @@ export function GridCanvas({
                 ? selectedIds.has(id)
                 : id === selectedId;
               return (
-              <div
-                key={id}
-                className="absolute pointer-events-none rounded-md"
-                style={{
-                  left: b.x * cellSize,
-                  top: b.y * cellSize,
-                  width: b.w * cellSize,
-                  height: b.h * cellSize,
-                  background: `${b.border}${isSel ? "1f" : "0e"}`,
-                  border: `1.5px ${isSel ? "solid" : "dashed"} ${b.border}${isSel ? "" : "66"}`,
-                }}
-              >
-                <span
-                  className="absolute left-1 top-1 rounded bg-white/80 px-1 font-mono uppercase tracking-wide leading-none"
-                  style={{ fontSize: 9, color: b.border, paddingBlock: 1 }}
+                <div
+                  key={id}
+                  className="absolute pointer-events-none rounded-md"
+                  style={{
+                    left: b.x * cellSize,
+                    top: b.y * cellSize,
+                    width: b.w * cellSize,
+                    height: b.h * cellSize,
+                    background: `${b.border}${isSel ? "1f" : "0e"}`,
+                    border: `1.5px ${isSel ? "solid" : "dashed"} ${b.border}${isSel ? "" : "66"}`,
+                  }}
                 >
-                  {b.label}
-                </span>
-              </div>
+                  <span
+                    className="absolute left-1 top-1 rounded bg-white/80 px-1 font-mono uppercase tracking-wide leading-none"
+                    style={{ fontSize: 9, color: b.border, paddingBlock: 1 }}
+                  >
+                    {b.label}
+                  </span>
+                </div>
               );
             })}
 
@@ -536,7 +539,9 @@ export function GridCanvas({
                       >
                         <span
                           className="w-1 h-1 rounded-full"
-                          style={{ background: critical ? "#ef4444" : "#f59e0b" }}
+                          style={{
+                            background: critical ? "#ef4444" : "#f59e0b",
+                          }}
                         />
                         <span
                           className="font-mono font-bold leading-none"

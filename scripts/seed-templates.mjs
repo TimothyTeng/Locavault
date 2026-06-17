@@ -154,4 +154,6 @@ for (const t of TEMPLATES) {
   created++;
 }
 
-console.log(`Templates seeded — created: ${created}, skipped (existing): ${skipped}`);
+console.log(
+  `Templates seeded — created: ${created}, skipped (existing): ${skipped}`,
+);

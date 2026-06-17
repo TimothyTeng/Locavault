@@ -34,7 +34,10 @@ export const TYPE_TRAITS: Record<ItemType, Trait[]> = {
 export const TYPE_META: Record<ItemType, { label: string; hint: string }> = {
   food: { label: "Food", hint: "Edible — tracks expiry & run-out" },
   medication: { label: "Medication", hint: "Doses, refills & expiry" },
-  supplies: { label: "Supplies", hint: "Cleaning, toiletries, paper — tracks run-out" },
+  supplies: {
+    label: "Supplies",
+    hint: "Cleaning, toiletries, paper — tracks run-out",
+  },
   equipment: { label: "Equipment", hint: "Tools, electronics, durables" },
   clothing: { label: "Clothing", hint: "Size & season" },
   document: { label: "Documents", hint: "Passport, insurance, keys" },
@@ -69,7 +72,10 @@ export function fieldsForType(type: ItemType): FormFields {
 // Keyword → type, used to pre-select the type from a zone / category label so
 // assignment stays one-tap. Order matters: more specific patterns first.
 const TYPE_HINTS: { type: ItemType; re: RegExp }[] = [
-  { type: "medication", re: /medic|pharma|pill|drug|first.?aid|vitamin|health/i },
+  {
+    type: "medication",
+    re: /medic|pharma|pill|drug|first.?aid|vitamin|health/i,
+  },
   {
     type: "food",
     re: /food|grocer|pantry|fridge|freezer|kitchen|dairy|produce|snack|drink|beverage|fruit|veg|meat|spice|bak/i,

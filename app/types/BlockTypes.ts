@@ -1,10 +1,18 @@
 import type { FixtureId } from "./fixtureTypes";
 
 export const PRESET_COLORS = [
-  "#2d6b44", "#3d8a58", "#1f4d30",
-  "#b8821e", "#d4a244", "#f97316",
-  "#1e2520", "#3a4a3f", "#6d7d72",
-  "#4a90b8", "#8b5cf6", "#ef4444",
+  "#2d6b44",
+  "#3d8a58",
+  "#1f4d30",
+  "#b8821e",
+  "#d4a244",
+  "#f97316",
+  "#1e2520",
+  "#3a4a3f",
+  "#6d7d72",
+  "#4a90b8",
+  "#8b5cf6",
+  "#ef4444",
 ];
 
 // ─── Block kinds ──────────────────────────────────────────────────────────────
@@ -36,8 +44,8 @@ export const BLOCK_KIND_META: Record<
 // ─── Block types ──────────────────────────────────────────────────────────────
 
 interface BlockBase {
-  id:    string;
-  name:  string;
+  id: string;
+  name: string;
   color: string;
   /** Optional furniture fixture; null/undefined = plain coloured block. */
   fixture?: FixtureId | null;
@@ -64,9 +72,21 @@ export type Block = StandardBlock | DividerBlock | StairsBlock | RoomBlock;
 // ─── Default blocks ───────────────────────────────────────────────────────────
 
 export const DEFAULT_BLOCKS: Block[] = [
-  { id: "default-door",    name: "Door",    color: "#3d8a58", kind: "divider" },
-  { id: "default-shelf",   name: "Shelf",   color: "#2d6b44", kind: "standard", fixture: "shelf" },
-  { id: "default-cabinet", name: "Cabinet", color: "#b8821e", kind: "standard", fixture: "cabinet" },
-  { id: "default-wall",    name: "Wall",    color: "#1e2520", kind: "divider" },
-  { id: "default-room",    name: "Room",    color: "#64748b", kind: "room" },
+  { id: "default-door", name: "Door", color: "#3d8a58", kind: "divider" },
+  {
+    id: "default-shelf",
+    name: "Shelf",
+    color: "#2d6b44",
+    kind: "standard",
+    fixture: "shelf",
+  },
+  {
+    id: "default-cabinet",
+    name: "Cabinet",
+    color: "#b8821e",
+    kind: "standard",
+    fixture: "cabinet",
+  },
+  { id: "default-wall", name: "Wall", color: "#1e2520", kind: "divider" },
+  { id: "default-room", name: "Room", color: "#64748b", kind: "room" },
 ];

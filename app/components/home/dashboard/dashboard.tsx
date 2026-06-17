@@ -176,7 +176,8 @@ export default function Dashboard({
             {user?.firstName ? `${user.firstName}'s` : "Your"} stores
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            <CountUp value={stores.length} /> {stores.length === 1 ? "location" : "locations"}
+            <CountUp value={stores.length} />{" "}
+            {stores.length === 1 ? "location" : "locations"}
             {pinnedCount > 0 && ` · ${pinnedCount} pinned`}
           </p>
         </div>

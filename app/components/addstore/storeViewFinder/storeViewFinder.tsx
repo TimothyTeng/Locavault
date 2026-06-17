@@ -215,7 +215,14 @@ export default function StoreViewFinder({
           kind: b.kind,
         }),
       );
-      onSave({ name, tags, description, rows: ROWS, cols: COLS, blocks: blockArr });
+      onSave({
+        name,
+        tags,
+        description,
+        rows: ROWS,
+        cols: COLS,
+        blocks: blockArr,
+      });
       return;
     }
 
@@ -401,7 +408,11 @@ export default function StoreViewFinder({
                 : undefined
             }
             submitLabel={
-              onSave ? (saveLabel ?? "Save template") : initialData ? "Save changes" : "Save"
+              onSave
+                ? (saveLabel ?? "Save template")
+                : initialData
+                  ? "Save changes"
+                  : "Save"
             }
             onSubmit={(name, tags, description) =>
               submitForm(name, tags, description)

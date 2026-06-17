@@ -14,7 +14,11 @@ import {
 } from "lucide-react";
 import { TypeIcon } from "~/components/store/typeIcon";
 import type { ItemType } from "~/types/itemTypeTypes";
-import type { TradeListing, TradeOffer, TradeOfferStatus } from "~/types/tradeTypes";
+import type {
+  TradeListing,
+  TradeOffer,
+  TradeOfferStatus,
+} from "~/types/tradeTypes";
 
 export type MyTradeItem = {
   id: string;
@@ -84,8 +88,18 @@ export function TradeBoard({
 
       {/* Tabs */}
       <div className="mb-5 flex gap-1.5 border-b border-slate-200">
-        <TabBtn label="Bazaar" active={tab === "bazaar"} onClick={() => setTab("bazaar")} n={bazaar.length} />
-        <TabBtn label="My listings" active={tab === "listings"} onClick={() => setTab("listings")} n={myListings.length} />
+        <TabBtn
+          label="Bazaar"
+          active={tab === "bazaar"}
+          onClick={() => setTab("bazaar")}
+          n={bazaar.length}
+        />
+        <TabBtn
+          label="My listings"
+          active={tab === "listings"}
+          onClick={() => setTab("listings")}
+          n={myListings.length}
+        />
         <TabBtn
           label="Offers"
           active={tab === "offers"}
@@ -103,7 +117,11 @@ export function TradeBoard({
         />
       )}
       {tab === "listings" && (
-        <MyListingsTab myItems={myItems} busy={fetcher.state !== "idle"} submit={submit} />
+        <MyListingsTab
+          myItems={myItems}
+          busy={fetcher.state !== "idle"}
+          submit={submit}
+        />
       )}
       {tab === "offers" && (
         <OffersTab offers={offers} userId={userId} submit={submit} />
@@ -186,7 +204,10 @@ function BazaarTab({
   return (
     <>
       <div className="relative mb-4 max-w-sm">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
+        <Search
+          size={14}
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300"
+        />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -220,7 +241,10 @@ function ListingCard({
   return (
     <div className="flex flex-col rounded-xl border border-slate-200 bg-white p-3">
       <div className="mb-2 flex items-start gap-2">
-        <TypeIcon type={listing.itemType} className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
+        <TypeIcon
+          type={listing.itemType}
+          className="mt-0.5 h-4 w-4 shrink-0 text-slate-400"
+        />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13px] font-bold text-slate-800">
             {listing.name}
@@ -303,7 +327,10 @@ function MyListingsTab({
   return (
     <>
       <div className="relative mb-4 max-w-sm">
-        <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300" />
+        <Search
+          size={14}
+          className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-300"
+        />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
@@ -332,7 +359,10 @@ function MyListingRow({
   const [note, setNote] = useState(item.tradeNote ?? "");
   return (
     <div className="flex items-center gap-3 rounded-lg border border-slate-100 bg-white px-3 py-2">
-      <TypeIcon type={item.itemType} className="h-4 w-4 shrink-0 text-slate-400" />
+      <TypeIcon
+        type={item.itemType}
+        className="h-4 w-4 shrink-0 text-slate-400"
+      />
       <div className="min-w-0 flex-1">
         <p className="truncate text-[12px] font-semibold text-slate-800">
           {item.name}
@@ -362,7 +392,11 @@ function MyListingRow({
           <button
             disabled={busy}
             onClick={() =>
-              submit({ _action: "listForTrade", itemId: item.id, forTrade: false })
+              submit({
+                _action: "listForTrade",
+                itemId: item.id,
+                forTrade: false,
+              })
             }
             className="shrink-0 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-emerald-700 hover:bg-emerald-100"
           >
@@ -423,7 +457,12 @@ function OffersTab({
             <p className="text-[11px] text-slate-400">Nothing incoming.</p>
           )}
           {incoming.map((o) => (
-            <OfferRow key={o.id} offer={o} direction="incoming" submit={submit} />
+            <OfferRow
+              key={o.id}
+              offer={o}
+              direction="incoming"
+              submit={submit}
+            />
           ))}
         </div>
       </div>
@@ -436,7 +475,12 @@ function OffersTab({
             <p className="text-[11px] text-slate-400">Nothing outgoing.</p>
           )}
           {outgoing.map((o) => (
-            <OfferRow key={o.id} offer={o} direction="outgoing" submit={submit} />
+            <OfferRow
+              key={o.id}
+              offer={o}
+              direction="outgoing"
+              submit={submit}
+            />
           ))}
         </div>
       </div>
@@ -525,7 +569,10 @@ function MakeOfferModal({
 
   return (
     <>
-      <div className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div
+        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
+        onClick={onClose}
+      />
       <div
         role="dialog"
         aria-modal="true"
@@ -536,10 +583,18 @@ function MakeOfferModal({
             <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
               Propose a trade
             </span>
-            <p className="text-[13px] font-bold text-slate-800">{listing.name}</p>
-            <p className="text-[10px] text-slate-400">from {listing.storeName}</p>
+            <p className="text-[13px] font-bold text-slate-800">
+              {listing.name}
+            </p>
+            <p className="text-[10px] text-slate-400">
+              from {listing.storeName}
+            </p>
           </div>
-          <button onClick={onClose} aria-label="Close" className="text-slate-300 hover:text-slate-600">
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="text-slate-300 hover:text-slate-600"
+          >
             <X size={16} />
           </button>
         </div>

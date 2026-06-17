@@ -24,7 +24,10 @@ import { useZoom } from "~/utils/useZoom";
 import { GridCanvas } from "~/components/addstore/storeViewFinder/GridCanvas";
 import Navbar from "~/components/home/navbar";
 import { AddItemPanel } from "~/components/addItem/addItemPanel";
-import { QuickAddPanel, type QuickAddItem } from "~/components/addItem/quickAddPanel";
+import {
+  QuickAddPanel,
+  type QuickAddItem,
+} from "~/components/addItem/quickAddPanel";
 import { RecipesPanel } from "~/components/recipes/recipesPanel";
 import { CollectionsPanel } from "~/components/collections/collectionsPanel";
 import type { Collection, CollectionKind } from "~/types/collectionTypes";
@@ -201,9 +204,7 @@ export default function StorePage() {
   const isOwner = accessLevel === "owner";
 
   // How many inventory items currently need restocking (low / out / expiring)
-  const restockCount = items.filter(
-    (i) => getItemStatus(i) !== "ok",
-  ).length;
+  const restockCount = items.filter((i) => getItemStatus(i) !== "ok").length;
 
   // Per-zone status badges for the canvas: worst severity + count of items
   // needing attention, so the floor plan reads as a triage dashboard.
@@ -660,7 +661,8 @@ export default function StorePage() {
   const suggestedQty = (item: Item) => {
     const rate = item.usage?.dailyRate ?? null;
     if (rate && rate > 0) {
-      const horizonNeed = Math.ceil(rate * RESTOCK_HORIZON_DAYS) - item.quantity;
+      const horizonNeed =
+        Math.ceil(rate * RESTOCK_HORIZON_DAYS) - item.quantity;
       const minNeed =
         item.minQuantity != null ? item.minQuantity - item.quantity : 0;
       return Math.max(horizonNeed, minNeed, 1);
@@ -850,9 +852,7 @@ export default function StorePage() {
   ) => {
     patchCollection(cid, (c) => ({
       ...c,
-      items: c.items.map((ci) =>
-        ci.id === ciId ? { ...ci, checked } : ci,
-      ),
+      items: c.items.map((ci) => (ci.id === ciId ? { ...ci, checked } : ci)),
     }));
     submitCollection({
       _action: "updateCollectionItem",
@@ -884,13 +884,13 @@ export default function StorePage() {
     patchCollection(cid, (c) => ({
       ...c,
       checkedOut,
-      items: checkedOut ? c.items.map((ci) => ({ ...ci, checked: true })) : c.items,
+      items: checkedOut
+        ? c.items.map((ci) => ({ ...ci, checked: true }))
+        : c.items,
     }));
     // Reflect the transient loan state on the linked inventory items.
     setItems((prev) =>
-      prev.map((i) =>
-        linkedItemIds.has(i.id) ? { ...i, checkedOut } : i,
-      ),
+      prev.map((i) => (linkedItemIds.has(i.id) ? { ...i, checkedOut } : i)),
     );
     submitCollection({
       _action: "setCollectionCheckedOut",
@@ -1018,155 +1018,164 @@ export default function StorePage() {
               onAddItemToZone={handleAddItemToZone}
             />
           ) : (
-          <>
-          {/* ── Desktop canvas (left pane) ── */}
-          {!isMobile && (
-            <div
-              className={`flex flex-col border-r border-slate-200 overflow-hidden ${
-                showCanvas ? "w-1/2" : "hidden"
-              }`}
-            >
-              <div className="px-4 h-10 flex items-center border-b border-slate-100 shrink-0 bg-white">
-                <span className="text-[9px] font-bold uppercase tracking-widest text-slate-300">
-                  Floor Plan
-                </span>
-              </div>
-              <div className="flex-1 overflow-auto p-4">
-                {store && (
-                  <StoreHeader
-                    store={store}
-                    id={id}
-                    zoom={zoom}
-                    onZoomIn={onZoomIn}
-                    onZoomOut={onZoomOut}
-                  />
-                )}
-                <div className="mt-4" style={{ width: `${zoom * 100}%` }}>
-                  <GridCanvas
-                    cols={store!.cols}
-                    rows={store!.rows}
-                    blocks={blocks}
-                    handles={handles}
-                    selectedId={highlightedCell}
-                    onClick={(_, blockId) => handleZoneClick(blockId)}
-                    readOnly={true}
-                    nonClickableKinds={["divider", "stairs"]}
-                    blockBadges={blockBadges}
-                  />
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ── Inventory (full width on mobile, half on desktop) ── */}
-          <div
-            ref={tableRef}
-            className={`flex flex-col overflow-hidden ${
-              !isMobile && showCanvas ? "w-1/2" : "w-full"
-            }`}
-          >
-            {focusedZoneId ? (
-              // ── Zone-scoped contents: type-aware cards ──
-              <>
-                <div className="px-3 py-2 border-b border-slate-100 bg-white shrink-0 flex items-center gap-2">
-                  <button
-                    onClick={() => setFocusedZoneId(null)}
-                    className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-700 transition-colors"
-                  >
-                    <svg width="9" height="9" viewBox="0 0 10 10" fill="none">
-                      <path
-                        d="M6 1L2 5l4 4"
-                        stroke="currentColor"
-                        strokeWidth="1.6"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
+            <>
+              {/* ── Desktop canvas (left pane) ── */}
+              {!isMobile && (
+                <div
+                  className={`flex flex-col border-r border-slate-200 overflow-hidden ${
+                    showCanvas ? "w-1/2" : "hidden"
+                  }`}
+                >
+                  <div className="px-4 h-10 flex items-center border-b border-slate-100 shrink-0 bg-white">
+                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-300">
+                      Floor Plan
+                    </span>
+                  </div>
+                  <div className="flex-1 overflow-auto p-4">
+                    {store && (
+                      <StoreHeader
+                        store={store}
+                        id={id}
+                        zoom={zoom}
+                        onZoomIn={onZoomIn}
+                        onZoomOut={onZoomOut}
                       />
-                    </svg>
-                    All items
-                  </button>
-                  <span className="text-slate-200">/</span>
-                  <span className="text-[11px] font-mono font-semibold text-slate-700 truncate">
-                    {zoneLabel || "Zone"}
-                  </span>
-                  <span className="text-[9px] font-mono text-slate-300">
-                    {visibleItems.length} item
-                    {visibleItems.length !== 1 ? "s" : ""}
-                  </span>
+                    )}
+                    <div className="mt-4" style={{ width: `${zoom * 100}%` }}>
+                      <GridCanvas
+                        cols={store!.cols}
+                        rows={store!.rows}
+                        blocks={blocks}
+                        handles={handles}
+                        selectedId={highlightedCell}
+                        onClick={(_, blockId) => handleZoneClick(blockId)}
+                        readOnly={true}
+                        nonClickableKinds={["divider", "stairs"]}
+                        blockBadges={blockBadges}
+                      />
+                    </div>
+                  </div>
                 </div>
-                <ItemCardGrid
-                  items={visibleItems}
-                  onSave={handleSaveItem}
-                  onDelete={handleDeleteItem}
-                  onMarkOut={canEdit ? handleMarkItemOut : undefined}
-                  onAddToList={
-                    canEdit ? handleAddPOItemFromSuggestion : undefined
-                  }
-                  isOwner={isOwner}
-                  storeIsPublic={store?.isPublic ?? false}
-                  onToggleVisibility={handleToggleItemVisibility}
-                  emptyLabel="Nothing in this zone yet"
-                  bottomPad={isMobile && minimapExpanded}
-                />
-              </>
-            ) : (
-              // ── Whole-store: overview action queue + cards / table ──
-              <>
-                <StoreOverview
-                  items={items}
-                  restockCandidates={restockCandidates}
-                  onAddAll={canEdit ? handleAddAllSuggestions : undefined}
-                  activeStatus={statusFilter}
-                  onSelectStatus={(s) =>
-                    setStatusFilter((prev) => (prev === s ? null : s))
-                  }
-                  viewMode={viewMode}
-                  onViewModeChange={setViewMode}
-                />
-                {viewMode === "cards" ? (
-                  <ItemCardGrid
-                    items={
-                      statusFilter
-                        ? items.filter((i) => getItemStatus(i) === statusFilter)
-                        : items
-                    }
-                    onSave={handleSaveItem}
-                    onDelete={handleDeleteItem}
-                    onMarkOut={canEdit ? handleMarkItemOut : undefined}
-                    onAddToList={
-                      canEdit ? handleAddPOItemFromSuggestion : undefined
-                    }
-                    isOwner={isOwner}
-                    storeIsPublic={store?.isPublic ?? false}
-                    onToggleVisibility={handleToggleItemVisibility}
-                    emptyLabel="No items yet"
-                    bottomPad={isMobile && minimapExpanded}
-                  />
+              )}
+
+              {/* ── Inventory (full width on mobile, half on desktop) ── */}
+              <div
+                ref={tableRef}
+                className={`flex flex-col overflow-hidden ${
+                  !isMobile && showCanvas ? "w-1/2" : "w-full"
+                }`}
+              >
+                {focusedZoneId ? (
+                  // ── Zone-scoped contents: type-aware cards ──
+                  <>
+                    <div className="px-3 py-2 border-b border-slate-100 bg-white shrink-0 flex items-center gap-2">
+                      <button
+                        onClick={() => setFocusedZoneId(null)}
+                        className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-700 transition-colors"
+                      >
+                        <svg
+                          width="9"
+                          height="9"
+                          viewBox="0 0 10 10"
+                          fill="none"
+                        >
+                          <path
+                            d="M6 1L2 5l4 4"
+                            stroke="currentColor"
+                            strokeWidth="1.6"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                        </svg>
+                        All items
+                      </button>
+                      <span className="text-slate-200">/</span>
+                      <span className="text-[11px] font-mono font-semibold text-slate-700 truncate">
+                        {zoneLabel || "Zone"}
+                      </span>
+                      <span className="text-[9px] font-mono text-slate-300">
+                        {visibleItems.length} item
+                        {visibleItems.length !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    <ItemCardGrid
+                      items={visibleItems}
+                      onSave={handleSaveItem}
+                      onDelete={handleDeleteItem}
+                      onMarkOut={canEdit ? handleMarkItemOut : undefined}
+                      onAddToList={
+                        canEdit ? handleAddPOItemFromSuggestion : undefined
+                      }
+                      isOwner={isOwner}
+                      storeIsPublic={store?.isPublic ?? false}
+                      onToggleVisibility={handleToggleItemVisibility}
+                      emptyLabel="Nothing in this zone yet"
+                      bottomPad={isMobile && minimapExpanded}
+                    />
+                  </>
                 ) : (
-                  <StoreTable
-                    items={
-                      statusFilter
-                        ? items.filter((i) => getItemStatus(i) === statusFilter)
-                        : items
-                    }
-                    selectedItemId={selectedItemId}
-                    onSelect={handleSelectItem}
-                    onSave={handleSaveItem}
-                    onDelete={handleDeleteItem}
-                    onMarkOut={canEdit ? handleMarkItemOut : undefined}
-                    onAddToList={
-                      canEdit ? handleAddPOItemFromSuggestion : undefined
-                    }
-                    accessLevel={accessLevel}
-                    storeIsPublic={store?.isPublic ?? false}
-                    onToggleItemVisibility={handleToggleItemVisibility}
-                    isMobile={isMobile}
-                    minimapExpanded={minimapExpanded}
-                  />
+                  // ── Whole-store: overview action queue + cards / table ──
+                  <>
+                    <StoreOverview
+                      items={items}
+                      restockCandidates={restockCandidates}
+                      onAddAll={canEdit ? handleAddAllSuggestions : undefined}
+                      activeStatus={statusFilter}
+                      onSelectStatus={(s) =>
+                        setStatusFilter((prev) => (prev === s ? null : s))
+                      }
+                      viewMode={viewMode}
+                      onViewModeChange={setViewMode}
+                    />
+                    {viewMode === "cards" ? (
+                      <ItemCardGrid
+                        items={
+                          statusFilter
+                            ? items.filter(
+                                (i) => getItemStatus(i) === statusFilter,
+                              )
+                            : items
+                        }
+                        onSave={handleSaveItem}
+                        onDelete={handleDeleteItem}
+                        onMarkOut={canEdit ? handleMarkItemOut : undefined}
+                        onAddToList={
+                          canEdit ? handleAddPOItemFromSuggestion : undefined
+                        }
+                        isOwner={isOwner}
+                        storeIsPublic={store?.isPublic ?? false}
+                        onToggleVisibility={handleToggleItemVisibility}
+                        emptyLabel="No items yet"
+                        bottomPad={isMobile && minimapExpanded}
+                      />
+                    ) : (
+                      <StoreTable
+                        items={
+                          statusFilter
+                            ? items.filter(
+                                (i) => getItemStatus(i) === statusFilter,
+                              )
+                            : items
+                        }
+                        selectedItemId={selectedItemId}
+                        onSelect={handleSelectItem}
+                        onSave={handleSaveItem}
+                        onDelete={handleDeleteItem}
+                        onMarkOut={canEdit ? handleMarkItemOut : undefined}
+                        onAddToList={
+                          canEdit ? handleAddPOItemFromSuggestion : undefined
+                        }
+                        accessLevel={accessLevel}
+                        storeIsPublic={store?.isPublic ?? false}
+                        onToggleItemVisibility={handleToggleItemVisibility}
+                        isMobile={isMobile}
+                        minimapExpanded={minimapExpanded}
+                      />
+                    )}
+                  </>
                 )}
-              </>
-            )}
-          </div>
-          </>
+              </div>
+            </>
           )}
 
           {/* Members panel */}

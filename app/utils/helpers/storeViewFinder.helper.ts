@@ -2,7 +2,11 @@ import type { RefObject } from "react";
 import type { Layout } from "react-grid-layout";
 import type { Block } from "#components/addstore/blockPicker/index";
 import type { Mode } from "#components/addstore/storeViewFinder/ModeToggle";
-import type { BlocksMap, BlockDetails, CreateStoreInput } from "#types/storeViewFinderTypes";
+import type {
+  BlocksMap,
+  BlockDetails,
+  CreateStoreInput,
+} from "#types/storeViewFinderTypes";
 
 // ── Selection ─────────────────────────────────────────────
 
@@ -47,7 +51,7 @@ export function handleSelectionBox(
     return next;
   });
 }
- 
+
 // Toggle a single block in/out of selection (shift+click)
 export function handleShiftSelect(
   id: string,
@@ -139,7 +143,13 @@ export function handleLayoutChange(
     const next = { ...prev };
     for (const item of newLayout) {
       if (!next[item.i]) continue;
-      next[item.i] = { ...next[item.i], x: item.x, y: item.y, w: item.w, h: item.h };
+      next[item.i] = {
+        ...next[item.i],
+        x: item.x,
+        y: item.y,
+        w: item.w,
+        h: item.h,
+      };
     }
     return next;
   });
@@ -161,7 +171,11 @@ export function handleColsChange(
     const next = { ...prev };
     for (const id in next) {
       const b = next[id];
-      next[id] = { ...b, x: Math.min(b.x, newCols - b.w), w: Math.min(b.w, newCols) };
+      next[id] = {
+        ...b,
+        x: Math.min(b.x, newCols - b.w),
+        w: Math.min(b.w, newCols),
+      };
     }
     return next;
   });
@@ -181,7 +195,11 @@ export function handleRowsChange(
     const next = { ...prev };
     for (const id in next) {
       const b = next[id];
-      next[id] = { ...b, y: Math.min(b.y, newRows - b.h), h: Math.min(b.h, newRows) };
+      next[id] = {
+        ...b,
+        y: Math.min(b.y, newRows - b.h),
+        h: Math.min(b.h, newRows),
+      };
     }
     return next;
   });

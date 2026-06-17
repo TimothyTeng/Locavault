@@ -44,10 +44,14 @@ export function useZoom(min = 0.5, max = 3) {
       lastDist = dist;
     };
 
-    const handleTouchEnd = () => { lastDist = null; };
+    const handleTouchEnd = () => {
+      lastDist = null;
+    };
 
     const el = containerRef.current;
-    el?.addEventListener("wheel", (e) => e.preventDefault(), { passive: false });
+    el?.addEventListener("wheel", (e) => e.preventDefault(), {
+      passive: false,
+    });
 
     window.addEventListener("wheel", handleWheel, { passive: false });
     window.addEventListener("keydown", handleKeyDown);

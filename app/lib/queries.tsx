@@ -934,9 +934,7 @@ export async function getTemplatesForGallery(
   const rows = await db
     .select()
     .from(templates)
-    .where(
-      sql`${templates.isPublic} = 1 OR ${templates.userId} = ${userId}`,
-    );
+    .where(sql`${templates.isPublic} = 1 OR ${templates.userId} = ${userId}`);
   if (!rows.length) return [];
 
   const ids = rows.map((t) => t.id);
@@ -1104,10 +1102,7 @@ export async function createStoreFromTemplate(
 }
 
 /** Toggle a template between public and private */
-export async function updateTemplateVisibility(
-  id: string,
-  isPublic: boolean,
-) {
+export async function updateTemplateVisibility(id: string, isPublic: boolean) {
   return db.update(templates).set({ isPublic }).where(eq(templates.id, id));
 }
 
@@ -1188,7 +1183,11 @@ export async function createCollection(data: {
 
 export async function updateCollection(
   id: string,
-  data: Partial<{ name: string; description: string | null; kind: CollectionKind }>,
+  data: Partial<{
+    name: string;
+    description: string | null;
+    kind: CollectionKind;
+  }>,
 ) {
   const [row] = await db
     .update(collections)
@@ -1212,9 +1211,7 @@ export async function getCollectionStoreId(id: string): Promise<string | null> {
 }
 
 /** Resolve a block's store — used to scope cross-store mutation guards. */
-export async function getBlockStoreId(
-  blockId: string,
-): Promise<string | null> {
+export async function getBlockStoreId(blockId: string): Promise<string | null> {
   const [row] = await db
     .select({ storeId: blocks.storeId })
     .from(blocks)
@@ -1276,9 +1273,7 @@ export async function setCollectionCheckedOut(
     .select({ itemId: collectionItems.itemId })
     .from(collectionItems)
     .where(eq(collectionItems.collectionId, collectionId));
-  const itemIds = linked
-    .map((r) => r.itemId)
-    .filter((x): x is string => !!x);
+  const itemIds = linked.map((r) => r.itemId).filter((x): x is string => !!x);
 
   if (itemIds.length) {
     await db
@@ -1395,7 +1390,10 @@ export async function getTradeOfferById(id: string) {
   return row ?? null;
 }
 
-export async function setTradeOfferStatus(id: string, status: TradeOfferStatus) {
+export async function setTradeOfferStatus(
+  id: string,
+  status: TradeOfferStatus,
+) {
   await db.update(tradeOffers).set({ status }).where(eq(tradeOffers.id, id));
 }
 

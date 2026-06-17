@@ -1,5 +1,9 @@
 import { getAuth } from "@clerk/react-router/server";
-import { redirect, type ActionFunctionArgs, type LoaderFunctionArgs } from "react-router";
+import {
+  redirect,
+  type ActionFunctionArgs,
+  type LoaderFunctionArgs,
+} from "react-router";
 import {
   createInvite,
   createItem,
@@ -346,91 +350,91 @@ export const action = async (args: ActionFunctionArgs) => {
   }
 
   if (data._action === "createPOItem") {
-  if (data.itemId) await ensureItemInStore(data.itemId);
-  await ensureBlockInStore(data.blockId);
-  const row = await createPurchaseOrder({
-    itemId: data.itemId ?? null,
-    storeId:params.id!,
-    name: requireText(data.name, "Item name"),
-    quantity: toQty(data.quantity, 1, { min: 1 }),
-    blockId: data.blockId ?? null,
-    description: optText(data.description),
-    sku: optText(data.sku),
-    unit: optText(data.unit),
-    minQuantity: optInt(data.minQuantity),
-    cost: optInt(data.cost),
-    expiryDate: optDate(data.expiryDate),
-    useRate: optInt(data.useRate),
-    useRatePeriod: data.useRatePeriod ?? null,
-    createdBy: userId ?? null,
-  });
-  return { ok: true, id: row.id, optimisticId: data.optimisticId };
-}
-
-if (data._action === "createPOItems") {
-  const rows = Array.isArray(data.items) ? data.items : [];
-  for (const r of rows) {
-    if (r.itemId) await ensureItemInStore(r.itemId);
-    await ensureBlockInStore(r.blockId);
-    if (!(typeof r?.name === "string" && r.name.trim())) continue;
-    await createPurchaseOrder({
-      itemId: r.itemId ?? null,
+    if (data.itemId) await ensureItemInStore(data.itemId);
+    await ensureBlockInStore(data.blockId);
+    const row = await createPurchaseOrder({
+      itemId: data.itemId ?? null,
       storeId: params.id!,
-      name: requireText(r.name, "Item name"),
-      quantity: toQty(r.quantity, 1, { min: 1 }),
-      blockId: r.blockId ?? null,
-      description: optText(r.description),
-      sku: optText(r.sku),
-      unit: optText(r.unit),
-      minQuantity: optInt(r.minQuantity),
-      cost: optInt(r.cost),
-      expiryDate: optDate(r.expiryDate),
-      useRate: optInt(r.useRate),
-      useRatePeriod: r.useRatePeriod ?? null,
+      name: requireText(data.name, "Item name"),
+      quantity: toQty(data.quantity, 1, { min: 1 }),
+      blockId: data.blockId ?? null,
+      description: optText(data.description),
+      sku: optText(data.sku),
+      unit: optText(data.unit),
+      minQuantity: optInt(data.minQuantity),
+      cost: optInt(data.cost),
+      expiryDate: optDate(data.expiryDate),
+      useRate: optInt(data.useRate),
+      useRatePeriod: data.useRatePeriod ?? null,
       createdBy: userId ?? null,
     });
+    return { ok: true, id: row.id, optimisticId: data.optimisticId };
   }
-  return { ok: true };
-}
 
-if (data._action === "updatePOItem") {
-  await ensurePOInStore(data.id);
-  await ensureBlockInStore(data.blockId);
-  await updatePurchaseOrder(data.id, {
-    name: requireText(data.name, "Item name"),
-    quantity: toQty(data.quantity, 1, { min: 1 }),
-    blockId: data.blockId ?? null,
-    description: optText(data.description),
-    sku: optText(data.sku),
-    unit: optText(data.unit),
-    minQuantity: optInt(data.minQuantity),
-    cost: optInt(data.cost),
-    expiryDate: optDate(data.expiryDate),
-    useRate: optInt(data.useRate),
-    useRatePeriod: data.useRatePeriod ?? null,
-  });
-  return { ok: true };
-}
-
-if (data._action === "deletePOItem") {
-  await ensurePOInStore(data.id);
-  await deletePurchaseOrder(data.id);
-  return { ok: true };
-}
-
-if (data._action === "buyPOItem") {
-  const ok = await commitPurchaseOrderRow(data.id, params.id!, userId);
-  return { ok, optimisticId: data.optimisticId };
-}
-
-if (data._action === "buyPOItems") {
-  const ids: string[] = Array.isArray(data.ids) ? data.ids : [];
-  let committed = 0;
-  for (const id of ids) {
-    if (await commitPurchaseOrderRow(id, params.id!, userId)) committed++;
+  if (data._action === "createPOItems") {
+    const rows = Array.isArray(data.items) ? data.items : [];
+    for (const r of rows) {
+      if (r.itemId) await ensureItemInStore(r.itemId);
+      await ensureBlockInStore(r.blockId);
+      if (!(typeof r?.name === "string" && r.name.trim())) continue;
+      await createPurchaseOrder({
+        itemId: r.itemId ?? null,
+        storeId: params.id!,
+        name: requireText(r.name, "Item name"),
+        quantity: toQty(r.quantity, 1, { min: 1 }),
+        blockId: r.blockId ?? null,
+        description: optText(r.description),
+        sku: optText(r.sku),
+        unit: optText(r.unit),
+        minQuantity: optInt(r.minQuantity),
+        cost: optInt(r.cost),
+        expiryDate: optDate(r.expiryDate),
+        useRate: optInt(r.useRate),
+        useRatePeriod: r.useRatePeriod ?? null,
+        createdBy: userId ?? null,
+      });
+    }
+    return { ok: true };
   }
-  return { ok: true, committed };
-}
+
+  if (data._action === "updatePOItem") {
+    await ensurePOInStore(data.id);
+    await ensureBlockInStore(data.blockId);
+    await updatePurchaseOrder(data.id, {
+      name: requireText(data.name, "Item name"),
+      quantity: toQty(data.quantity, 1, { min: 1 }),
+      blockId: data.blockId ?? null,
+      description: optText(data.description),
+      sku: optText(data.sku),
+      unit: optText(data.unit),
+      minQuantity: optInt(data.minQuantity),
+      cost: optInt(data.cost),
+      expiryDate: optDate(data.expiryDate),
+      useRate: optInt(data.useRate),
+      useRatePeriod: data.useRatePeriod ?? null,
+    });
+    return { ok: true };
+  }
+
+  if (data._action === "deletePOItem") {
+    await ensurePOInStore(data.id);
+    await deletePurchaseOrder(data.id);
+    return { ok: true };
+  }
+
+  if (data._action === "buyPOItem") {
+    const ok = await commitPurchaseOrderRow(data.id, params.id!, userId);
+    return { ok, optimisticId: data.optimisticId };
+  }
+
+  if (data._action === "buyPOItems") {
+    const ids: string[] = Array.isArray(data.ids) ? data.ids : [];
+    let committed = 0;
+    for (const id of ids) {
+      if (await commitPurchaseOrderRow(id, params.id!, userId)) committed++;
+    }
+    return { ok: true, committed };
+  }
 
   // ── Collections / packing ──
   // Item-level ops carry their collectionId so we can confirm the collection
@@ -486,7 +490,9 @@ if (data._action === "buyPOItems") {
   if (data._action === "updateCollectionItem") {
     await ensureCollectionInStore(data.collectionId);
     await updateCollectionItem(data.id, {
-      ...(data.name != null ? { name: requireText(data.name, "Item name") } : {}),
+      ...(data.name != null
+        ? { name: requireText(data.name, "Item name") }
+        : {}),
       ...(data.desiredQty != null
         ? { desiredQty: toQty(data.desiredQty, 1, { min: 1 }) }
         : {}),

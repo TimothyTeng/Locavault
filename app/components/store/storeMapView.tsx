@@ -3,7 +3,10 @@ import gsap from "gsap";
 import { Plus, Minus, X } from "lucide-react";
 import type { Item, ItemStatus } from "~/types/storeTypes";
 import type { BlocksMap, BlockState } from "~/types/storeViewFinderTypes";
-import { getItemStatus, itemRunoutDays } from "~/utils/helpers/storeTable.helper";
+import {
+  getItemStatus,
+  itemRunoutDays,
+} from "~/utils/helpers/storeTable.helper";
 import { FixtureGraphic } from "~/lib/fixtures";
 import { GridRuler } from "~/components/addstore/storeViewFinder/GridRuler";
 import { useProductImage } from "~/utils/useProductImage";
@@ -31,7 +34,12 @@ type ZoneStat = {
   worst: ItemStatus | null;
 };
 
-const SEVERITY: Record<ItemStatus, number> = { out: 3, low: 2, expiring: 1, ok: 0 };
+const SEVERITY: Record<ItemStatus, number> = {
+  out: 3,
+  low: 2,
+  expiring: 1,
+  ok: 0,
+};
 
 const DOT: Record<ItemStatus, string> = {
   out: "#94a3b8",
@@ -147,7 +155,13 @@ export function StoreMapView({
       const s = getItemStatus(it);
       const z =
         map[it.blockId] ??
-        (map[it.blockId] = { total: 0, out: 0, low: 0, expiring: 0, worst: null });
+        (map[it.blockId] = {
+          total: 0,
+          out: 0,
+          low: 0,
+          expiring: 0,
+          worst: null,
+        });
       z.total += 1;
       if (s === "out") z.out += 1;
       else if (s === "low") z.low += 1;
@@ -166,10 +180,7 @@ export function StoreMapView({
     return map;
   }, [items]);
 
-  const unassigned = useMemo(
-    () => items.filter((i) => !i.blockId),
-    [items],
-  );
+  const unassigned = useMemo(() => items.filter((i) => !i.blockId), [items]);
 
   // Rooms are a passive grouping layer (kind "room") — used for zoom-to-room.
   const rooms = useMemo(
@@ -197,7 +208,13 @@ export function StoreMapView({
   const contentH = cell * rows;
 
   // Zoom the view so a room fills most of the viewport, then scroll to it.
-  const zoomToRoom = (room: { id: string; x: number; y: number; w: number; h: number }) => {
+  const zoomToRoom = (room: {
+    id: string;
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+  }) => {
     if (baseCell > 0 && size.w > 0 && size.h > 0) {
       const fit = Math.min(
         (size.w * 0.85) / (room.w * baseCell),
@@ -214,7 +231,11 @@ export function StoreMapView({
     const el = boardRef.current?.querySelector(
       `[data-room-id="${focusRoomId}"]`,
     );
-    el?.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    el?.scrollIntoView({
+      behavior: "smooth",
+      block: "center",
+      inline: "center",
+    });
   }, [focusRoomId, cell]);
 
   // ── Entrance: shelves rise & fade in with a stagger (once, on first paint) ──
@@ -308,96 +329,95 @@ export function StoreMapView({
                 height: contentH,
               }}
             >
-            {/* Room regions — passive grouping layer, behind tiles */}
-            {rooms.map((r) => (
-              <div
-                key={r.id}
-                data-room-id={r.id}
-                className="absolute rounded-md pointer-events-none"
-                style={{
-                  left: r.x * cell,
-                  top: r.y * cell,
-                  width: r.w * cell,
-                  height: r.h * cell,
-                  background: `${r.border}0e`,
-                  border: `1.5px dashed ${r.border}59`,
-                }}
-              >
-                <span
-                  className="absolute left-1 top-1 rounded bg-white/80 px-1 font-mono uppercase tracking-wide leading-none"
-                  style={{ fontSize: 9, color: r.border, paddingBlock: 1 }}
-                >
-                  {r.label}
-                </span>
-              </div>
-            ))}
-
-            {Object.entries(blocks).map(([bid, b]) => {
-              if (b.kind === "room") return null;
-              const placeable =
-                b.kind !== "divider" && b.kind !== "stairs";
-              return (
-                <BlockTile
-                  key={bid}
-                  block={b}
-                  cell={cell}
-                  stat={zoneStats[bid]}
-                  sampleItems={itemsByZone[bid] ?? []}
-                  active={openZoneId === bid}
-                  plain={plain}
-                  dragging={!!dragItemId && placeable}
-                  dropActive={dragOverZoneId === bid}
-                  onClick={() => {
-                    if (!placeable) return;
-                    setUnassignedOpen(false);
-                    setOpenZoneId((cur) => (cur === bid ? null : bid));
+              {/* Room regions — passive grouping layer, behind tiles */}
+              {rooms.map((r) => (
+                <div
+                  key={r.id}
+                  data-room-id={r.id}
+                  className="absolute rounded-md pointer-events-none"
+                  style={{
+                    left: r.x * cell,
+                    top: r.y * cell,
+                    width: r.w * cell,
+                    height: r.h * cell,
+                    background: `${r.border}0e`,
+                    border: `1.5px dashed ${r.border}59`,
                   }}
-                  onDragEnter={
-                    placeable ? () => setDragOverZoneId(bid) : undefined
-                  }
-                  onDragLeave={
-                    placeable
-                      ? () =>
-                          setDragOverZoneId((cur) =>
-                            cur === bid ? null : cur,
-                          )
-                      : undefined
-                  }
-                  onDropItem={
-                    placeable
-                      ? (itemId) => {
-                          placeItem(itemId, bid);
-                          setDragOverZoneId(null);
-                          setDragItemId(null);
-                          setOpenZoneId(bid);
-                        }
-                      : undefined
-                  }
-                />
-              );
-            })}
+                >
+                  <span
+                    className="absolute left-1 top-1 rounded bg-white/80 px-1 font-mono uppercase tracking-wide leading-none"
+                    style={{ fontSize: 9, color: r.border, paddingBlock: 1 }}
+                  >
+                    {r.label}
+                  </span>
+                </div>
+              ))}
 
-            {/* ── Expanded shelf panel (anchored to the block) ── */}
-            {openBlock && (
-              <ZonePanel
-                ref={panelRef}
-                block={openBlock}
-                cell={cell}
-                contentW={contentW}
-                contentH={contentH}
-                items={openItems}
-                flagItemId={pulseItemId ?? null}
-                canEdit={canEdit}
-                onAddHere={() => onAddItemToZone(openZoneId)}
-                onPickItem={(it) => setDetailItem(it)}
-                onClose={() => setOpenZoneId(null)}
-                onItemDragStart={(id) => setDragItemId(id)}
-                onItemDragEnd={() => {
-                  setDragItemId(null);
-                  setDragOverZoneId(null);
-                }}
-              />
-            )}
+              {Object.entries(blocks).map(([bid, b]) => {
+                if (b.kind === "room") return null;
+                const placeable = b.kind !== "divider" && b.kind !== "stairs";
+                return (
+                  <BlockTile
+                    key={bid}
+                    block={b}
+                    cell={cell}
+                    stat={zoneStats[bid]}
+                    sampleItems={itemsByZone[bid] ?? []}
+                    active={openZoneId === bid}
+                    plain={plain}
+                    dragging={!!dragItemId && placeable}
+                    dropActive={dragOverZoneId === bid}
+                    onClick={() => {
+                      if (!placeable) return;
+                      setUnassignedOpen(false);
+                      setOpenZoneId((cur) => (cur === bid ? null : bid));
+                    }}
+                    onDragEnter={
+                      placeable ? () => setDragOverZoneId(bid) : undefined
+                    }
+                    onDragLeave={
+                      placeable
+                        ? () =>
+                            setDragOverZoneId((cur) =>
+                              cur === bid ? null : cur,
+                            )
+                        : undefined
+                    }
+                    onDropItem={
+                      placeable
+                        ? (itemId) => {
+                            placeItem(itemId, bid);
+                            setDragOverZoneId(null);
+                            setDragItemId(null);
+                            setOpenZoneId(bid);
+                          }
+                        : undefined
+                    }
+                  />
+                );
+              })}
+
+              {/* ── Expanded shelf panel (anchored to the block) ── */}
+              {openBlock && (
+                <ZonePanel
+                  ref={panelRef}
+                  block={openBlock}
+                  cell={cell}
+                  contentW={contentW}
+                  contentH={contentH}
+                  items={openItems}
+                  flagItemId={pulseItemId ?? null}
+                  canEdit={canEdit}
+                  onAddHere={() => onAddItemToZone(openZoneId)}
+                  onPickItem={(it) => setDetailItem(it)}
+                  onClose={() => setOpenZoneId(null)}
+                  onItemDragStart={(id) => setDragItemId(id)}
+                  onItemDragEnd={() => {
+                    setDragItemId(null);
+                    setDragOverZoneId(null);
+                  }}
+                />
+              )}
             </div>
           </div>
         )}
@@ -464,7 +484,9 @@ export function StoreMapView({
         <div className="flex items-center gap-1.5">
           <button
             onClick={toggleRuler}
-            title={showRuler ? "Hide coordinate guides" : "Show coordinate guides"}
+            title={
+              showRuler ? "Hide coordinate guides" : "Show coordinate guides"
+            }
             className={`rounded-lg border bg-white/95 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest shadow-sm backdrop-blur transition-colors ${
               showRuler
                 ? "border-slate-400 text-slate-700"
@@ -492,7 +514,9 @@ export function StoreMapView({
         )}
         <div className="flex items-center overflow-hidden rounded-lg border border-slate-200 bg-white/95 shadow-sm backdrop-blur">
           <ZoomBtn
-            onClick={() => setZoom((z) => Math.max(0.5, +(z - 0.15).toFixed(2)))}
+            onClick={() =>
+              setZoom((z) => Math.max(0.5, +(z - 0.15).toFixed(2)))
+            }
             label="Zoom out"
           >
             <Minus size={13} />
@@ -505,7 +529,9 @@ export function StoreMapView({
             {Math.round(zoom * 100)}%
           </button>
           <ZoomBtn
-            onClick={() => setZoom((z) => Math.min(2.5, +(z + 0.15).toFixed(2)))}
+            onClick={() =>
+              setZoom((z) => Math.min(2.5, +(z + 0.15).toFixed(2)))
+            }
             label="Zoom in"
           >
             <Plus size={13} />
@@ -636,8 +662,20 @@ function BlockTile({
           className="absolute rounded-[2px]"
           style={
             horizontal
-              ? { left: 0, right: 0, top: "33%", height: "34%", background: block.border }
-              : { top: 0, bottom: 0, left: "33%", width: "34%", background: block.border }
+              ? {
+                  left: 0,
+                  right: 0,
+                  top: "33%",
+                  height: "34%",
+                  background: block.border,
+                }
+              : {
+                  top: 0,
+                  bottom: 0,
+                  left: "33%",
+                  width: "34%",
+                  background: block.border,
+                }
           }
         />
       </div>
@@ -788,7 +826,12 @@ function GlyphChip({ item }: { item: Item }) {
       title={item.name}
     >
       {photo ? (
-        <img src={photo} alt="" loading="lazy" className="h-full w-full object-cover" />
+        <img
+          src={photo}
+          alt=""
+          loading="lazy"
+          className="h-full w-full object-cover"
+        />
       ) : (
         <TypeIcon type={item.itemType} className="h-2.5 w-2.5 text-slate-500" />
       )}
@@ -1017,7 +1060,10 @@ function ZoomBtn({
 function LegendDot({ color, label }: { color: string; label: string }) {
   return (
     <span className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-wider text-slate-400">
-      <span className="h-1.5 w-1.5 rounded-full" style={{ background: color }} />
+      <span
+        className="h-1.5 w-1.5 rounded-full"
+        style={{ background: color }}
+      />
       {label}
     </span>
   );

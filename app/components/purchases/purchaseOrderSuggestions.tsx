@@ -124,7 +124,9 @@ export function PurchaseOrderSuggestions({
                   <span className="text-[9px] text-slate-400 font-mono">
                     qty {item.quantity}
                     {item.unit ? ` ${item.unit}` : ""}
-                    {item.minQuantity != null ? ` · min ${item.minQuantity}` : ""}
+                    {item.minQuantity != null
+                      ? ` · min ${item.minQuantity}`
+                      : ""}
                   </span>
                 </div>
                 <div className="shrink-0 flex items-center gap-1.5">

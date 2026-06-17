@@ -128,7 +128,9 @@ export function QuickAddPanel({
                     type={e.itemType}
                     className="h-3.5 w-3.5 shrink-0 text-slate-400"
                   />
-                  <span className="flex-1 truncate text-slate-700">{e.name}</span>
+                  <span className="flex-1 truncate text-slate-700">
+                    {e.name}
+                  </span>
                   <span className="font-mono text-[11px] tabular-nums text-slate-400">
                     ×{e.quantity}
                   </span>
@@ -139,7 +141,9 @@ export function QuickAddPanel({
         </div>
 
         <div className="flex items-center justify-between gap-2 border-t border-slate-100 px-5 py-4">
-          <span className="text-[10px] font-mono text-slate-300">⌘/Ctrl+Enter</span>
+          <span className="text-[10px] font-mono text-slate-300">
+            ⌘/Ctrl+Enter
+          </span>
           <div className="flex gap-2">
             <button
               onClick={onClose}

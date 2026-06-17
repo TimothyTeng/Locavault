@@ -5,7 +5,7 @@ import type { BlocksMap } from "#types/storeViewFinderTypes";
 export type CellPos = { col: number; row: number };
 export type HitTarget =
   | "empty"
-  | "empty-shift"          // shift+drag from empty → additive rubber band
+  | "empty-shift" // shift+drag from empty → additive rubber band
   | "selected-block"
   | "unselected-block"
   | "unselected-block-shift"; // shift+click/drag block → add to selection
@@ -40,8 +40,14 @@ export function pointerToCell(
 ): CellPos {
   const rect = e.currentTarget.getBoundingClientRect();
   return {
-    col: Math.max(0, Math.min(Math.floor((e.clientX - rect.left) / cellSize), cols - 1)),
-    row: Math.max(0, Math.min(Math.floor((e.clientY - rect.top) / cellSize), rows - 1)),
+    col: Math.max(
+      0,
+      Math.min(Math.floor((e.clientX - rect.left) / cellSize), cols - 1),
+    ),
+    row: Math.max(
+      0,
+      Math.min(Math.floor((e.clientY - rect.top) / cellSize), rows - 1),
+    ),
   };
 }
 
@@ -54,11 +60,16 @@ export function cornersToRect(a: CellPos, b: CellPos): GhostRect {
   };
 }
 
-export function blockAtCell(col: number, row: number, blocks: BlocksMap): string | null {
+export function blockAtCell(
+  col: number,
+  row: number,
+  blocks: BlocksMap,
+): string | null {
   for (const [id, b] of Object.entries(blocks)) {
     // Rooms are a passive grouping layer — they never intercept pointer hits.
     if (b.kind === "room") continue;
-    if (col >= b.x && col < b.x + b.w && row >= b.y && row < b.y + b.h) return id;
+    if (col >= b.x && col < b.x + b.w && row >= b.y && row < b.y + b.h)
+      return id;
   }
   return null;
 }

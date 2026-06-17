@@ -12,10 +12,41 @@ import { expiryDateRemainingDays } from "./store.helper";
 export const USE_IT_UP_DAYS = 30;
 
 const STOPWORDS = new Set([
-  "of", "the", "a", "an", "and", "with", "in", "fresh", "dried", "ground",
-  "large", "small", "medium", "ripe", "whole", "raw", "cooked", "frozen",
-  "organic", "free", "range", "pack", "bag", "box", "tin", "can", "jar",
-  "bottle", "extra", "virgin", "low", "fat", "light", "plain", "sauce",
+  "of",
+  "the",
+  "a",
+  "an",
+  "and",
+  "with",
+  "in",
+  "fresh",
+  "dried",
+  "ground",
+  "large",
+  "small",
+  "medium",
+  "ripe",
+  "whole",
+  "raw",
+  "cooked",
+  "frozen",
+  "organic",
+  "free",
+  "range",
+  "pack",
+  "bag",
+  "box",
+  "tin",
+  "can",
+  "jar",
+  "bottle",
+  "extra",
+  "virgin",
+  "low",
+  "fat",
+  "light",
+  "plain",
+  "sauce",
 ]);
 
 /** Lowercase, de-pluralise, drop noise words → significant tokens. */
@@ -56,7 +87,9 @@ export function matchRecipes(items: Item[]): RecipeMatch[] {
   // Pantry = in-stock items (lean on the `edible` trait, but fall back to all
   // named items so an untyped "Rice" still counts).
   const inStock = items.filter((i) => i.quantity > 0);
-  const edible = inStock.filter((i) => hasTrait(i.itemType ?? "other", "edible"));
+  const edible = inStock.filter((i) =>
+    hasTrait(i.itemType ?? "other", "edible"),
+  );
   const pantrySource = edible.length ? edible : inStock;
 
   const pantryTokens = new Set<string>();

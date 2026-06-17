@@ -16,7 +16,10 @@ type Props = {
   zoom: number;
   onZoomIn: () => void;
   onZoomOut: () => void;
-  blockBadges?: Record<string, { count: number; tone: "critical" | "attention" }>;
+  blockBadges?: Record<
+    string,
+    { count: number; tone: "critical" | "attention" }
+  >;
 };
 
 export function MiniMap({

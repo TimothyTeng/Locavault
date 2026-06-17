@@ -26,7 +26,12 @@ describe("estimateUsage", () => {
 
   it("has no estimate for a non-depleting type with no data", () => {
     const e = estimateUsage(
-      { quantity: 5, useRate: null, useRatePeriod: null, itemType: "equipment" },
+      {
+        quantity: 5,
+        useRate: null,
+        useRatePeriod: null,
+        itemType: "equipment",
+      },
       [],
       NOW,
     );

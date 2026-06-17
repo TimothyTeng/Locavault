@@ -1,5 +1,9 @@
 import { useId } from "react";
-import { FIXTURE_IDS, type FixtureId, type FixtureFill } from "~/types/fixtureTypes";
+import {
+  FIXTURE_IDS,
+  type FixtureId,
+  type FixtureFill,
+} from "~/types/fixtureTypes";
 
 export { FIXTURE_IDS };
 export type { FixtureId };
@@ -18,7 +22,11 @@ const N = 16; // sprite grid is 16×16 "pixels" per cell
 // ── Palette: derive a 6-tone ramp from one base colour ─────────────────────
 function shade(hex: string, percent: number): string {
   let c = hex.replace("#", "");
-  if (c.length === 3) c = c.split("").map((x) => x + x).join("");
+  if (c.length === 3)
+    c = c
+      .split("")
+      .map((x) => x + x)
+      .join("");
   const r = parseInt(c.slice(0, 2), 16);
   const g = parseInt(c.slice(2, 4), 16);
   const b = parseInt(c.slice(4, 6), 16);
@@ -43,11 +51,26 @@ function palette(base: string): Record<Exclude<PaletteKey, ".">, string> {
 type Grid = PaletteKey[][];
 const newGrid = (): Grid =>
   Array.from({ length: N }, () => Array<PaletteKey>(N).fill("."));
-const rf = (g: Grid, x: number, y: number, w: number, h: number, k: PaletteKey) => {
+const rf = (
+  g: Grid,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  k: PaletteKey,
+) => {
   for (let j = y; j < y + h; j++)
-    for (let i = x; i < x + w; i++) if (g[j] && g[j][i] !== undefined) g[j][i] = k;
+    for (let i = x; i < x + w; i++)
+      if (g[j] && g[j][i] !== undefined) g[j][i] = k;
 };
-const ro = (g: Grid, x: number, y: number, w: number, h: number, k: PaletteKey) => {
+const ro = (
+  g: Grid,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  k: PaletteKey,
+) => {
   for (let i = x; i < x + w; i++) {
     g[y][i] = k;
     g[y + h - 1][i] = k;
@@ -70,7 +93,8 @@ const disc = (g: Grid, cx: number, cy: number, r: number, k: PaletteKey) => {
     for (let x = 0; x < N; x++) {
       const dx = x - cx + 0.5;
       const dy = y - cy + 0.5;
-      if (dx * dx + dy * dy <= r * r && g[y] && g[y][x] !== undefined) g[y][x] = k;
+      if (dx * dx + dy * dy <= r * r && g[y] && g[y][x] !== undefined)
+        g[y][x] = k;
     }
 };
 
@@ -358,7 +382,11 @@ export const FIXTURE_META: Record<
 };
 
 // ── Render ─────────────────────────────────────────────────────────────────
-function spriteRects(grid: Grid, pal: ReturnType<typeof palette>, keyPrefix: string) {
+function spriteRects(
+  grid: Grid,
+  pal: ReturnType<typeof palette>,
+  keyPrefix: string,
+) {
   const out: React.ReactNode[] = [];
   for (let y = 0; y < N; y++) {
     for (let x = 0; x < N; x++) {

@@ -76,7 +76,11 @@ export const BlockPicker = ({
           {selectedBlock.fixture ? (
             <div
               className="bp-item-swatch"
-              style={{ borderColor: selectedBlock.color, overflow: "hidden", padding: 0 }}
+              style={{
+                borderColor: selectedBlock.color,
+                overflow: "hidden",
+                padding: 0,
+              }}
             >
               <FixtureGraphic
                 fixture={selectedBlock.fixture}

@@ -278,67 +278,67 @@ export function ItemDetailPopup({
             />
           )}
           {showExpiry && (
-          <DetailRow
-            label="Expiry"
-            value={
-              expiry === "—" ? (
-                "—"
-              ) : (
-                <span
-                  className={
-                    expiry.status === "expired"
-                      ? "text-red-500"
-                      : expiry.status === "soon"
-                        ? "text-amber-500"
-                        : "text-slate-700"
-                  }
-                >
-                  {expiry.label}
-                  {expiry.status === "expired" && " · expired"}
-                  {expiry.status === "soon" && " · expiring soon"}
-                </span>
-              )
-            }
-            editContent={
-              <input
-                className={inputClass}
-                type="date"
-                value={expiryDate}
-                onChange={(e) => setExpiryDate(e.target.value)}
-              />
-            }
-          />
+            <DetailRow
+              label="Expiry"
+              value={
+                expiry === "—" ? (
+                  "—"
+                ) : (
+                  <span
+                    className={
+                      expiry.status === "expired"
+                        ? "text-red-500"
+                        : expiry.status === "soon"
+                          ? "text-amber-500"
+                          : "text-slate-700"
+                    }
+                  >
+                    {expiry.label}
+                    {expiry.status === "expired" && " · expired"}
+                    {expiry.status === "soon" && " · expiring soon"}
+                  </span>
+                )
+              }
+              editContent={
+                <input
+                  className={inputClass}
+                  type="date"
+                  value={expiryDate}
+                  onChange={(e) => setExpiryDate(e.target.value)}
+                />
+              }
+            />
           )}
           {showUseRate && (
-          <DetailRow
-            label="Use Rate"
-            value={formatUseRate(item.useRate, item.useRatePeriod)}
-            editContent={
-              <div className="flex gap-1">
-                <input
-                  className={`${inputClass} w-16`}
-                  type="number"
-                  value={useRate}
-                  onChange={(e) => setUseRate(e.target.value)}
-                  placeholder="0"
-                />
-                <select
-                  className={`${inputClass} w-24`}
-                  value={useRatePeriod}
-                  onChange={(e) =>
-                    setUseRatePeriod(
-                      e.target.value as "day" | "week" | "month" | "",
-                    )
-                  }
-                >
-                  <option value="">—</option>
-                  <option value="day">day</option>
-                  <option value="week">week</option>
-                  <option value="month">month</option>
-                </select>
-              </div>
-            }
-          />
+            <DetailRow
+              label="Use Rate"
+              value={formatUseRate(item.useRate, item.useRatePeriod)}
+              editContent={
+                <div className="flex gap-1">
+                  <input
+                    className={`${inputClass} w-16`}
+                    type="number"
+                    value={useRate}
+                    onChange={(e) => setUseRate(e.target.value)}
+                    placeholder="0"
+                  />
+                  <select
+                    className={`${inputClass} w-24`}
+                    value={useRatePeriod}
+                    onChange={(e) =>
+                      setUseRatePeriod(
+                        e.target.value as "day" | "week" | "month" | "",
+                      )
+                    }
+                  >
+                    <option value="">—</option>
+                    <option value="day">day</option>
+                    <option value="week">week</option>
+                    <option value="month">month</option>
+                  </select>
+                </div>
+              }
+            />
           )}
           <DetailRow
             label="Runs Out"
@@ -362,28 +362,30 @@ export function ItemDetailPopup({
               )
             }
           />
-          {item.usage && item.usage.dailyRate != null && item.usage.dailyRate > 0 && (
-            <DetailRow
-              label="Est. usage"
-              value={
-                <span
-                  className="text-slate-600"
-                  title={describeUsage(item.usage)}
-                >
-                  {item.usage.dailyRate >= 1
-                    ? `~${item.usage.dailyRate.toFixed(1)}/day`
-                    : `~${(item.usage.dailyRate * 7).toFixed(1)}/week`}
-                  <span className="ml-1.5 text-[10px] text-slate-400 uppercase tracking-wide">
-                    {item.usage.source === "history"
-                      ? `learned · ${item.usage.confidence}`
-                      : item.usage.source === "prior"
-                        ? "still learning"
-                        : "manual"}
+          {item.usage &&
+            item.usage.dailyRate != null &&
+            item.usage.dailyRate > 0 && (
+              <DetailRow
+                label="Est. usage"
+                value={
+                  <span
+                    className="text-slate-600"
+                    title={describeUsage(item.usage)}
+                  >
+                    {item.usage.dailyRate >= 1
+                      ? `~${item.usage.dailyRate.toFixed(1)}/day`
+                      : `~${(item.usage.dailyRate * 7).toFixed(1)}/week`}
+                    <span className="ml-1.5 text-[10px] text-slate-400 uppercase tracking-wide">
+                      {item.usage.source === "history"
+                        ? `learned · ${item.usage.confidence}`
+                        : item.usage.source === "prior"
+                          ? "still learning"
+                          : "manual"}
+                    </span>
                   </span>
-                </span>
-              }
-            />
-          )}
+                }
+              />
+            )}
           {item.minQuantity != null && item.quantity <= item.minQuantity && (
             <DetailRow
               label="Alert"

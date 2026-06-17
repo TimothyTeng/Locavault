@@ -60,7 +60,9 @@ export function AttentionDigest({
       <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3">
         <div className="flex items-center gap-2">
           <span className="h-2 w-2 rounded-full bg-amber-400" />
-          <span className="text-sm font-bold text-slate-800">Needs attention</span>
+          <span className="text-sm font-bold text-slate-800">
+            Needs attention
+          </span>
           <span className="text-xs text-slate-400">
             {items.length} item{items.length !== 1 ? "s" : ""}
           </span>

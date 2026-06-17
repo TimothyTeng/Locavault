@@ -1,6 +1,10 @@
 import type { ItemType } from "./itemTypeTypes";
 
-export type TradeOfferStatus = "pending" | "accepted" | "declined" | "cancelled";
+export type TradeOfferStatus =
+  | "pending"
+  | "accepted"
+  | "declined"
+  | "cancelled";
 
 /** An item put up on the global Bazaar, with just enough of its store context. */
 export type TradeListing = {

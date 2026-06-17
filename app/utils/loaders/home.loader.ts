@@ -13,14 +13,22 @@ import {
   verifyStoreOwner,
 } from "~/lib/queries";
 import { estimateUsage } from "~/utils/helpers/usage.helper";
-import { getItemStatus, itemRunoutDays } from "~/utils/helpers/storeTable.helper";
+import {
+  getItemStatus,
+  itemRunoutDays,
+} from "~/utils/helpers/storeTable.helper";
 import { expiryDateRemainingDays } from "~/utils/helpers/store.helper";
 import type { Item, ItemStatus, UsageLog } from "~/types/storeTypes";
 import type { AttentionItem } from "~/types/dashboardTypes";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 
 const USAGE_WINDOW_DAYS = 120;
-const SEVERITY: Record<ItemStatus, number> = { out: 0, low: 1, expiring: 2, ok: 3 };
+const SEVERITY: Record<ItemStatus, number> = {
+  out: 0,
+  low: 1,
+  expiring: 2,
+  ok: 3,
+};
 
 export async function loader(args: LoaderFunctionArgs) {
   const { userId } = await getAuth(args);
@@ -108,11 +116,16 @@ function suggestQty(item: {
   const perDay =
     item.useRate && item.useRatePeriod
       ? item.useRate /
-        (item.useRatePeriod === "day" ? 1 : item.useRatePeriod === "week" ? 7 : 30)
+        (item.useRatePeriod === "day"
+          ? 1
+          : item.useRatePeriod === "week"
+            ? 7
+            : 30)
       : 0;
   if (perDay > 0) {
     const horizon = Math.ceil(perDay * 30) - item.quantity;
-    const minNeed = item.minQuantity != null ? item.minQuantity - item.quantity : 0;
+    const minNeed =
+      item.minQuantity != null ? item.minQuantity - item.quantity : 0;
     return Math.max(horizon, minNeed, 1);
   }
   const target = item.minQuantity != null ? item.minQuantity * 2 : 1;

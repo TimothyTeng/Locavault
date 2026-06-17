@@ -99,7 +99,9 @@ export function AddItemForm({
         if (!typeTouched) setItemType("food");
         // Fallback auto-shelf — only when no block was picked on the floor plan
         if (!selectedBlockId) {
-          const foodCat = categories.find((c) => FOOD_CATEGORY_RE.test(c.label));
+          const foodCat = categories.find((c) =>
+            FOOD_CATEGORY_RE.test(c.label),
+          );
           if (foodCat) setFallbackCategoryId(foodCat.id);
         }
       }
@@ -143,8 +145,7 @@ export function AddItemForm({
   const freshDays =
     expiryDate !== ""
       ? Math.ceil(
-          (new Date(expiryDate).getTime() - Date.now()) /
-            (1000 * 60 * 60 * 24),
+          (new Date(expiryDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24),
         )
       : null;
 

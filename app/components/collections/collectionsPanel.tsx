@@ -61,7 +61,11 @@ export function CollectionsPanel({
     collectionId: string,
     entry: { id: string; itemId: string | null; name: string },
   ) => void;
-  onTogglePacked: (collectionId: string, itemId: string, checked: boolean) => void;
+  onTogglePacked: (
+    collectionId: string,
+    itemId: string,
+    checked: boolean,
+  ) => void;
   onRemoveItem: (collectionId: string, itemId: string) => void;
   onCheckout: (collectionId: string, checkedOut: boolean) => void;
   onAddGapsToList?: (names: string[]) => void;
@@ -71,7 +75,9 @@ export function CollectionsPanel({
   const [openId, setOpenId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
 
-  const open = openId ? collections.find((c) => c.id === openId) ?? null : null;
+  const open = openId
+    ? (collections.find((c) => c.id === openId) ?? null)
+    : null;
 
   if (!isOpen) return null;
 
@@ -177,7 +183,8 @@ export function CollectionsPanel({
                 </p>
                 <p className="max-w-[16rem] text-[11px] text-slate-400">
                   Group items to pack for a trip, lend out, or set aside — each
-                  shows where it lives, and you can check the set out and back in.
+                  shows where it lives, and you can check the set out and back
+                  in.
                 </p>
               </div>
             ) : (
@@ -207,7 +214,10 @@ export function CollectionsPanel({
                           {c.items.length > 0 && ` · ${packed} packed`}
                         </p>
                       </div>
-                      <ChevronRight size={15} className="shrink-0 text-slate-300" />
+                      <ChevronRight
+                        size={15}
+                        className="shrink-0 text-slate-300"
+                      />
                     </button>
                   );
                 })}
@@ -246,16 +256,17 @@ function CollectionDetail({
     collectionId: string,
     entry: { id: string; itemId: string | null; name: string },
   ) => void;
-  onTogglePacked: (collectionId: string, itemId: string, checked: boolean) => void;
+  onTogglePacked: (
+    collectionId: string,
+    itemId: string,
+    checked: boolean,
+  ) => void;
   onRemoveItem: (collectionId: string, itemId: string) => void;
   onCheckout: (collectionId: string, checkedOut: boolean) => void;
   onAddGapsToList?: (names: string[]) => void;
   onLocate: (item: Item) => void;
 }) {
-  const itemById = useMemo(
-    () => new Map(items.map((i) => [i.id, i])),
-    [items],
-  );
+  const itemById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
 
   // A collection entry is a "gap" if it's unlinked or its linked item is out.
   const gapNames = collection.items
@@ -416,9 +427,13 @@ function CollectionDetail({
         <div className="flex flex-col gap-2 border-t border-slate-100 px-4 py-3 shrink-0">
           <AddItemRow
             items={items}
-            existingItemIds={new Set(
-              collection.items.map((ci) => ci.itemId).filter(Boolean) as string[],
-            )}
+            existingItemIds={
+              new Set(
+                collection.items
+                  .map((ci) => ci.itemId)
+                  .filter(Boolean) as string[],
+              )
+            }
             onAdd={(entry) => onAddItem(collection.id, entry)}
           />
           {onAddGapsToList && gapNames.length > 0 && (
@@ -427,7 +442,8 @@ function CollectionDetail({
               className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-slate-200 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:border-slate-300 hover:text-slate-700"
             >
               <Plus size={11} strokeWidth={2.5} />
-              Add {gapNames.length} gap{gapNames.length === 1 ? "" : "s"} to list
+              Add {gapNames.length} gap{gapNames.length === 1 ? "" : "s"} to
+              list
             </button>
           )}
           {canEdit && (
@@ -462,8 +478,7 @@ function AddItemRow({
     if (!q) return [];
     return items
       .filter(
-        (i) =>
-          !existingItemIds.has(i.id) && i.name.toLowerCase().includes(q),
+        (i) => !existingItemIds.has(i.id) && i.name.toLowerCase().includes(q),
       )
       .slice(0, 5);
   }, [text, items, existingItemIds]);

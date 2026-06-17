@@ -196,7 +196,10 @@ export function AddBlockModal({ onAdd, onClose }: Props) {
                 >
                   <div
                     className="w-7 h-7 rounded"
-                    style={{ background: `${color}22`, border: `1.5px solid ${color}` }}
+                    style={{
+                      background: `${color}22`,
+                      border: `1.5px solid ${color}`,
+                    }}
                   />
                   <span className="text-gray-600" style={{ fontSize: "10px" }}>
                     Plain

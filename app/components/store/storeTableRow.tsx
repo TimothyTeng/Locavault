@@ -1,7 +1,10 @@
 import { useState } from "react";
 import type { Item, ItemStatus } from "#types/storeTypes";
 import { expiryDateRemainingDays } from "~/utils/helpers/store.helper";
-import { getItemStatus, itemRunoutDays } from "~/utils/helpers/storeTable.helper";
+import {
+  getItemStatus,
+  itemRunoutDays,
+} from "~/utils/helpers/storeTable.helper";
 import { describeUsage } from "~/utils/helpers/usage.helper";
 import { ItemDetailPopup } from "./ItemDetailPopup";
 

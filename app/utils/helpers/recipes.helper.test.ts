@@ -6,7 +6,11 @@ import type { ItemType } from "~/types/itemTypeTypes";
 // Minimal item factory — matchRecipes only reads name/quantity/itemType/expiry.
 function item(
   name: string,
-  opts: { quantity?: number; itemType?: ItemType; expiryDate?: Date | null } = {},
+  opts: {
+    quantity?: number;
+    itemType?: ItemType;
+    expiryDate?: Date | null;
+  } = {},
 ): Item {
   return {
     id: name,
@@ -91,9 +95,9 @@ describe("matchRecipes", () => {
       item("Bread"),
     ]);
     // The first result should use an expiring item or be cookable.
-    expect(
-      matches[0].usesExpiring.length > 0 || matches[0].cookable,
-    ).toBe(true);
+    expect(matches[0].usesExpiring.length > 0 || matches[0].cookable).toBe(
+      true,
+    );
   });
 });
 

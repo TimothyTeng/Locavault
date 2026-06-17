@@ -40,7 +40,8 @@ export function RecipesPanel({
     () => ({
       all: matches.length,
       cook: matches.filter((m) => m.cookable).length,
-      almost: matches.filter((m) => !m.cookable && m.missing.length <= 2).length,
+      almost: matches.filter((m) => !m.cookable && m.missing.length <= 2)
+        .length,
       useup: matches.filter((m) => m.usesExpiring.length > 0).length,
     }),
     [matches],
@@ -127,9 +128,25 @@ export function RecipesPanel({
             />
           </div>
           <div className="flex gap-1.5">
-            <FilterPill label="All" n={counts.all} active={filter === "all"} onClick={() => setFilter("all")} />
-            <FilterPill label="Cook now" n={counts.cook} active={filter === "cook"} onClick={() => setFilter("cook")} tone="emerald" />
-            <FilterPill label="Almost" n={counts.almost} active={filter === "almost"} onClick={() => setFilter("almost")} />
+            <FilterPill
+              label="All"
+              n={counts.all}
+              active={filter === "all"}
+              onClick={() => setFilter("all")}
+            />
+            <FilterPill
+              label="Cook now"
+              n={counts.cook}
+              active={filter === "cook"}
+              onClick={() => setFilter("cook")}
+              tone="emerald"
+            />
+            <FilterPill
+              label="Almost"
+              n={counts.almost}
+              active={filter === "almost"}
+              onClick={() => setFilter("almost")}
+            />
           </div>
         </div>
 
@@ -213,9 +230,7 @@ function RecipeCard({
 
   // Missing ingredients not already on the shopping list.
   const missingPretty = missing.map(prettyIngredient);
-  const toAdd = missingPretty.filter(
-    (n) => !listedNames?.has(n.toLowerCase()),
-  );
+  const toAdd = missingPretty.filter((n) => !listedNames?.has(n.toLowerCase()));
 
   return (
     <div
@@ -332,7 +347,14 @@ function Ring({
   const color = cookable ? "#059669" : pct >= 0.5 ? "#64748b" : "#cbd5e1";
   return (
     <svg width="26" height="26" viewBox="0 0 26 26" className="shrink-0">
-      <circle cx="13" cy="13" r={r} fill="none" stroke="#f1f5f9" strokeWidth="3" />
+      <circle
+        cx="13"
+        cy="13"
+        r={r}
+        fill="none"
+        stroke="#f1f5f9"
+        strokeWidth="3"
+      />
       <circle
         cx="13"
         cy="13"

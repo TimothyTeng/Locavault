@@ -378,7 +378,9 @@ function FromStoreModal({
           >
             <span
               className={`relative w-9 h-5 rounded-full border transition-all ${
-                isPublic ? "bg-emerald-500 border-emerald-500" : "bg-white border-slate-300"
+                isPublic
+                  ? "bg-emerald-500 border-emerald-500"
+                  : "bg-white border-slate-300"
               }`}
             >
               <span
