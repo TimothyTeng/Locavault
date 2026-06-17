@@ -43,6 +43,7 @@ import {
   toQty,
   optDate,
 } from "~/utils/helpers/validate.helper";
+import { toActionResult } from "~/utils/loaders/actionResult";
 import type { UsageLog } from "~/types/storeTypes";
 
 /** Window of consumption history (days) pulled to estimate usage. */
@@ -172,7 +173,7 @@ export const loader = async (args: LoaderFunctionArgs) => {
 };
 
 // ── Action ─────────────────────────────────────────────────
-export const action = async (args: ActionFunctionArgs) => {
+const runStoreAction = async (args: ActionFunctionArgs) => {
   const { request, params } = args;
   const { userId } = await getAuth(args);
   if (!userId) throw new Response("Unauthorized", { status: 401 });
@@ -515,3 +516,8 @@ export const action = async (args: ActionFunctionArgs) => {
 
   return { ok: false };
 };
+
+// Public action: convert expected 4xx failures into `{ ok: false, error }` so a
+// failed background mutation toasts + rolls back instead of blanking the page.
+export const action = (args: ActionFunctionArgs) =>
+  toActionResult(runStoreAction(args));

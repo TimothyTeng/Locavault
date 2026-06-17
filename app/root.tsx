@@ -6,6 +6,7 @@ import { clerkMiddleware, rootAuthLoader } from "@clerk/react-router/server";
 import { ClerkProvider } from "@clerk/react-router";
 import { ErrorState } from "~/components/common/errorState";
 import { RouteProgress } from "~/components/common/routeProgress";
+import { ToastProvider } from "~/components/common/toast";
 
 export const middleware: Route.MiddlewareFunction[] = [clerkMiddleware()];
 
@@ -32,8 +33,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
 export default function App({ loaderData }: Route.ComponentProps) {
   return (
     <ClerkProvider loaderData={loaderData}>
-      <RouteProgress />
-      <Outlet />
+      <ToastProvider>
+        <RouteProgress />
+        <Outlet />
+      </ToastProvider>
     </ClerkProvider>
   );
 }

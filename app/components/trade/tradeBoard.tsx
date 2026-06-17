@@ -13,6 +13,7 @@ import {
   Send,
 } from "lucide-react";
 import { TypeIcon } from "~/components/store/typeIcon";
+import { useFetcherFailureToast } from "~/components/common/toast";
 import type { ItemType } from "~/types/itemTypeTypes";
 import type {
   TradeListing,
@@ -47,6 +48,7 @@ export function TradeBoard({
   userId: string;
 }) {
   const fetcher = useFetcher();
+  useFetcherFailureToast(fetcher);
   const [tab, setTab] = useState<Tab>("bazaar");
   const [offerFor, setOfferFor] = useState<TradeListing | null>(null);
 

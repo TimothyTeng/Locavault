@@ -29,6 +29,7 @@ import {
   type QuickAddItem,
 } from "~/components/addItem/quickAddPanel";
 import { RecipesPanel } from "~/components/recipes/recipesPanel";
+import { useFetcherFailureToast } from "~/components/common/toast";
 import { CollectionsPanel } from "~/components/collections/collectionsPanel";
 import type { Collection, CollectionKind } from "~/types/collectionTypes";
 import { MembersPanel } from "~/components/store/membersPanel";
@@ -130,6 +131,11 @@ export default function StorePage() {
   const fetcher = useFetcher();
   const createFetcher = useFetcher();
   const collectionFetcher = useFetcher();
+
+  // Surface failed mutations as a toast + roll back optimistic state.
+  useFetcherFailureToast(fetcher);
+  useFetcherFailureToast(createFetcher);
+  useFetcherFailureToast(collectionFetcher);
 
   // ── Polling ──
   useEffect(() => {

@@ -15,6 +15,7 @@ import {
 } from "~/lib/queries";
 import type { TradeOfferStatus } from "~/types/tradeTypes";
 import { optText } from "~/utils/helpers/validate.helper";
+import { toActionResult } from "~/utils/loaders/actionResult";
 
 // ── Loader ─────────────────────────────────────────────────
 
@@ -53,7 +54,7 @@ export const loader = async (args: LoaderFunctionArgs) => {
 
 // ── Action ─────────────────────────────────────────────────
 
-export const action = async (args: ActionFunctionArgs) => {
+const runTradeAction = async (args: ActionFunctionArgs) => {
   const { request } = args;
   const userId = await requireAuth(args);
   const data = await request.json();
@@ -127,3 +128,6 @@ export const action = async (args: ActionFunctionArgs) => {
 
   return { ok: false };
 };
+
+export const action = (args: ActionFunctionArgs) =>
+  toActionResult(runTradeAction(args));
