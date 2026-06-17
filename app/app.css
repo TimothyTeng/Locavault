@@ -1538,6 +1538,16 @@ body::after {
   }
 }
 
+/* Indeterminate top progress bar (RouteProgress) shown during navigation. */
+@keyframes lvprogress {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(420%);
+  }
+}
+
 /* ─── EMPTY STATE ──────────────────────────────────────────── */
 .dash-empty {
   text-align: center;

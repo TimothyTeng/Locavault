@@ -6,6 +6,7 @@ import StoreViewFinder from "~/components/addstore/storeViewFinder/storeViewFind
 import type { BlockDetails } from "~/types/storeViewFinderTypes";
 
 export { loader, action } from "#utils/loaders/templates.new.loader";
+export { RouteErrorBoundary as ErrorBoundary } from "~/components/common/errorState";
 
 export function meta({}: Route.MetaArgs) {
   return [

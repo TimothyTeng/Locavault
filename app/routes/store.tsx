@@ -49,12 +49,13 @@ import {
 } from "#utils/helpers/barcode.helper";
 
 export { loader, action } from "#utils/loaders/store.loader";
+export { RouteErrorBoundary as ErrorBoundary } from "~/components/common/errorState";
 
 const POLL_INTERVAL_MS = 15_000;
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "Stores" },
+    { title: "Store — Locavault" },
     { name: "description", content: "See all your stores here." },
   ];
 }

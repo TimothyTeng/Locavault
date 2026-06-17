@@ -40,8 +40,6 @@ export default function Navbar() {
     { href: "/", label: "My stores" },
     { href: "/templates", label: "Templates" },
     { href: "/trade", label: "Trade" },
-    { href: "/purchases", label: "Purchase list" },
-    { href: "/settings", label: "Settings" },
   ];
 
   const navLinks = isSignedIn ? appLinks : marketingLinks;

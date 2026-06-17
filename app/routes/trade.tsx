@@ -5,6 +5,7 @@ import { TradeBoard } from "~/components/trade/tradeBoard";
 import type { loader } from "#utils/loaders/trade.loader";
 
 export { loader, action } from "#utils/loaders/trade.loader";
+export { RouteErrorBoundary as ErrorBoundary } from "~/components/common/errorState";
 
 export function meta({}: Route.MetaArgs) {
   return [

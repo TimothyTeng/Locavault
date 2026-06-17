@@ -6,11 +6,12 @@ import StoreViewFinder from "~/components/addstore/storeViewFinder/storeViewFind
 import type { loader } from "#utils/loaders/editstore.loader";
 
 export { loader, action } from "#utils/loaders/editstore.loader";
+export { RouteErrorBoundary as ErrorBoundary } from "~/components/common/errorState";
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "Edit Store" },
-    { name: "description", content: "Edit your store layout" },
+    { title: "Edit Store — Locavault" },
+    { name: "description", content: "Edit your store layout." },
   ];
 }
 

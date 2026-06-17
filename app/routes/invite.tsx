@@ -4,6 +4,7 @@ import { useClerk } from "@clerk/react-router";
 import { getInviteByToken, claimInvite } from "~/lib/queries";
 import Navbar from "~/components/home/navbar";
 export { loader } from "#utils/loaders/invite.loader";
+export { RouteErrorBoundary as ErrorBoundary } from "~/components/common/errorState";
 import type { loader } from "#utils/loaders/invite.loader";
 
 // ── Page ───────────────────────────────────────────────────

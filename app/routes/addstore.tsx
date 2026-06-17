@@ -3,11 +3,15 @@ import { Show } from "@clerk/react-router";
 import Navbar from "~/components/home/navbar";
 import StoreViewFinder from "~/components/addstore/storeViewFinder/storeViewFinder";
 export { loader, action } from "#utils/loaders/addstore.loader";
+export { RouteErrorBoundary as ErrorBoundary } from "~/components/common/errorState";
 
 export function meta({}: Route.MetaArgs) {
   return [
-    { title: "Add Store" },
-    { name: "description", content: "Add a new location" },
+    { title: "Add Store — Locavault" },
+    {
+      name: "description",
+      content: "Create a new store and draw its floor plan.",
+    },
   ];
 }
 

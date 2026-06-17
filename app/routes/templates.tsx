@@ -5,6 +5,7 @@ import { TemplatesGallery } from "~/components/templates/templatesGallery";
 import type { loader } from "#utils/loaders/templates.loader";
 
 export { loader, action } from "#utils/loaders/templates.loader";
+export { RouteErrorBoundary as ErrorBoundary } from "~/components/common/errorState";
 
 export function meta({}: Route.MetaArgs) {
   return [
