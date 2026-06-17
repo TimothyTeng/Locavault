@@ -43,14 +43,20 @@ npx drizzle-kit generate   # generate a migration from schema.ts
 npx drizzle-kit migrate    # apply migrations to Turso
 ```
 
-> **⚠ Migration journal is out of sync.** The live Turso DB was built ahead of
-> the committed `drizzle/` journal, so `drizzle-kit generate` over-produces
-> (it tries to recreate existing tables and even rebuild `items`), and
-> `drizzle-kit migrate` fails (`table blocks already exists`). Until the journal
-> is baselined, apply **new** tables/columns surgically (e.g. run the specific
-> `CREATE TABLE`/`ALTER TABLE` against the DB) rather than running the generated
-> migration wholesale. The app reads the DB through the Drizzle ORM at runtime,
-> so `schema.ts` — not the migration files — is the source of truth.
+> **Migrations are baselined.** The journal was squashed to a single baseline
+> (`drizzle/0000_baseline.sql`) that mirrors `schema.ts`, so the normal flow now
+> works: edit `schema.ts` → `npx drizzle-kit generate` → `npx drizzle-kit
+> migrate`. `schema.ts` is still the runtime source of truth.
+>
+> - **Fresh/empty DB:** just `npx drizzle-kit migrate` (runs the baseline, builds
+>   all tables).
+> - **An already-populated DB** (e.g. the current live Turso DB, which predates
+>   the baseline): run `node --env-file=.env scripts/baseline-mark-applied.mjs`
+>   **once** to record the baseline as applied in `__drizzle_migrations`, so
+>   `migrate` is a no-op instead of trying to recreate existing tables. The live
+>   DB has already been marked.
+> - The older one-off `scripts/add-*.mjs` ALTER scripts are historical (kept for
+>   reference); prefer `generate`/`migrate` going forward.
 
 > **Preview caveat:** the embedded Claude preview only allows `localhost` URLs.
 > Clerk's dev instance redirects sign-in to a hosted `*.clerk.accounts.dev`
