@@ -80,7 +80,7 @@ export function parseGs1(raw: string): Gs1Parsed {
   if (!raw) return out;
 
   // Strip a leading symbology identifier like "]C1" / "]d2" / "]Q3" if present
-  let s = raw.replace(/^\][A-Za-z]\d/, "");
+  const s = raw.replace(/^\][A-Za-z]\d/, "");
   let i = 0;
 
   const readValue = (len: number): string => {
