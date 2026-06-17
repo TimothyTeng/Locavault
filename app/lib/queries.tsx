@@ -1211,6 +1211,17 @@ export async function getCollectionStoreId(id: string): Promise<string | null> {
   return row?.storeId ?? null;
 }
 
+/** Resolve a block's store — used to scope cross-store mutation guards. */
+export async function getBlockStoreId(
+  blockId: string,
+): Promise<string | null> {
+  const [row] = await db
+    .select({ storeId: blocks.storeId })
+    .from(blocks)
+    .where(eq(blocks.block_id, blockId));
+  return row?.storeId ?? null;
+}
+
 export async function addCollectionItem(data: {
   id?: string;
   collectionId: string;

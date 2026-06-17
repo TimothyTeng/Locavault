@@ -29,6 +29,7 @@ import {
   removeCollectionItem,
   setCollectionCheckedOut,
   getCollectionStoreId,
+  getBlockStoreId,
 } from "~/lib/queries";
 import { estimateUsage } from "~/utils/helpers/usage.helper";
 import type { UsageLog } from "~/types/storeTypes";
@@ -44,10 +45,13 @@ const USAGE_WINDOW_DAYS = 120;
  */
 async function commitPurchaseOrderRow(
   poId: string,
+  expectedStoreId: string,
   loggedBy?: string,
 ): Promise<boolean> {
   const poRow = await getPurchaseOrderById(poId);
   if (!poRow) return false;
+  // Cross-store guard: the PO row must belong to the acting store.
+  if (poRow.storeId !== expectedStoreId) return false;
 
   if (poRow.itemId) {
     const existing = await getItemById(poRow.itemId);
@@ -109,16 +113,21 @@ export const loader = async (args: LoaderFunctionArgs) => {
 
   if (accessLevel === "none") throw redirect("/");
 
+  // Shopping lists and collections are owner/editor planning data — never expose
+  // them to viewers or public visitors (they'd otherwise leak in the loader JSON
+  // even if the UI hides them).
+  const canEdit = accessLevel === "owner" || accessLevel === "editor";
+
   const usageSince = new Date(Date.now() - USAGE_WINDOW_DAYS * 86_400_000);
   const [allItems, purchaseOrders, members, usageLogs, collections] =
     await Promise.all([
       getItemsByStore(params.id!),
-      getPurchaseOrders(params.id!),
+      canEdit ? getPurchaseOrders(params.id!) : Promise.resolve([]),
       accessLevel === "owner"
         ? getMembersByStore(params.id!)
         : Promise.resolve([]),
       getUsageLogsByStore(params.id!, usageSince),
-      getCollections(params.id!),
+      canEdit ? getCollections(params.id!) : Promise.resolve([]),
     ]);
 
   // Group usage logs by item so usage can be estimated in one pass.
@@ -169,7 +178,31 @@ export const action = async (args: ActionFunctionArgs) => {
 
   const data = await request.json();
 
+  // ── Cross-store guards ──
+  // Authorization above only proves the caller can edit THIS store. Object ids
+  // come from the client, so each referenced item/block must be confirmed to
+  // live in this store before we touch it — otherwise an editor of store A could
+  // mutate store B's data by passing its ids (IDOR).
+  const ensureItemInStore = async (itemId: string) => {
+    const item = await getItemById(itemId);
+    if (!item || item.storeId !== params.id)
+      throw new Response("Forbidden", { status: 403 });
+    return item;
+  };
+  const ensureBlockInStore = async (blockId?: string | null) => {
+    if (!blockId) return;
+    const sid = await getBlockStoreId(blockId);
+    if (sid !== params.id) throw new Response("Forbidden", { status: 403 });
+  };
+  const ensurePOInStore = async (poId: string) => {
+    const po = await getPurchaseOrderById(poId);
+    if (!po || po.storeId !== params.id)
+      throw new Response("Forbidden", { status: 403 });
+    return po;
+  };
+
   if (data._action === "createItem") {
+    await ensureBlockInStore(data.blockId);
     const newItem = await createItem({
       name: data.name,
       storeId: params.id!,
@@ -190,6 +223,7 @@ export const action = async (args: ActionFunctionArgs) => {
 
   if (data._action === "createItems") {
     const rows = Array.isArray(data.items) ? data.items : [];
+    for (const r of rows) await ensureBlockInStore(r.blockId);
     const ids = await createItems(
       rows.map((r: any) => ({
         name: r.name,
@@ -211,12 +245,13 @@ export const action = async (args: ActionFunctionArgs) => {
 
   if (data._action === "updateItem") {
     // Capture the quantity change as a usage log so predictions can learn.
-    const prev = await getItemById(data.id);
+    const prev = await ensureItemInStore(data.id);
+    await ensureBlockInStore(data.blockId);
     await updateItem(data.id, {
       name: data.name,
       quantity: data.quantity,
       description: data.description,
-      storeId: data.storeId,
+      storeId: params.id!, // never let the client move an item across stores
       blockId: data.blockId,
       ...(data.itemType ? { itemType: data.itemType } : {}),
       sku: data.sku ?? null,
@@ -230,19 +265,14 @@ export const action = async (args: ActionFunctionArgs) => {
     if (prev && typeof data.quantity === "number") {
       const delta = data.quantity - prev.quantity;
       if (delta !== 0) {
-        await createItemLog(
-          data.id,
-          data.storeId ?? params.id!,
-          delta,
-          userId,
-          "edit",
-        );
+        await createItemLog(data.id, params.id!, delta, userId, "edit");
       }
     }
     return { ok: true };
   }
 
   if (data._action === "deleteItem") {
+    await ensureItemInStore(data.id);
     await deleteItem(data.id);
     return { ok: true };
   }
@@ -251,8 +281,7 @@ export const action = async (args: ActionFunctionArgs) => {
   // the depletion (a strong calibration point for usage prediction), and queue a
   // restock on the shopping list if one isn't already there.
   if (data._action === "markItemOut") {
-    const item = await getItemById(data.id);
-    if (!item) return { ok: false };
+    const item = await ensureItemInStore(data.id);
     if (item.quantity > 0) {
       await createItemLog(item.id, item.storeId, -item.quantity, userId, "out");
       await updateItem(item.id, { quantity: 0 });
@@ -303,11 +332,14 @@ export const action = async (args: ActionFunctionArgs) => {
   }
 
   if (data._action === "updateItemVisibility") {
+    await ensureItemInStore(data.itemId);
     await updateItemVisibility(data.itemId, data.isPublic);
     return { ok: true };
   }
 
   if (data._action === "createPOItem") {
+  if (data.itemId) await ensureItemInStore(data.itemId);
+  await ensureBlockInStore(data.blockId);
   const row = await createPurchaseOrder({
     itemId: data.itemId ?? null,
     storeId:params.id!,
@@ -330,6 +362,8 @@ export const action = async (args: ActionFunctionArgs) => {
 if (data._action === "createPOItems") {
   const rows = Array.isArray(data.items) ? data.items : [];
   for (const r of rows) {
+    if (r.itemId) await ensureItemInStore(r.itemId);
+    await ensureBlockInStore(r.blockId);
     await createPurchaseOrder({
       itemId: r.itemId ?? null,
       storeId: params.id!,
@@ -351,6 +385,8 @@ if (data._action === "createPOItems") {
 }
 
 if (data._action === "updatePOItem") {
+  await ensurePOInStore(data.id);
+  await ensureBlockInStore(data.blockId);
   await updatePurchaseOrder(data.id, {
     name: data.name,
     quantity: Number(data.quantity),
@@ -368,12 +404,13 @@ if (data._action === "updatePOItem") {
 }
 
 if (data._action === "deletePOItem") {
+  await ensurePOInStore(data.id);
   await deletePurchaseOrder(data.id);
   return { ok: true };
 }
 
 if (data._action === "buyPOItem") {
-  const ok = await commitPurchaseOrderRow(data.id, userId);
+  const ok = await commitPurchaseOrderRow(data.id, params.id!, userId);
   return { ok, optimisticId: data.optimisticId };
 }
 
@@ -381,7 +418,7 @@ if (data._action === "buyPOItems") {
   const ids: string[] = Array.isArray(data.ids) ? data.ids : [];
   let committed = 0;
   for (const id of ids) {
-    if (await commitPurchaseOrderRow(id, userId)) committed++;
+    if (await commitPurchaseOrderRow(id, params.id!, userId)) committed++;
   }
   return { ok: true, committed };
 }
