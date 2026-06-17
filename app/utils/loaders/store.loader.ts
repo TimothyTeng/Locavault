@@ -32,6 +32,13 @@ import {
   getBlockStoreId,
 } from "~/lib/queries";
 import { estimateUsage } from "~/utils/helpers/usage.helper";
+import {
+  requireText,
+  optText,
+  optInt,
+  toQty,
+  optDate,
+} from "~/utils/helpers/validate.helper";
 import type { UsageLog } from "~/types/storeTypes";
 
 /** Window of consumption history (days) pulled to estimate usage. */
@@ -204,34 +211,36 @@ export const action = async (args: ActionFunctionArgs) => {
   if (data._action === "createItem") {
     await ensureBlockInStore(data.blockId);
     const newItem = await createItem({
-      name: data.name,
+      name: requireText(data.name, "Item name"),
       storeId: params.id!,
-      quantity: data.quantity,
-      description: data.description,
+      quantity: toQty(data.quantity, 1),
+      description: optText(data.description) ?? undefined,
       blockId: data.blockId ?? undefined,
       itemType: data.itemType ?? undefined,
-      sku: data.sku ?? undefined,
-      unit: data.unit ?? undefined,
-      minQuantity: data.minQuantity ?? undefined,
-      cost: data.cost ?? undefined,
-      expiryDate: data.expiryDate ? new Date(data.expiryDate) : undefined,
-      useRate: data.useRate ?? undefined,
+      sku: optText(data.sku) ?? undefined,
+      unit: optText(data.unit) ?? undefined,
+      minQuantity: optInt(data.minQuantity) ?? undefined,
+      cost: optInt(data.cost) ?? undefined,
+      expiryDate: optDate(data.expiryDate) ?? undefined,
+      useRate: optInt(data.useRate) ?? undefined,
       useRatePeriod: data.useRatePeriod ?? undefined,
     });
     return { ok: true, id: newItem.id, optimisticId: data.optimisticId };
   }
 
   if (data._action === "createItems") {
-    const rows = Array.isArray(data.items) ? data.items : [];
+    const rows = (Array.isArray(data.items) ? data.items : []).filter(
+      (r: any) => typeof r?.name === "string" && r.name.trim(),
+    );
     for (const r of rows) await ensureBlockInStore(r.blockId);
     const ids = await createItems(
       rows.map((r: any) => ({
-        name: r.name,
+        name: requireText(r.name, "Item name"),
         storeId: params.id!,
-        quantity: r.quantity ?? 1,
+        quantity: toQty(r.quantity, 1),
         blockId: r.blockId ?? undefined,
         itemType: r.itemType ?? undefined,
-        unit: r.unit ?? undefined,
+        unit: optText(r.unit) ?? undefined,
       })),
     );
     return {
@@ -247,26 +256,25 @@ export const action = async (args: ActionFunctionArgs) => {
     // Capture the quantity change as a usage log so predictions can learn.
     const prev = await ensureItemInStore(data.id);
     await ensureBlockInStore(data.blockId);
+    const newQty = toQty(data.quantity, prev.quantity);
     await updateItem(data.id, {
-      name: data.name,
-      quantity: data.quantity,
-      description: data.description,
+      name: requireText(data.name, "Item name"),
+      quantity: newQty,
+      description: optText(data.description) ?? undefined,
       storeId: params.id!, // never let the client move an item across stores
       blockId: data.blockId,
       ...(data.itemType ? { itemType: data.itemType } : {}),
-      sku: data.sku ?? null,
-      unit: data.unit ?? null,
-      minQuantity: data.minQuantity ?? null,
-      cost: data.cost ?? null,
-      expiryDate: data.expiryDate ? new Date(data.expiryDate) : null,
-      useRate: data.useRate ?? null,
+      sku: optText(data.sku),
+      unit: optText(data.unit),
+      minQuantity: optInt(data.minQuantity),
+      cost: optInt(data.cost),
+      expiryDate: optDate(data.expiryDate),
+      useRate: optInt(data.useRate),
       useRatePeriod: data.useRatePeriod ?? null,
     });
-    if (prev && typeof data.quantity === "number") {
-      const delta = data.quantity - prev.quantity;
-      if (delta !== 0) {
-        await createItemLog(data.id, params.id!, delta, userId, "edit");
-      }
+    const delta = newQty - prev.quantity;
+    if (delta !== 0) {
+      await createItemLog(data.id, params.id!, delta, userId, "edit");
     }
     return { ok: true };
   }
@@ -294,7 +302,7 @@ export const action = async (args: ActionFunctionArgs) => {
         itemId: item.id,
         storeId: item.storeId,
         name: item.name,
-        quantity: Number(data.restockQty) || fallback,
+        quantity: toQty(data.restockQty, fallback, { min: 1 }),
         blockId: item.blockId ?? null,
         description: item.description ?? null,
         sku: item.sku ?? null,
@@ -343,16 +351,16 @@ export const action = async (args: ActionFunctionArgs) => {
   const row = await createPurchaseOrder({
     itemId: data.itemId ?? null,
     storeId:params.id!,
-    name: data.name,
-    quantity: Number(data.quantity),
+    name: requireText(data.name, "Item name"),
+    quantity: toQty(data.quantity, 1, { min: 1 }),
     blockId: data.blockId ?? null,
-    description: data.description ?? null,
-    sku: data.sku ?? null,
-    unit: data.unit ?? null,
-    minQuantity: data.minQuantity ? Number(data.minQuantity) : null,
-    cost: data.cost ? Number(data.cost) : null,
-    expiryDate: data.expiryDate ? new Date(data.expiryDate) : null,
-    useRate: data.useRate ? Number(data.useRate) : null,
+    description: optText(data.description),
+    sku: optText(data.sku),
+    unit: optText(data.unit),
+    minQuantity: optInt(data.minQuantity),
+    cost: optInt(data.cost),
+    expiryDate: optDate(data.expiryDate),
+    useRate: optInt(data.useRate),
     useRatePeriod: data.useRatePeriod ?? null,
     createdBy: userId ?? null,
   });
@@ -364,19 +372,20 @@ if (data._action === "createPOItems") {
   for (const r of rows) {
     if (r.itemId) await ensureItemInStore(r.itemId);
     await ensureBlockInStore(r.blockId);
+    if (!(typeof r?.name === "string" && r.name.trim())) continue;
     await createPurchaseOrder({
       itemId: r.itemId ?? null,
       storeId: params.id!,
-      name: r.name,
-      quantity: Number(r.quantity) || 1,
+      name: requireText(r.name, "Item name"),
+      quantity: toQty(r.quantity, 1, { min: 1 }),
       blockId: r.blockId ?? null,
-      description: r.description ?? null,
-      sku: r.sku ?? null,
-      unit: r.unit ?? null,
-      minQuantity: r.minQuantity != null ? Number(r.minQuantity) : null,
-      cost: r.cost != null ? Number(r.cost) : null,
-      expiryDate: r.expiryDate ? new Date(r.expiryDate) : null,
-      useRate: r.useRate != null ? Number(r.useRate) : null,
+      description: optText(r.description),
+      sku: optText(r.sku),
+      unit: optText(r.unit),
+      minQuantity: optInt(r.minQuantity),
+      cost: optInt(r.cost),
+      expiryDate: optDate(r.expiryDate),
+      useRate: optInt(r.useRate),
       useRatePeriod: r.useRatePeriod ?? null,
       createdBy: userId ?? null,
     });
@@ -388,16 +397,16 @@ if (data._action === "updatePOItem") {
   await ensurePOInStore(data.id);
   await ensureBlockInStore(data.blockId);
   await updatePurchaseOrder(data.id, {
-    name: data.name,
-    quantity: Number(data.quantity),
+    name: requireText(data.name, "Item name"),
+    quantity: toQty(data.quantity, 1, { min: 1 }),
     blockId: data.blockId ?? null,
-    description: data.description ?? null,
-    sku: data.sku ?? null,
-    unit: data.unit ?? null,
-    minQuantity: data.minQuantity ? Number(data.minQuantity) : null,
-    cost: data.cost ? Number(data.cost) : null,
-    expiryDate: data.expiryDate ? new Date(data.expiryDate) : null,
-    useRate: data.useRate ? Number(data.useRate) : null,
+    description: optText(data.description),
+    sku: optText(data.sku),
+    unit: optText(data.unit),
+    minQuantity: optInt(data.minQuantity),
+    cost: optInt(data.cost),
+    expiryDate: optDate(data.expiryDate),
+    useRate: optInt(data.useRate),
     useRatePeriod: data.useRatePeriod ?? null,
   });
   return { ok: true };
@@ -435,9 +444,9 @@ if (data._action === "buyPOItems") {
     const row = await createCollection({
       id: data.id ?? undefined,
       storeId: params.id!,
-      name: data.name || "Untitled",
+      name: optText(data.name) ?? "Untitled",
       kind: data.kind ?? "packing",
-      description: data.description ?? null,
+      description: optText(data.description),
       userId,
     });
     return { ok: true, id: row.id };
@@ -463,12 +472,13 @@ if (data._action === "buyPOItems") {
 
   if (data._action === "addCollectionItem") {
     await ensureCollectionInStore(data.collectionId);
+    if (data.itemId) await ensureItemInStore(data.itemId);
     const row = await addCollectionItem({
       id: data.id ?? undefined,
       collectionId: data.collectionId,
       itemId: data.itemId ?? null,
-      name: data.name,
-      desiredQty: data.desiredQty != null ? Number(data.desiredQty) : 1,
+      name: requireText(data.name, "Item name"),
+      desiredQty: toQty(data.desiredQty, 1, { min: 1 }),
     });
     return { ok: true, id: row.id };
   }
@@ -476,9 +486,9 @@ if (data._action === "buyPOItems") {
   if (data._action === "updateCollectionItem") {
     await ensureCollectionInStore(data.collectionId);
     await updateCollectionItem(data.id, {
-      ...(data.name != null ? { name: data.name } : {}),
+      ...(data.name != null ? { name: requireText(data.name, "Item name") } : {}),
       ...(data.desiredQty != null
-        ? { desiredQty: Number(data.desiredQty) }
+        ? { desiredQty: toQty(data.desiredQty, 1, { min: 1 }) }
         : {}),
       ...(data.checked != null ? { checked: !!data.checked } : {}),
     });

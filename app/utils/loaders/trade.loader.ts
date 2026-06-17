@@ -14,6 +14,7 @@ import {
   acceptTradeOffer,
 } from "~/lib/queries";
 import type { TradeOfferStatus } from "~/types/tradeTypes";
+import { optText } from "~/utils/helpers/validate.helper";
 
 // ── Loader ─────────────────────────────────────────────────
 
@@ -65,7 +66,7 @@ export const action = async (args: ActionFunctionArgs) => {
     await setItemForTrade(
       data.itemId,
       !!data.forTrade,
-      data.tradeNote ?? null,
+      optText(data.tradeNote, 280),
     );
     return { ok: true };
   }
@@ -98,7 +99,7 @@ export const action = async (args: ActionFunctionArgs) => {
       offeredName,
       fromUserId: userId,
       toUserId: ctx.ownerUserId,
-      message: data.message ?? null,
+      message: optText(data.message, 500),
     });
     return { ok: true };
   }
