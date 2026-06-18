@@ -91,15 +91,12 @@ export function StoreMapView({
   rows,
   items,
   canEdit,
-  isOwner,
-  storeIsPublic,
   pulseZoneId,
   pulseItemId,
   onSaveItem,
   onDeleteItem,
   onMarkOut,
   onAddToList,
-  onToggleVisibility,
   onAddItemToZone,
 }: Props) {
   const { ref, size } = useElementSize();

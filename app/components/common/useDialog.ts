@@ -70,8 +70,7 @@ export function useDialog<T extends HTMLElement = HTMLDivElement>(
       node.removeEventListener("keydown", onKeyDown);
       previouslyFocused?.focus?.();
     };
-    // onClose is read via ref so this only runs on open/close, never on re-render.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // Depends only on isOpen by design — onClose is read through onCloseRef.
   }, [isOpen]);
 
   return ref;
