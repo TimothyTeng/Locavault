@@ -594,10 +594,13 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
      bar**; a **toast layer** with `toActionResult` turning expected 4xx into
      `{ ok:false }` so failed optimistic mutations toast + roll back instead of
      failing silently or blanking the page.
+   - ✅ *Done (accessibility):* a `useDialog` hook (Escape, focus-into-dialog,
+     focus trap, focus restore) applied to the Recipes/Collections/Quick-add/
+     item-detail/make-offer dialogs (all now `role="dialog"` + aria-modal +
+     labelled); product images carry real alt text.
    - ⬜ *Next (from the audit):* shared panel/modal/button/empty-state component
-     pass (dedupe the hand-rolled variants) and accessibility (focus trap,
-     Escape on all modals, image alt text); rate-limit `/api/barcode`; error
-     monitoring; chip away at the 28 lint warnings.
+     pass (dedupe the hand-rolled variants); rate-limit `/api/barcode`; error
+     monitoring; chip away at the lint warnings.
 
 ---
 
