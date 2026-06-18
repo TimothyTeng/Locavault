@@ -598,9 +598,12 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
      focus trap, focus restore) applied to the Recipes/Collections/Quick-add/
      item-detail/make-offer dialogs (all now `role="dialog"` + aria-modal +
      labelled); product images carry real alt text.
+   - ✅ *Done (chores):* `/api/barcode` hardened (auth + per-user rate limit +
+     24h cache, with a tested `rateLimit.helper`); dead imports/props pruned
+     (lint warnings 29 → 20).
    - ⬜ *Next (from the audit):* shared panel/modal/button/empty-state component
-     pass (dedupe the hand-rolled variants); rate-limit `/api/barcode`; error
-     monitoring; chip away at the lint warnings.
+     pass (dedupe the hand-rolled variants — best done with a browser to verify);
+     error monitoring; a focused typing pass for the remaining `any`s.
 
 ---
 
