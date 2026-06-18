@@ -17,6 +17,12 @@ const NATIVE_FORMATS = [
   "qr_code",
 ];
 
+// Minimal shape of the native BarcodeDetector API (absent from TS's DOM lib).
+type DetectedBarcode = { rawValue: string; format: string };
+type BarcodeDetectorCtor = new (opts?: { formats?: string[] }) => {
+  detect: (source: CanvasImageSource) => Promise<DetectedBarcode[]>;
+};
+
 /**
  * Camera barcode scanner.
  * - Uses the native BarcodeDetector when available (Chrome/Android/Edge).
@@ -54,7 +60,8 @@ export function BarcodeScanner({ onDetect, onClose }: Props) {
       const video = videoRef.current;
       if (!video) return;
 
-      const BD = (globalThis as any).BarcodeDetector;
+      const BD = (globalThis as { BarcodeDetector?: BarcodeDetectorCtor })
+        .BarcodeDetector;
       try {
         if (BD) {
           // ── Native fast path ──
@@ -93,10 +100,12 @@ export function BarcodeScanner({ onDetect, onClose }: Props) {
             },
           );
         }
-      } catch (e: any) {
+      } catch (e) {
         if (cancelled) return;
+        const denied =
+          e instanceof DOMException && e.name === "NotAllowedError";
         setError(
-          e?.name === "NotAllowedError"
+          denied
             ? "Camera permission denied. You can type the barcode below."
             : "Couldn't start the camera. Type the barcode below instead.",
         );

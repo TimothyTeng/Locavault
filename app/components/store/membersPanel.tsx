@@ -33,7 +33,7 @@ export function MembersPanel({
 
   // When action returns a token, copy the editor invite URL
   useEffect(() => {
-    const token = (fetcher.data as any)?.token;
+    const token = (fetcher.data as { token?: string } | undefined)?.token;
     if (!token) return;
     const link = `${window.location.origin}/invite/${token}`;
     navigator.clipboard.writeText(link).then(() => {

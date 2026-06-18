@@ -45,9 +45,20 @@ import {
 } from "~/utils/helpers/validate.helper";
 import { toActionResult } from "~/utils/loaders/actionResult";
 import type { UsageLog } from "~/types/storeTypes";
+import type { ItemType } from "~/types/itemTypeTypes";
 
 /** Window of consumption history (days) pulled to estimate usage. */
 const USAGE_WINDOW_DAYS = 120;
+
+/** One row of a bulk quick-add payload (untrusted client JSON). */
+type QuickAddRow = {
+  name?: unknown;
+  blockId?: string | null;
+  quantity?: unknown;
+  itemType?: ItemType;
+  unit?: unknown;
+  optimisticId?: string;
+};
 
 /**
  * Commit a single purchase-order row to inventory:
@@ -234,12 +245,12 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
   }
 
   if (data._action === "createItems") {
-    const rows = (Array.isArray(data.items) ? data.items : []).filter(
-      (r: any) => typeof r?.name === "string" && r.name.trim(),
-    );
+    const rows = (
+      (Array.isArray(data.items) ? data.items : []) as QuickAddRow[]
+    ).filter((r) => typeof r.name === "string" && r.name.trim());
     for (const r of rows) await ensureBlockInStore(r.blockId);
     const ids = await createItems(
-      rows.map((r: any) => ({
+      rows.map((r) => ({
         name: requireText(r.name, "Item name"),
         storeId: params.id!,
         quantity: toQty(r.quantity, 1),
@@ -250,7 +261,7 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
     );
     return {
       ok: true,
-      created: rows.map((r: any, i: number) => ({
+      created: rows.map((r, i) => ({
         optimisticId: r.optimisticId,
         id: ids[i],
       })),

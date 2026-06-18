@@ -188,22 +188,28 @@ export default function StorePage() {
   }, [dbCollections]);
 
   useEffect(() => {
-    const result = createFetcher.data as any;
+    const result = createFetcher.data as
+      | {
+          id?: string;
+          optimisticId?: string;
+          created?: { optimisticId?: string; id: string }[];
+        }
+      | undefined;
     // Bulk quick-add: reconcile each optimistic id to its real id.
-    if (Array.isArray(result?.created)) {
+    const created = result?.created;
+    if (Array.isArray(created)) {
       setItems((prev) =>
         prev.map((i) => {
-          const m = result.created.find((c: any) => c.optimisticId === i.id);
+          const m = created.find((c) => c.optimisticId === i.id);
           return m ? { ...i, id: m.id } : i;
         }),
       );
       return;
     }
-    if (!result?.id || !result?.optimisticId) return;
+    const { id, optimisticId } = result ?? {};
+    if (!id || !optimisticId) return;
     setItems((prev) =>
-      prev.map((i) =>
-        i.id === result.optimisticId ? { ...i, id: result.id } : i,
-      ),
+      prev.map((i) => (i.id === optimisticId ? { ...i, id } : i)),
     );
   }, [createFetcher.data]);
 
