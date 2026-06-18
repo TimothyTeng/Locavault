@@ -1,0 +1,1 @@
+ALTER TABLE `stores` ADD `walls` text DEFAULT '[]' NOT NULL;

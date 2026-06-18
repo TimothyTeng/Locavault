@@ -1,5 +1,6 @@
 import type { BlockKind } from "./BlockTypes";
 import type { FixtureId } from "./fixtureTypes";
+import type { Wall } from "./wallTypes";
 
 /** Single source of truth for a block — position, size, appearance, and kind */
 export type BlockState = {
@@ -44,6 +45,8 @@ export type CreateStoreInput = {
   rows: number;
   cols: number;
   blocks: BlockDetails[];
+  /** Edge-based wall layer (segments between cells). */
+  walls?: Wall[];
   // Phase 3
   isPublic?: boolean;
   canvasVisible?: boolean;

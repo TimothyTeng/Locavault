@@ -66,6 +66,7 @@ export const StoreCard = memo(function StoreCard({
           rows={store.rows}
           cols={store.cols}
           name={store.name}
+          walls={store.walls}
         />
 
         {/* Pin button */}

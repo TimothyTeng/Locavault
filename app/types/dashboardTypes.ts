@@ -1,4 +1,5 @@
 import type { BlockDetails } from "./storeViewFinderTypes";
+import type { Wall } from "./wallTypes";
 
 export type StoreWithDetails = {
   id: string;
@@ -10,6 +11,7 @@ export type StoreWithDetails = {
   userId: string;
   createdAt: Date | null;
   blocks: BlockDetails[];
+  walls: Wall[];
   itemCount: number;
   pinned?: boolean;
   role?: "owner" | "editor" | "viewer"; // undefined = owned (legacy), set for member stores

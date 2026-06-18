@@ -28,6 +28,8 @@ import type {
 } from "~/types/storeViewFinderTypes";
 import type { AccessLevel, StoreRole } from "~/types/memberTypes";
 import type { BlockKind } from "~/types/BlockTypes";
+import type { Wall } from "~/types/wallTypes";
+import { parseWalls, serializeWalls } from "~/utils/helpers/wall.helper";
 import type { ItemType } from "~/types/itemTypeTypes";
 
 // ─── Helpers ───────────────────────────────────────────────
@@ -92,6 +94,7 @@ export async function getStoresByUserWithDetails(
   return userStores.map((store) => ({
     ...store,
     blocks: blocksByStore[store.id] ?? [],
+    walls: parseWalls(store.walls),
     itemCount: itemCountMap[store.id] ?? 0,
   }));
 }
@@ -144,6 +147,7 @@ export async function getStoresMemberOf(
   return nonOwnedStores.map((store) => ({
     ...store,
     blocks: blocksByStore[store.id] ?? [],
+    walls: parseWalls(store.walls),
     itemCount: itemCountMap[store.id] ?? 0,
     role: roleMap[store.id] as "editor" | "viewer",
   }));
@@ -177,6 +181,7 @@ export async function getStoreById(
       rows: store.rows,
       cols: store.cols,
       blocks: blockRows.map(toBlockDetails),
+      walls: parseWalls(store.walls),
       isPublic: store.isPublic,
       canvasVisible: store.canvasVisible,
     };
@@ -215,6 +220,7 @@ export async function createStoreWithBlocks(data: CreateStoreInput) {
       description: data.description ?? null,
       rows: data.rows ?? 10,
       cols: data.cols ?? 10,
+      walls: serializeWalls(data.walls ?? []),
     });
 
     // Auto-insert owner into storeMembers
@@ -435,6 +441,7 @@ export async function updateStoreWithBlocks(
     rows: number;
     cols: number;
     blocks: BlockDetails[];
+    walls?: Wall[];
   },
 ) {
   return db.transaction(async (tx) => {
@@ -446,6 +453,7 @@ export async function updateStoreWithBlocks(
         description: data.description ?? null,
         rows: data.rows,
         cols: data.cols,
+        walls: serializeWalls(data.walls ?? []),
       })
       .where(eq(stores.id, storeId));
 
@@ -951,7 +959,11 @@ export async function getTemplatesForGallery(
     {},
   );
 
-  return rows.map((t) => ({ ...t, blocks: byTemplate[t.id] ?? [] }));
+  return rows.map((t) => ({
+    ...t,
+    walls: parseWalls(t.walls),
+    blocks: byTemplate[t.id] ?? [],
+  }));
 }
 
 /** Fetch a single template with its blocks */
@@ -964,7 +976,11 @@ export async function getTemplateById(
     .select()
     .from(templateBlocks)
     .where(eq(templateBlocks.templateId, id));
-  return { ...tpl, blocks: blockRows.map(toTemplateBlockDetails) };
+  return {
+    ...tpl,
+    walls: parseWalls(tpl.walls),
+    blocks: blockRows.map(toTemplateBlockDetails),
+  };
 }
 
 /** Verify a template belongs to a user before mutating it */
@@ -986,6 +1002,7 @@ export async function createTemplate(data: {
   cols?: number;
   isPublic?: boolean;
   blocks: BlockDetails[];
+  walls?: Wall[];
 }): Promise<string> {
   return db.transaction(async (tx) => {
     const id = crypto.randomUUID();
@@ -997,6 +1014,7 @@ export async function createTemplate(data: {
       tags: data.tags ?? "[]",
       rows: data.rows ?? 10,
       cols: data.cols ?? 10,
+      walls: serializeWalls(data.walls ?? []),
       isPublic: data.isPublic ?? false,
     });
     if (data.blocks.length) {
@@ -1036,6 +1054,7 @@ export async function createTemplateFromStore(
     cols: store.cols,
     isPublic: opts.isPublic ?? false,
     blocks: store.blocks,
+    walls: store.walls,
   });
 }
 
@@ -1064,6 +1083,7 @@ export async function createStoreFromTemplate(
       description: tpl.description,
       rows: tpl.rows,
       cols: tpl.cols,
+      walls: tpl.walls ?? "[]", // copy the template's wall layer verbatim (serialized)
     });
 
     await tx

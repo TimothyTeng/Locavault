@@ -113,8 +113,8 @@ export function AddBlockModal({ onAdd, onClose }: Props) {
         role="dialog"
         aria-modal="true"
         className="fixed z-50 left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2
-                   w-full max-w-sm bg-white rounded-2xl shadow-2xl flex flex-col
-                   overflow-hidden"
+                   w-full max-w-sm max-h-[90dvh] bg-white rounded-2xl shadow-2xl
+                   flex flex-col overflow-hidden"
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
@@ -139,7 +139,7 @@ export function AddBlockModal({ onAdd, onClose }: Props) {
         </div>
 
         {/* Body */}
-        <div className="px-5 py-4 flex flex-col gap-4 overflow-y-auto">
+        <div className="px-5 py-4 flex flex-col gap-4 overflow-y-auto flex-1 min-h-0">
           {/* Kind selector */}
           <div className="flex flex-col gap-1.5">
             <label className="text-xs font-medium text-gray-500 uppercase tracking-wide">

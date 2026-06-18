@@ -1014,6 +1014,7 @@ export default function StorePage() {
               items={items}
               canEdit={canEdit}
               isOwner={isOwner}
+              walls={store?.walls ?? []}
               storeIsPublic={store?.isPublic ?? false}
               pulseZoneId={highlightedCell}
               pulseItemId={selectedItemId}
@@ -1059,6 +1060,7 @@ export default function StorePage() {
                         readOnly={true}
                         nonClickableKinds={["divider", "stairs"]}
                         blockBadges={blockBadges}
+                        walls={store?.walls ?? []}
                       />
                     </div>
                   </div>

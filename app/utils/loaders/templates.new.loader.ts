@@ -1,4 +1,4 @@
-import { getAuth } from "@clerk/react-router/server";
+import { getAuth } from "~/lib/auth";
 import {
   redirect,
   type ActionFunctionArgs,
@@ -7,6 +7,7 @@ import {
 import { requireAuth } from "~/lib/auth";
 import { createTemplate } from "~/lib/queries";
 import type { BlockDetails } from "~/types/storeViewFinderTypes";
+import type { Wall } from "~/types/wallTypes";
 
 export const loader = async (args: LoaderFunctionArgs) => {
   const userId = await requireAuth(args);
@@ -28,6 +29,9 @@ export const action = async (args: ActionFunctionArgs) => {
     cols: data.cols,
     isPublic: !!data.isPublic,
     blocks: (data.blocks ?? []) as BlockDetails[],
+    walls: (Array.isArray(data.walls)
+      ? data.walls.slice(0, 5000)
+      : []) as Wall[],
   });
 
   return redirect(`/templates?created=${id}`);

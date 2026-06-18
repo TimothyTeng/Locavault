@@ -13,6 +13,8 @@ export const stores = sqliteTable("stores", {
   description: text("description"),
   rows: integer("rows").notNull().default(10),
   cols: integer("cols").notNull().default(10),
+  // Edge-based wall layer: JSON array of { x, y, dir } segments (see wallTypes).
+  walls: text("walls").notNull().default("[]"),
   userId: text("user_id").notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
     () => new Date(),
@@ -203,6 +205,7 @@ export const templates = sqliteTable("templates", {
   tags: text("tags").notNull().default("[]"),
   rows: integer("rows").notNull().default(10),
   cols: integer("cols").notNull().default(10),
+  walls: text("walls").notNull().default("[]"), // edge-based wall layer (JSON)
   userId: text("user_id").notNull(), // creator (Clerk id)
   isPublic: integer("is_public", { mode: "boolean" }).notNull().default(false),
   usageCount: integer("usage_count").notNull().default(0),

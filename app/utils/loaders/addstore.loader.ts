@@ -16,6 +16,7 @@ export const action = async (args: ActionFunctionArgs) => {
   const data = await args.request.json();
 
   const blocks = Array.isArray(data.blocks) ? data.blocks.slice(0, 2000) : [];
+  const walls = Array.isArray(data.walls) ? data.walls.slice(0, 5000) : [];
 
   await createStoreWithBlocks({
     ...data,
@@ -24,6 +25,7 @@ export const action = async (args: ActionFunctionArgs) => {
     rows: toQty(data.rows, 10, { min: 1, max: 200 }),
     cols: toQty(data.cols, 10, { min: 1, max: 200 }),
     blocks,
+    walls,
   });
   return { ok: true };
 };

@@ -30,18 +30,27 @@ function shade(hex: string, percent: number): string {
   const r = parseInt(c.slice(0, 2), 16);
   const g = parseInt(c.slice(2, 4), 16);
   const b = parseInt(c.slice(4, 6), 16);
-  const a = (v: number) =>
-    Math.max(0, Math.min(255, Math.round(v + (percent / 100) * 255)));
-  return `rgb(${a(r)}, ${a(g)}, ${a(b)})`;
+  // Proportional mix toward black (percent<0) or white (percent>0). Unlike a
+  // fixed additive offset, this never slams saturated colours into pure black or
+  // white, so every derived tone stays in the block's own hue family — a green
+  // shelf's outline is a deep green, an amber cabinet's a dark amber. That alone
+  // makes the sprites read far less harsh and more cohesive.
+  const p = percent / 100;
+  const mix = (v: number) =>
+    Math.max(
+      0,
+      Math.min(255, Math.round(p < 0 ? v * (1 + p) : v + (255 - v) * p)),
+    );
+  return `rgb(${mix(r)}, ${mix(g)}, ${mix(b)})`;
 }
 
 type PaletteKey = "o" | "s" | "b" | "h" | "m" | "md" | ".";
 function palette(base: string): Record<Exclude<PaletteKey, ".">, string> {
   return {
-    o: shade(base, -55), // outline
-    s: shade(base, -26), // shadow
+    o: shade(base, -50), // outline — deep in-hue tone, not black
+    s: shade(base, -22), // shadow
     b: base, // body
-    h: shade(base, 30), // highlight
+    h: shade(base, 28), // highlight
     m: "#d0d5d9", // metal (handles) — neutral, not tinted
     md: "#878d93", // metal shadow / wire
   };
@@ -49,8 +58,8 @@ function palette(base: string): Record<Exclude<PaletteKey, ".">, string> {
 
 // ── Tiny pixel-drawing helpers (mutate a grid of palette keys) ─────────────
 type Grid = PaletteKey[][];
-const newGrid = (): Grid =>
-  Array.from({ length: N }, () => Array<PaletteKey>(N).fill("."));
+const newGrid = (w: number = N, h: number = N): Grid =>
+  Array.from({ length: h }, () => Array<PaletteKey>(w).fill("."));
 const rf = (
   g: Grid,
   x: number,
@@ -80,13 +89,6 @@ const ro = (
     g[j][x + w - 1] = k;
   }
 };
-// Recessed panel bevel (shadow top-left, highlight bottom-right)
-const bIn = (g: Grid, x: number, y: number, w: number, h: number) => {
-  rf(g, x, y, w, 1, "s");
-  rf(g, x, y, 1, h, "s");
-  rf(g, x + w - 1, y, 1, h, "h");
-  rf(g, x, y + h - 1, w, 1, "h");
-};
 // Filled pixel disc (for basins, burners, washer doors, foliage)
 const disc = (g: Grid, cx: number, cy: number, r: number, k: PaletteKey) => {
   for (let y = 0; y < N; y++)
@@ -99,79 +101,103 @@ const disc = (g: Grid, cx: number, cy: number, r: number, k: PaletteKey) => {
 };
 
 // ── Sprite authoring ───────────────────────────────────────────────────────
-const SPRITE_BUILDERS: Record<FixtureId, () => Grid> = {
-  shelf() {
-    const g = newGrid();
-    rf(g, 0, 0, 16, 16, "b");
-    [1, 7, 13].forEach((y) => {
-      rf(g, 0, y, 16, 1, "h");
-      rf(g, 0, y + 1, 16, 1, "o");
-    });
+// Builders receive the block's pixel size (W×H). `slice` fixtures draw at the
+// full size (one coherent object); the rest ignore it and stay a 16×16 unit.
+const SPRITE_BUILDERS: Record<FixtureId, (W?: number, H?: number) => Grid> = {
+  shelf(W = N, H = N) {
+    // Open shelving: framed back panel with boards that span the full run and
+    // repeat down the height. One coherent unit at any width or height.
+    const g = newGrid(W, H);
+    rf(g, 0, 0, W, H, "b");
+    ro(g, 0, 0, W, H, "o");
+    rf(g, 1, 1, W - 2, 1, "h");
+    for (let y = 6; y < H - 2; y += 7) {
+      rf(g, 1, y, W - 2, 1, "h");
+      rf(g, 1, y + 1, W - 2, 1, "s");
+    }
     return g;
   },
-  cabinet() {
-    const g = newGrid();
-    rf(g, 0, 0, 16, 3, "b");
-    rf(g, 0, 0, 16, 1, "h");
-    rf(g, 0, 2, 16, 1, "o");
-    rf(g, 0, 3, 16, 13, "b");
-    rf(g, 8, 3, 1, 12, "o");
-    bIn(g, 1, 5, 6, 9);
-    bIn(g, 9, 5, 6, 9);
-    rf(g, 6, 9, 1, 2, "m");
-    rf(g, 9, 9, 1, 2, "m");
-    rf(g, 0, 15, 16, 1, "s");
+  cabinet(W = N, H = N) {
+    // One cabinet: fixed top cornice + base, doors divide the width (~one per
+    // cell) each with a handle. A 1×3 block reads as one tall cabinet.
+    const g = newGrid(W, H);
+    rf(g, 0, 0, W, H, "b");
+    ro(g, 0, 0, W, H, "o");
+    rf(g, 1, 1, W - 2, 1, "h");
+    rf(g, 1, 3, W - 2, 1, "s");
+    rf(g, 1, H - 3, W - 2, 2, "s");
+    const doors = Math.max(2, Math.round(W / 8));
+    const dw = W / doors;
+    for (let d = 1; d < doors; d++) rf(g, Math.round(d * dw), 4, 1, H - 7, "o");
+    const hLen = Math.max(3, Math.min(5, Math.floor(H * 0.25)));
+    const hy = Math.max(5, Math.floor(H * 0.32));
+    for (let d = 0; d < doors; d++)
+      rf(g, Math.round((d + 0.5) * dw), hy, 1, hLen, "m");
     return g;
   },
-  pantry() {
-    const g = newGrid();
-    rf(g, 0, 0, 16, 16, "b");
-    rf(g, 0, 0, 16, 1, "h");
-    rf(g, 0, 15, 16, 1, "s");
-    rf(g, 8, 1, 1, 14, "o");
-    [3, 7, 11].forEach((y) => rf(g, 1, y, 14, 1, "s"));
-    rf(g, 6, 8, 1, 2, "m");
-    rf(g, 9, 8, 1, 2, "m");
+  pantry(W = N, H = N) {
+    // Tall larder: framed, faint shelves down the height, one door handle.
+    const g = newGrid(W, H);
+    rf(g, 0, 0, W, H, "b");
+    ro(g, 0, 0, W, H, "o");
+    rf(g, 1, 1, W - 2, 1, "h");
+    rf(g, 1, H - 3, W - 2, 2, "s");
+    for (let y = 6; y < H - 3; y += 7) rf(g, 2, y, W - 4, 1, "s");
+    rf(g, W - 4, Math.floor(H * 0.42), 1, 4, "m");
     return g;
   },
-  drawers() {
-    const g = newGrid();
-    rf(g, 0, 1, 16, 14, "b");
-    rf(g, 0, 1, 16, 1, "h");
-    rf(g, 0, 6, 16, 1, "o");
-    rf(g, 0, 11, 16, 1, "o");
-    rf(g, 6, 3, 4, 1, "m");
-    rf(g, 6, 8, 4, 1, "m");
-    rf(g, 6, 13, 4, 1, "m");
-    rf(g, 0, 15, 16, 1, "s");
+  drawers(W = N, H = N) {
+    // Chest of drawers: one drawer per ~cell of height, each with a centred pull.
+    const g = newGrid(W, H);
+    rf(g, 0, 0, W, H, "b");
+    ro(g, 0, 0, W, H, "o");
+    rf(g, 1, 1, W - 2, 1, "h");
+    const n = Math.max(2, Math.round(H / 9));
+    const dh = H / n;
+    for (let d = 1; d < n; d++) rf(g, 1, Math.round(d * dh), W - 2, 1, "o");
+    for (let d = 0; d < n; d++)
+      rf(g, Math.floor(W / 2) - 2, Math.round((d + 0.5) * dh), 4, 1, "m");
     return g;
   },
-  wardrobe() {
-    const g = newGrid();
-    rf(g, 0, 0, 16, 16, "b");
-    rf(g, 0, 0, 16, 1, "h");
-    rf(g, 0, 15, 16, 1, "s");
-    rf(g, 8, 1, 1, 14, "o");
-    bIn(g, 1, 2, 6, 12);
-    bIn(g, 9, 2, 6, 12);
-    rf(g, 6, 7, 1, 2, "m");
-    rf(g, 9, 7, 1, 2, "m");
+  wardrobe(W = N, H = N) {
+    // Like the cabinet but with long door handles and a base drawer.
+    const g = newGrid(W, H);
+    rf(g, 0, 0, W, H, "b");
+    ro(g, 0, 0, W, H, "o");
+    rf(g, 1, 1, W - 2, 1, "h");
+    const doors = Math.max(2, Math.round(W / 9));
+    const dw = W / doors;
+    for (let d = 1; d < doors; d++) rf(g, Math.round(d * dw), 3, 1, H - 6, "o");
+    const hLen = Math.max(4, Math.min(8, Math.floor(H * 0.4)));
+    for (let d = 0; d < doors; d++)
+      rf(g, Math.round((d + 0.5) * dw), 5, 1, hLen, "m");
+    rf(g, 1, H - 4, W - 2, 1, "o");
+    rf(g, 1, H - 3, W - 2, 2, "s");
     return g;
   },
-  rack() {
-    const g = newGrid();
-    [0, 4, 8, 12].forEach((x) => rf(g, x, 0, 1, 16, "md"));
-    [0, 4, 8, 12].forEach((y) => rf(g, 0, y, 16, 1, "md"));
+  rack(W = N, H = N) {
+    // Wire mesh across the whole footprint, with a thin frame.
+    const g = newGrid(W, H);
+    for (let x = 0; x < W; x += 4) rf(g, x, 0, 1, H, "md");
+    for (let y = 0; y < H; y += 4) rf(g, 0, y, W, 1, "md");
+    ro(g, 0, 0, W, H, "o");
     return g;
   },
-  counter() {
-    const g = newGrid();
-    rf(g, 0, 0, 16, 3, "h");
-    rf(g, 0, 3, 16, 1, "o");
-    rf(g, 0, 4, 16, 12, "b");
-    bIn(g, 2, 6, 12, 8);
-    rf(g, 7, 8, 2, 1, "m");
-    rf(g, 0, 15, 16, 1, "s");
+  counter(W = N, H = N) {
+    // Counter run: light worktop edge on top, repeating cabinet doors below,
+    // fixed end caps from the frame.
+    const g = newGrid(W, H);
+    rf(g, 0, 0, W, H, "b");
+    ro(g, 0, 0, W, H, "o");
+    rf(g, 1, 1, W - 2, 2, "h");
+    rf(g, 1, 3, W - 2, 1, "o");
+    rf(g, 1, H - 2, W - 2, 1, "s");
+    const doors = Math.max(2, Math.round(W / 9));
+    const dw = W / doors;
+    for (let d = 1; d < doors; d++) rf(g, Math.round(d * dw), 4, 1, H - 6, "o");
+    const hy = Math.floor((H + 3) / 2);
+    for (let d = 0; d < doors; d++)
+      rf(g, Math.round((d + 0.5) * dw), hy, 1, 3, "m");
     return g;
   },
   fridge() {
@@ -209,20 +235,19 @@ const SPRITE_BUILDERS: Record<FixtureId, () => Grid> = {
     g[13][11] = ".";
     return g;
   },
-  bookshelf() {
-    const g = newGrid();
-    rf(g, 0, 0, 16, 16, "b");
-    [1, 7, 13].forEach((y) => {
-      rf(g, 0, y, 16, 1, "h");
-      rf(g, 0, y + 1, 16, 1, "o");
-    });
-    // book spines between the boards
-    [1, 3, 5, 7, 9, 11, 13].forEach((x, i) =>
-      rf(g, x, 3, 1, 3, i % 2 ? "s" : "md"),
-    );
-    [2, 4, 6, 8, 10, 12, 14].forEach((x, i) =>
-      rf(g, x, 9, 1, 3, i % 2 ? "md" : "s"),
-    );
+  bookshelf(W = N, H = N) {
+    // Framed shelving with a row of book spines tucked above each board.
+    const g = newGrid(W, H);
+    rf(g, 0, 0, W, H, "b");
+    ro(g, 0, 0, W, H, "o");
+    rf(g, 1, 1, W - 2, 1, "h");
+    let band = 0;
+    for (let y = 4; y < H - 3; y += 7) {
+      for (let x = 2; x < W - 2; x += 2)
+        rf(g, x, y - 2, 1, 3, (x + band) % 2 ? "s" : "md");
+      rf(g, 1, y + 1, W - 2, 1, "o");
+      band++;
+    }
     return g;
   },
   nightstand() {
@@ -350,23 +375,23 @@ const SPRITE_BUILDERS: Record<FixtureId, () => Grid> = {
 };
 
 const SPRITES: Record<FixtureId, Grid> = Object.fromEntries(
-  FIXTURE_IDS.map((id) => [id, SPRITE_BUILDERS[id]()]),
+  FIXTURE_IDS.map((id) => [id, SPRITE_BUILDERS[id](N, N)]),
 ) as Record<FixtureId, Grid>;
 
 export const FIXTURE_META: Record<
   FixtureId,
   { label: string; defaultColor: string; fill: FixtureFill }
 > = {
-  shelf: { label: "Shelf", defaultColor: "#2d6b44", fill: "tile" },
-  bookshelf: { label: "Bookshelf", defaultColor: "#7a5230", fill: "tile" },
-  cabinet: { label: "Cabinet", defaultColor: "#b8821e", fill: "tile" },
-  pantry: { label: "Pantry", defaultColor: "#a9761f", fill: "tile" },
-  drawers: { label: "Drawers", defaultColor: "#6d7d72", fill: "tile" },
-  wardrobe: { label: "Wardrobe", defaultColor: "#8b5cf6", fill: "tile" },
+  shelf: { label: "Shelf", defaultColor: "#2d6b44", fill: "slice" },
+  bookshelf: { label: "Bookshelf", defaultColor: "#7a5230", fill: "slice" },
+  cabinet: { label: "Cabinet", defaultColor: "#b8821e", fill: "slice" },
+  pantry: { label: "Pantry", defaultColor: "#a9761f", fill: "slice" },
+  drawers: { label: "Drawers", defaultColor: "#6d7d72", fill: "slice" },
+  wardrobe: { label: "Wardrobe", defaultColor: "#8b5cf6", fill: "slice" },
   nightstand: { label: "Nightstand", defaultColor: "#9a7b53", fill: "single" },
-  rack: { label: "Rack", defaultColor: "#3a4a3f", fill: "tile" },
+  rack: { label: "Rack", defaultColor: "#3a4a3f", fill: "slice" },
   bin: { label: "Bin / box", defaultColor: "#f97316", fill: "single" },
-  counter: { label: "Counter", defaultColor: "#9a8f7d", fill: "tile" },
+  counter: { label: "Counter", defaultColor: "#9a8f7d", fill: "slice" },
   table: { label: "Table", defaultColor: "#8a6a44", fill: "fit" },
   desk: { label: "Desk", defaultColor: "#7d6747", fill: "fit" },
   fridge: { label: "Fridge", defaultColor: "#4a90b8", fill: "single" },
@@ -388,20 +413,31 @@ function spriteRects(
   keyPrefix: string,
 ) {
   const out: React.ReactNode[] = [];
-  for (let y = 0; y < N; y++) {
-    for (let x = 0; x < N; x++) {
+  const h = grid.length;
+  const w = grid[0]?.length ?? 0;
+  // Merge runs of the same colour in a row into one rect — keeps the node count
+  // low for large multi-cell (slice) fixtures.
+  for (let y = 0; y < h; y++) {
+    let x = 0;
+    while (x < w) {
       const k = grid[y][x];
-      if (k === ".") continue;
+      if (k === ".") {
+        x++;
+        continue;
+      }
+      let x2 = x + 1;
+      while (x2 < w && grid[y][x2] === k) x2++;
       out.push(
         <rect
           key={`${keyPrefix}-${x}-${y}`}
           x={x}
           y={y}
-          width={1}
+          width={x2 - x}
           height={1}
           fill={pal[k]}
         />,
       );
+      x = x2;
     }
   }
   return out;
@@ -434,6 +470,26 @@ export function FixtureGraphic({
   const meta = FIXTURE_META[fixture];
   const W = Math.max(1, cols) * N;
   const H = Math.max(1, rows) * N;
+
+  // 9-slice: draw the fixture as one coherent object at the block's full pixel
+  // size (fixed caps, stretching/repeating middle). viewBox aspect matches the
+  // block (square cells), so preserveAspectRatio="none" never distorts pixels.
+  if (meta.fill === "slice") {
+    return (
+      <svg
+        className={className}
+        viewBox={`0 0 ${W} ${H}`}
+        width="100%"
+        height="100%"
+        preserveAspectRatio="none"
+        shapeRendering="crispEdges"
+        style={style}
+        aria-hidden
+      >
+        {spriteRects(SPRITE_BUILDERS[fixture](W, H), pal, "sl")}
+      </svg>
+    );
+  }
 
   if (meta.fill === "fit") {
     return (

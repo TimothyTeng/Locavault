@@ -1,7 +1,8 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { getAuth } from "@clerk/react-router/server";
+import { getAuth } from "~/lib/auth";
 import { updateStoreWithBlocks, verifyStoreAccess } from "~/lib/queries";
 import type { BlockDetails, BlocksMap } from "~/types/storeViewFinderTypes";
+import type { Wall } from "~/types/wallTypes";
 
 // ── Loader ─────────────────────────────────────────────────
 
@@ -46,6 +47,7 @@ export const loader = async (args: LoaderFunctionArgs) => {
       rows: store.rows,
       cols: store.cols,
       blocks: blocksMap,
+      walls: store.walls ?? [],
     },
   };
 };
@@ -71,6 +73,9 @@ export const action = async (args: ActionFunctionArgs) => {
     rows: data.rows,
     cols: data.cols,
     blocks: data.blocks as BlockDetails[],
+    walls: Array.isArray(data.walls)
+      ? (data.walls.slice(0, 5000) as Wall[])
+      : [],
   });
 
   return { ok: true };

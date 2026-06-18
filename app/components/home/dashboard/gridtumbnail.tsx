@@ -1,23 +1,34 @@
 import { memo } from "react";
 import type { BlockDetails } from "#types/storeViewFinderTypes";
+import type { Wall } from "#types/wallTypes";
 import { storeColor } from "~/utils/dashboardUtils";
+
+// Wall-layer colours (mirror WallLayer): solid wall, door threshold, window glass.
+const WALL_FILL: Record<NonNullable<Wall["kind"]> | "wall", string> = {
+  wall: "#646e7b",
+  door: "#b59f80",
+  window: "#9cc3df",
+};
 
 export const GridThumbnail = memo(function GridThumbnail({
   blocks,
   rows,
   cols,
   name,
+  walls = [],
 }: {
   blocks: BlockDetails[];
   rows: number;
   cols: number;
   name: string;
+  walls?: Wall[];
 }) {
   const W = 280;
   const H = 160;
   const cellW = W / cols;
   const cellH = H / rows;
   const accent = storeColor(name);
+  const wallT = Math.max(1.5, Math.min(cellW, cellH) * 0.18);
 
   return (
     <svg
@@ -82,6 +93,32 @@ export const GridThumbnail = memo(function GridThumbnail({
           />
         ))
       )}
+
+      {/* Wall layer — thin bars centred on the grid lines, coloured by kind. */}
+      {walls.map((w, i) => {
+        const fill = WALL_FILL[w.kind ?? "wall"];
+        return w.dir === "h" ? (
+          <rect
+            key={`w${i}`}
+            x={w.x * cellW}
+            y={w.y * cellH - wallT / 2}
+            width={cellW}
+            height={wallT}
+            fill={fill}
+            rx={wallT * 0.3}
+          />
+        ) : (
+          <rect
+            key={`w${i}`}
+            x={w.x * cellW - wallT / 2}
+            y={w.y * cellH}
+            width={wallT}
+            height={cellH}
+            fill={fill}
+            rx={wallT * 0.3}
+          />
+        );
+      })}
     </svg>
   );
 });

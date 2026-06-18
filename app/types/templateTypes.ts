@@ -1,4 +1,5 @@
 import type { BlockDetails } from "./storeViewFinderTypes";
+import type { Wall } from "./wallTypes";
 
 export type TemplateWithBlocks = {
   id: string;
@@ -12,4 +13,5 @@ export type TemplateWithBlocks = {
   usageCount: number;
   createdAt: Date | null;
   blocks: BlockDetails[];
+  walls: Wall[];
 };

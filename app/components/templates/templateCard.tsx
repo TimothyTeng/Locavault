@@ -39,6 +39,7 @@ export const TemplateCard = memo(function TemplateCard({
           rows={template.rows}
           cols={template.cols}
           name={template.name}
+          walls={template.walls}
         />
 
         {/* Visibility pill / toggle */}

@@ -8,7 +8,9 @@ export type HitTarget =
   | "empty-shift" // shift+drag from empty → additive rubber band
   | "selected-block"
   | "unselected-block"
-  | "unselected-block-shift"; // shift+click/drag block → add to selection
+  | "unselected-block-shift" // shift+click/drag block → add to selection
+  | "selected-wall" // pressed an already-selected wall → move it
+  | "unselected-wall"; // pressed an unselected wall → select (+ move on drag)
 
 export type GhostRect = { x: number; y: number; w: number; h: number };
 

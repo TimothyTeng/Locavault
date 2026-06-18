@@ -36,11 +36,15 @@ export type FixtureId = (typeof FIXTURE_IDS)[number];
 
 /**
  * How a fixture fills a block that spans multiple cells:
- * - `tile`   — repeat the sprite seamlessly across every cell (shelving runs,
- *              cabinet banks, counters). Grid-aligned, never stretched.
+ * - `slice`  — drawn as ONE coherent object at the block's full size: fixed end
+ *              caps / top & base, with the middle repeating or stretching (a
+ *              9-slice). A 1×3 cabinet is one tall cabinet, not three stacked;
+ *              a 3×1 counter is one run with end caps. The builder receives the
+ *              block's pixel size. Used by shelving / cabinetry / counters.
  * - `single` — one sprite at true 1-cell scale, centred on the colour zone
  *              (discrete appliances: a fridge stays fridge-sized in a big block).
  * - `fit`    — one sprite scaled (aspect preserved) to fill the whole footprint
  *              (large furniture: a bed/table fills the block you drew for it).
+ * - `tile`   — legacy: repeat the unit sprite per cell. Superseded by `slice`.
  */
-export type FixtureFill = "tile" | "single" | "fit";
+export type FixtureFill = "slice" | "tile" | "single" | "fit";

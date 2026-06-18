@@ -24,6 +24,20 @@ import {
   resolveBlockClasses,
   resolveGhostStyle,
 } from "#utils/helpers/gridCanvas.helper";
+import { WallLayer } from "#components/common/wallLayer";
+import type { Wall, WallKind } from "#types/wallTypes";
+import {
+  edgeAtCell,
+  pointAtCell,
+  wallRun,
+  wallAt,
+  wallKey,
+  effectiveWallKeys,
+  upsertWalls,
+  removeWalls,
+  withKind,
+} from "#utils/helpers/wall.helper";
+import { footprintBounds } from "#utils/helpers/storeViewFinder.helper";
 
 type Props = {
   cols: number;
@@ -61,6 +75,15 @@ type Props = {
     string,
     { count: number; tone: "critical" | "attention" }
   >;
+  /** Edge-based wall layer — always rendered; drawn in draw mode, moved in select. */
+  walls?: Wall[];
+  /** Draw mode draws walls of this kind when set; null = draws blocks. */
+  drawWallKind?: WallKind | null;
+  /** Keys of walls picked in select mode (clicked or boxed on their own). */
+  selectedWallKeys?: Set<string>;
+  /** Select a wall (select mode); additive = toggle in the selection. */
+  onWallSelect?: (wall: Wall, additive: boolean) => void;
+  onWallsChange?: (walls: Wall[]) => void;
 };
 
 export function GridCanvas({
@@ -83,9 +106,19 @@ export function GridCanvas({
   captureTouches = false,
   nonClickableKinds = [],
   blockBadges,
+  walls = [],
+  drawWallKind = null,
+  selectedWallKeys = new Set(),
+  onWallSelect,
+  onWallsChange,
 }: Props) {
   const { width, containerRef, mounted } = useContainerWidth();
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  // Wall-draw drag state (preview run shown while dragging).
+  const [wallPreview, setWallPreview] = useState<{
+    edges: Wall[];
+    mode: "draw" | "erase";
+  } | null>(null);
   const [dragStart, setDragStart] = useState<CellPos | null>(null);
   const [dragCurrent, setDragCurrent] = useState<CellPos | null>(null);
   const [moveOrigin, setMoveOrigin] = useState<CellPos | null>(null);
@@ -95,6 +128,7 @@ export function GridCanvas({
   const lastDelta = useRef<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
   const hitRef = useRef<HitTarget>("empty");
   const clickedId = useRef<string | null>(null);
+  const clickedWall = useRef<Wall | null>(null);
   const isDraggingGroup = useRef(false);
   const hasDraggedRef = useRef(false); // true once pointer moves ≥1 cell from down pos
   const blocksRef = useRef(blocks);
@@ -108,6 +142,16 @@ export function GridCanvas({
 
   const rowHeight = width / cols;
   const cellSize = rowHeight;
+
+  // react-grid-layout insets cells by margin + containerPadding (defaults to the
+  // margin). Mirror that model so the wall layer + edge picking land exactly on
+  // the grid lines instead of drifting rightward across the grid.
+  const RGL_MARGIN = 1; // matches gridConfig margin below
+  const wallColW =
+    cols > 0 ? (width - RGL_MARGIN * (cols - 1) - RGL_MARGIN * 2) / cols : 0;
+  const wallPitchX = wallColW + RGL_MARGIN;
+  const wallPitchY = rowHeight + RGL_MARGIN;
+  const wallOrigin = RGL_MARGIN / 2; // grid line g sits at wallOrigin + g*pitch
 
   // Works with both raw DOM PointerEvent and React synthetic PointerEvent
   const toCell = useCallback(
@@ -142,8 +186,67 @@ export function GridCanvas({
     selectModeRef.current = selectMode;
   }, [selectMode]);
 
+  // ── Wall refs so the raw pointer handlers stay current ──
+  const wallsRef = useRef(walls);
+  const drawWallKindRef = useRef(drawWallKind);
+  const selWallKeysRef = useRef(selectedWallKeys);
+  const onWallsChangeRef = useRef(onWallsChange);
+  const onWallSelectRef = useRef(onWallSelect);
+  const wallDragRef = useRef<{
+    anchor: [number, number];
+    clickEdge: Wall | null;
+    kind: "draw" | "erase";
+  } | null>(null);
+  useEffect(() => {
+    wallsRef.current = walls;
+  }, [walls]);
+  useEffect(() => {
+    drawWallKindRef.current = drawWallKind;
+  }, [drawWallKind]);
+  useEffect(() => {
+    selWallKeysRef.current = selectedWallKeys;
+  }, [selectedWallKeys]);
+  useEffect(() => {
+    onWallsChangeRef.current = onWallsChange;
+  }, [onWallsChange]);
+  useEffect(() => {
+    onWallSelectRef.current = onWallSelect;
+  }, [onWallSelect]);
+
+  // Fractional grid coords from a pointer event (origin/pitch match the grid).
+  const toFrac = useCallback(
+    (e: PointerEvent): [number, number] => {
+      const el = containerRef.current as HTMLElement;
+      const rect = el.getBoundingClientRect();
+      return [
+        (e.clientX - rect.left - wallOrigin) / wallPitchX,
+        (e.clientY - rect.top - wallOrigin) / wallPitchY,
+      ];
+    },
+    [wallOrigin, wallPitchX, wallPitchY, containerRef],
+  );
+
   const handlePointerDown = useCallback(
     (e: PointerEvent) => {
+      // Draw mode + a wall tool active → place/erase/toggle walls along grid lines.
+      if (drawModeRef.current && drawWallKindRef.current) {
+        e.preventDefault();
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+        const [fx, fy] = toFrac(e);
+        const edge = edgeAtCell(fx, fy, cols, rows);
+        const kind = drawWallKindRef.current;
+        // Same kind already there → erase; empty or different kind → place/convert.
+        const existing = edge ? wallAt(wallsRef.current, edge) : undefined;
+        const op: "draw" | "erase" =
+          existing && (existing.kind ?? "wall") === kind ? "erase" : "draw";
+        wallDragRef.current = {
+          anchor: pointAtCell(fx, fy, cols, rows),
+          clickEdge: edge,
+          kind: op,
+        };
+        setWallPreview({ edges: [], mode: op });
+        return;
+      }
       if (!drawModeRef.current && !selectModeRef.current) return;
       e.preventDefault();
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -168,31 +271,71 @@ export function GridCanvas({
         lastDelta.current = { dx: 0, dy: 0 };
         moveOriginRef.current = cell;
         setMoveOrigin(cell);
-      } else if (hitId && shift) {
+        return;
+      }
+      if (hitId && shift) {
         hitRef.current = "unselected-block-shift";
         clickedId.current = hitId;
         dragStartRef.current = cell;
         setRubberBandAdditive(true);
         setDragStart(cell);
         setDragCurrent(cell);
-      } else if (hitId) {
+        return;
+      }
+      if (hitId) {
         hitRef.current = "unselected-block";
         clickedId.current = hitId;
         moveOriginRef.current = cell;
         setMoveOrigin(cell);
-      } else {
-        hitRef.current = shift ? "empty-shift" : "empty";
-        dragStartRef.current = cell;
-        setRubberBandAdditive(shift);
-        setDragStart(cell);
-        setDragCurrent(cell);
+        return;
       }
+
+      // No block under the pointer — is a wall close by? (select / move it)
+      const [fx, fy] = toFrac(e);
+      const edge = edgeAtCell(fx, fy, cols, rows);
+      const dist = edge
+        ? edge.dir === "h"
+          ? Math.abs(fy - edge.y)
+          : Math.abs(fx - edge.x)
+        : 1;
+      const wall =
+        edge && dist <= 0.3 ? wallAt(wallsRef.current, edge) : undefined;
+      if (wall) {
+        clickedWall.current = wall;
+        moveOriginRef.current = cell;
+        setMoveOrigin(cell);
+        isDraggingGroup.current = false;
+        lastDelta.current = { dx: 0, dy: 0 };
+        hitRef.current =
+          selWallKeysRef.current.has(wallKey(wall)) && !shift
+            ? "selected-wall"
+            : "unselected-wall";
+        return;
+      }
+
+      // Empty → rubber band.
+      hitRef.current = shift ? "empty-shift" : "empty";
+      dragStartRef.current = cell;
+      setRubberBandAdditive(shift);
+      setDragStart(cell);
+      setDragCurrent(cell);
     },
-    [toCell],
+    [toCell, toFrac, cols, rows],
   );
 
   const handlePointerMove = useCallback(
     (e: PointerEvent) => {
+      if (drawModeRef.current && drawWallKindRef.current) {
+        if (!wallDragRef.current) return;
+        const [fx, fy] = toFrac(e);
+        const [bx, by] = pointAtCell(fx, fy, cols, rows);
+        const [ax, ay] = wallDragRef.current.anchor;
+        setWallPreview({
+          edges: wallRun(ax, ay, bx, by),
+          mode: wallDragRef.current.kind,
+        });
+        return;
+      }
       if (!drawModeRef.current && !selectModeRef.current) return;
       const cell = toCell(e);
 
@@ -201,7 +344,11 @@ export function GridCanvas({
         return;
       }
 
-      if (hitRef.current === "selected-block" && moveOriginRef.current) {
+      const target = hitRef.current;
+      if (
+        (target === "selected-block" || target === "selected-wall") &&
+        moveOriginRef.current
+      ) {
         const dx = cell.col - moveOriginRef.current.col;
         const dy = cell.row - moveOriginRef.current.row;
         if (dx !== lastDelta.current.dx || dy !== lastDelta.current.dy) {
@@ -210,10 +357,7 @@ export function GridCanvas({
           hasDraggedRef.current = true;
           onGroupMovePreview?.(dx, dy);
         }
-      } else if (
-        hitRef.current === "unselected-block" &&
-        moveOriginRef.current
-      ) {
+      } else if (target === "unselected-block" && moveOriginRef.current) {
         const dx = cell.col - moveOriginRef.current.col;
         const dy = cell.row - moveOriginRef.current.row;
         if ((dx !== 0 || dy !== 0) && !hasDraggedRef.current) {
@@ -233,21 +377,72 @@ export function GridCanvas({
             onGroupMovePreview?.(dx, dy);
           }
         }
+      } else if (target === "unselected-wall" && moveOriginRef.current) {
+        const dx = cell.col - moveOriginRef.current.col;
+        const dy = cell.row - moveOriginRef.current.row;
+        if ((dx !== 0 || dy !== 0) && !hasDraggedRef.current) {
+          hasDraggedRef.current = true;
+          onWallSelectRef.current?.(clickedWall.current!, false);
+          hitRef.current = "selected-wall";
+          isDraggingGroup.current = true;
+          lastDelta.current = { dx, dy };
+          onGroupMovePreview?.(dx, dy);
+        } else if (hasDraggedRef.current) {
+          if (dx !== lastDelta.current.dx || dy !== lastDelta.current.dy) {
+            lastDelta.current = { dx, dy };
+            onGroupMovePreview?.(dx, dy);
+          }
+        }
       } else if (
-        (hitRef.current === "empty" ||
-          hitRef.current === "empty-shift" ||
-          hitRef.current === "unselected-block-shift") &&
+        (target === "empty" ||
+          target === "empty-shift" ||
+          target === "unselected-block-shift") &&
         dragStartRef.current
       ) {
         setDragCurrent(cell);
         hasDraggedRef.current = true;
       }
     },
-    [toCell, onClick, onSelectionBox, onGroupMovePreview],
+    [toCell, onClick, onSelectionBox, onGroupMovePreview, toFrac, cols, rows],
   );
 
   const handlePointerUp = useCallback(
     (e: PointerEvent) => {
+      // Wall-draw commit.
+      if (drawModeRef.current && drawWallKindRef.current) {
+        try {
+          (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+        } catch {
+          /* pointer may not have been captured */
+        }
+        const drag = wallDragRef.current;
+        wallDragRef.current = null;
+        setWallPreview(null);
+        if (!drag) return;
+        const [fx, fy] = toFrac(e);
+        const [bx, by] = pointAtCell(fx, fy, cols, rows);
+        const [ax, ay] = drag.anchor;
+        const k = drawWallKindRef.current;
+        const edges = wallRun(ax, ay, bx, by);
+        let next = wallsRef.current;
+        if (edges.length === 0) {
+          if (drag.clickEdge)
+            next =
+              drag.kind === "erase"
+                ? removeWalls(next, [drag.clickEdge])
+                : upsertWalls(next, [withKind(drag.clickEdge, k)]);
+        } else {
+          next =
+            drag.kind === "erase"
+              ? removeWalls(next, edges)
+              : upsertWalls(
+                  next,
+                  edges.map((edge) => withKind(edge, k)),
+                );
+        }
+        onWallsChangeRef.current?.(next);
+        return;
+      }
       if (!drawModeRef.current && !selectModeRef.current) return;
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
       const cell = toCell(e);
@@ -266,13 +461,14 @@ export function GridCanvas({
         return;
       }
 
-      if (hitRef.current === "selected-block") {
+      const target = hitRef.current;
+      if (target === "selected-block" || target === "selected-wall") {
         if (isDraggingGroup.current) onGroupMoveCommit?.();
         moveOriginRef.current = null;
         setMoveOrigin(null);
         isDraggingGroup.current = false;
         lastDelta.current = { dx: 0, dy: 0 };
-      } else if (hitRef.current === "unselected-block") {
+      } else if (target === "unselected-block") {
         if (hasDraggedRef.current) {
           onGroupMoveCommit?.();
         } else {
@@ -282,7 +478,17 @@ export function GridCanvas({
         setMoveOrigin(null);
         isDraggingGroup.current = false;
         lastDelta.current = { dx: 0, dy: 0 };
-      } else if (hitRef.current === "unselected-block-shift" && ds) {
+      } else if (target === "unselected-wall") {
+        if (hasDraggedRef.current) {
+          onGroupMoveCommit?.();
+        } else {
+          onWallSelectRef.current?.(clickedWall.current!, shift);
+        }
+        moveOriginRef.current = null;
+        setMoveOrigin(null);
+        isDraggingGroup.current = false;
+        lastDelta.current = { dx: 0, dy: 0 };
+      } else if (target === "unselected-block-shift" && ds) {
         const isTap = ds.col === cell.col && ds.row === cell.row;
         if (isTap) {
           onShiftSelect?.(clickedId.current!, true);
@@ -294,12 +500,9 @@ export function GridCanvas({
         setDragStart(null);
         setDragCurrent(null);
         setRubberBandAdditive(false);
-      } else if (
-        (hitRef.current === "empty" || hitRef.current === "empty-shift") &&
-        ds
-      ) {
+      } else if ((target === "empty" || target === "empty-shift") && ds) {
         const isTap = ds.col === cell.col && ds.row === cell.row;
-        const additive = hitRef.current === "empty-shift";
+        const additive = target === "empty-shift";
         if (isTap) {
           if (!additive) onSelectionBox?.(cell.col, cell.row, 0, 0);
         } else {
@@ -314,9 +517,19 @@ export function GridCanvas({
 
       hitRef.current = "empty";
       clickedId.current = null;
+      clickedWall.current = null;
       hasDraggedRef.current = false;
     },
-    [toCell, onDrawComplete, onGroupMoveCommit, onShiftSelect, onSelectionBox],
+    [
+      toCell,
+      onDrawComplete,
+      onGroupMoveCommit,
+      onShiftSelect,
+      onSelectionBox,
+      toFrac,
+      cols,
+      rows,
+    ],
   );
 
   // Attach with passive:false so preventDefault() works on mobile touch
@@ -335,6 +548,21 @@ export function GridCanvas({
 
   const ghostRect =
     dragStart && dragCurrent ? cornersToRect(dragStart, dragCurrent) : null;
+
+  // Walls belonging to the current selection (outlined, and moved by a group
+  // drag): every wall inside the selected blocks' bbox, unioned with any walls
+  // selected on their own.
+  const selBounds =
+    selectMode && selectedIds.size > 0
+      ? footprintBounds(blocks, selectedIds)
+      : null;
+  const selWallKeys = selectMode
+    ? effectiveWallKeys(walls, selBounds, selectedWallKeys)
+    : null;
+  const selectedWalls =
+    selWallKeys && selWallKeys.size
+      ? walls.filter((w) => selWallKeys.has(wallKey(w)))
+      : [];
 
   // ── Layout ───────────────────────────────────────────────
 
@@ -577,6 +805,46 @@ export function GridCanvas({
                 selectMode,
                 rubberBandAdditive,
               )}
+            />
+          )}
+
+          {/* Wall layer — always drawn; placed in draw mode, moved in select. */}
+          <WallLayer
+            walls={walls}
+            cols={cols}
+            rows={rows}
+            originX={wallOrigin}
+            originY={wallOrigin}
+            pitchX={wallPitchX}
+            pitchY={wallPitchY}
+          />
+
+          {/* Selection outline — a thin grey ring hugging the selected walls. */}
+          {selectedWalls.length > 0 && (
+            <WallLayer
+              walls={selectedWalls}
+              cols={cols}
+              rows={rows}
+              originX={wallOrigin}
+              originY={wallOrigin}
+              pitchX={wallPitchX}
+              pitchY={wallPitchY}
+              glow="#475569"
+              zIndex={6}
+            />
+          )}
+
+          {wallPreview && wallPreview.edges.length > 0 && (
+            <WallLayer
+              walls={wallPreview.edges}
+              cols={cols}
+              rows={rows}
+              originX={wallOrigin}
+              originY={wallOrigin}
+              pitchX={wallPitchX}
+              pitchY={wallPitchY}
+              solid={wallPreview.mode === "erase" ? "#ef4444" : "#9aa3b1"}
+              opacity={0.75}
             />
           )}
         </>

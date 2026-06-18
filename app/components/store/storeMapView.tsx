@@ -8,6 +8,8 @@ import {
   itemRunoutDays,
 } from "~/utils/helpers/storeTable.helper";
 import { FixtureGraphic } from "~/lib/fixtures";
+import { WallLayer } from "~/components/common/wallLayer";
+import type { Wall } from "~/types/wallTypes";
 import { GridRuler } from "~/components/addstore/storeViewFinder/GridRuler";
 import { useProductImage } from "~/utils/useProductImage";
 import { TypeIcon } from "./typeIcon";
@@ -56,6 +58,8 @@ type Props = {
   canEdit: boolean;
   isOwner: boolean;
   storeIsPublic: boolean;
+  /** Edge-based wall layer rendered over the floor. */
+  walls?: Wall[];
   /** Search-jump target — opens & pulses this zone's panel. */
   pulseZoneId?: string | null;
   /** Item to flag inside the opened panel after a search jump. */
@@ -91,6 +95,7 @@ export function StoreMapView({
   rows,
   items,
   canEdit,
+  walls = [],
   pulseZoneId,
   pulseItemId,
   onSaveItem,
@@ -393,6 +398,9 @@ export function StoreMapView({
                   />
                 );
               })}
+
+              {/* ── Wall layer (over the floor + blocks) ── */}
+              <WallLayer walls={walls} cell={cell} cols={cols} rows={rows} />
 
               {/* ── Expanded shelf panel (anchored to the block) ── */}
               {openBlock && (

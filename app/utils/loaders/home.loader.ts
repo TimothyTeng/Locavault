@@ -1,4 +1,4 @@
-import { getAuth } from "@clerk/react-router/server";
+import { getAuth } from "~/lib/auth";
 import {
   createPurchaseOrder,
   deleteStore,

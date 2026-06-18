@@ -601,6 +601,55 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
    - ✅ *Done (chores):* `/api/barcode` hardened (auth + per-user rate limit +
      24h cache, with a tested `rateLimit.helper`); dead imports/props pruned
      (lint warnings 29 → 20).
+   - ✅ *Done (map polish):* softened the fixture palette — `shade()` now mixes
+     proportionally toward black/white instead of a fixed additive offset, so a
+     block's outline/shadow stay in its own hue (a green shelf's outline is a
+     deep green, not black) — and redesigned the chunky cabinet/wardrobe/pantry/
+     drawers sprites to a cleaner, cohesive style (`app/lib/fixtures.tsx`).
+   - ✅ *Done (9-slice fixtures):* storage/counter fixtures now render as ONE
+     coherent object at the block's full size (fixed caps + repeating/stretching
+     middle) instead of duplicated per-cell tiles — `fill: "slice"`, size-aware
+     `SPRITE_BUILDERS(W,H)`, run-length-merged rects. A 1×3 cabinet is one tall
+     cabinet; a 4×1 counter is one run. (Toward the Stardew-style top-down look —
+     **in-code sprites**, no external tileset.)
+   - ✅ *Done (wall system):* an edge-based **wall layer** — segments live on the
+     grid lines *between* cells, auto-join into runs + corner posts. They're drawn
+     and edited from the **Draw** tab, not a separate mode: the draw toolbar carries
+     **Wall / Door / Window** tools alongside the block types. With a wall tool
+     active, drag = straight axis-locked run (Clash-of-Clans style), drag-from-a-
+     matching-segment = erase the run, click = toggle one; drawing one kind over
+     another converts it (door = framed opening + threshold, window = glazed pane).
+     Persisted as JSON on `stores.walls` (migration `0001_add_walls`), rendered in
+     the editor and the store map (slate, thin). Existing dividers untouched.
+     (`wall.helper.ts` + tests, `WallLayer`, `GridCanvas` draw branch.)
+     **Select** mode handles walls as first-class: click a wall to select just it
+     (`edgeAtCell` hit-test), or box-select to grab the walls inside the rectangle;
+     selected walls get a thin grey outline matching the block selection ring
+     (`WallLayer` glow). A group move carries the selection's walls along by the
+     same delta — the selected blocks' bbox ∪ explicitly-selected walls
+     (`effectiveWallKeys` → `moveWalls`, offset from an original-walls snapshot, the
+     rest stay put; unit-tested). ⌫ deletes selected walls too. Undoable like any
+     other edit. Walls also persist through **templates** now (`templates.walls`,
+     migration `0002`): the from-scratch builder and save-store-as-template both
+     capture the wall layer, and instantiating a store from a template copies it
+     back. The old `Door`/`Wall` divider block presets were removed — they're wall
+     tools now. Gallery/dashboard **thumbnails** render the wall layer too
+     (`GridThumbnail` draws thin bars coloured by kind, in its own SVG space).
+     *Follow-ups:* stone/wood floor textures.
+   - ✅ *Done (editor UX):* the block-picker modal is now viewport-capped
+     (`max-h-[90dvh]`) with a scrollable body so it never overflows off-screen;
+     the floor-plan builder supports **undo/redo** (⌘/Ctrl+Z, +Shift or Ctrl+Y —
+     coalesced snapshots of blocks+walls, so a drag is one step) and
+     **copy/paste** of selected blocks (Ctrl+C/V — pasted offset by one cell with
+     fresh ids).
+   - ✅ *Done (auth):* the temporary DEV-only Clerk bypass was **removed** —
+     `app/lib/auth.ts`'s `getAuth` now delegates straight to Clerk (`userId` is
+     `null` when signed out) and `requireAuth` redirects to `/`. Re-verified that
+     every loader/action gates on real Clerk auth: `requireAuth` on `/addstore`,
+     `/templates`, `/templates/new`, `/trade`; `getAuth` + `verifyStoreAccess`
+     (none → redirect, viewer/public filtered) on `/store/:id` and its action;
+     owner/editor required for `/store/:id/edit`; owner-only mutations via
+     `verifyStoreOwner`/`verifyTemplateOwner`; `/api/barcode` 401s when signed out.
    - ⬜ *Next (from the audit):* shared panel/modal/button/empty-state component
      pass (dedupe the hand-rolled variants — best done with a browser to verify);
      error monitoring; a focused typing pass for the remaining `any`s.

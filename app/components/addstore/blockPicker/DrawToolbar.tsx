@@ -2,11 +2,70 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import { AddBlockModal } from "./AddBlockModal";
 import { DEFAULT_BLOCKS, type Block } from "#types/BlockTypes";
 import { FixtureGraphic } from "#lib/fixtures";
+import type { WallKind } from "#types/wallTypes";
 
 interface DrawToolbarProps {
   selectedBlock: Block;
   onSelectionChange: (block: Block) => void;
   onBlocksChange?: (blocks: Block[]) => void;
+  /** Active wall tool (null = drawing blocks, not walls). */
+  wallKind: WallKind | null;
+  onWallKindChange: (kind: WallKind) => void;
+}
+
+// Small glyph for each wall tool pill.
+function WallToolGlyph({ kind, color }: { kind: WallKind; color: string }) {
+  if (kind === "door")
+    return (
+      <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden>
+        <rect
+          x="2"
+          y="1"
+          width="6.5"
+          height="9"
+          rx="0.5"
+          stroke={color}
+          strokeWidth="1.1"
+        />
+        <circle cx="6.6" cy="5.5" r="0.7" fill={color} />
+      </svg>
+    );
+  if (kind === "window")
+    return (
+      <svg width="11" height="11" viewBox="0 0 11 11" fill="none" aria-hidden>
+        <rect
+          x="1.5"
+          y="2"
+          width="8"
+          height="7"
+          rx="0.5"
+          stroke={color}
+          strokeWidth="1.1"
+        />
+        <line
+          x1="5.5"
+          y1="2"
+          x2="5.5"
+          y2="9"
+          stroke={color}
+          strokeWidth="1.1"
+        />
+        <line
+          x1="1.5"
+          y1="5.5"
+          x2="9.5"
+          y2="5.5"
+          stroke={color}
+          strokeWidth="1.1"
+        />
+      </svg>
+    );
+  return (
+    <span
+      className="w-3 h-1.5 rounded-[1px] shrink-0"
+      style={{ background: color }}
+    />
+  );
 }
 
 // ── Colour helpers ────────────────────────────────────────
@@ -78,6 +137,8 @@ export function DrawToolbar({
   selectedBlock,
   onSelectionChange,
   onBlocksChange,
+  wallKind,
+  onWallKindChange,
 }: DrawToolbarProps) {
   const [blocks, setBlocks] = useState<Block[]>(DEFAULT_BLOCKS);
   const [modalOpen, setModalOpen] = useState(false);
@@ -223,7 +284,8 @@ export function DrawToolbar({
           style={{ scrollbarWidth: "none", msOverflowStyle: "none" }}
         >
           {blocks.map((block, i) => {
-            const isSelected = block.id === selectedBlock.id;
+            const isSelected =
+              wallKind === null && block.id === selectedBlock.id;
             const isDefault = block.id.startsWith("default-");
             const displayColor = readableColor(block.color);
 
@@ -299,6 +361,33 @@ export function DrawToolbar({
         onClick={() => scrollToPill("right")}
         disabled={!showFadeRight}
       />
+
+      {/* Wall tools — draw walls/doors/windows along grid lines */}
+      <div className="shrink-0 w-px h-5 bg-slate-700" />
+      <div className="flex items-center gap-1 shrink-0">
+        {(["wall", "door", "window"] as WallKind[]).map((k) => {
+          const active = wallKind === k;
+          const color = active ? "#cbd5e1" : "#94a3b8";
+          return (
+            <button
+              key={k}
+              onClick={() => onWallKindChange(k)}
+              aria-pressed={active}
+              title={`Draw ${k}s`}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-mono font-medium capitalize transition-all"
+              style={{
+                background: active ? "#cbd5e122" : "transparent",
+                color,
+                border: `1px solid ${active ? "#cbd5e1" : "transparent"}`,
+                boxShadow: active ? "0 0 0 1px #cbd5e144" : "none",
+              }}
+            >
+              <WallToolGlyph kind={k} color={color} />
+              {k}
+            </button>
+          );
+        })}
+      </div>
 
       {/* Add button */}
       <button
