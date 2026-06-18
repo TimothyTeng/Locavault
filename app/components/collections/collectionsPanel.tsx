@@ -12,6 +12,7 @@ import {
   Luggage,
 } from "lucide-react";
 import type { Item } from "~/types/storeTypes";
+import { EmptyState } from "~/components/common/EmptyState";
 import type { BlocksMap } from "~/types/storeViewFinderTypes";
 import type { Collection, CollectionKind } from "~/types/collectionTypes";
 import { useDialog } from "~/components/common/useDialog";
@@ -181,17 +182,13 @@ export function CollectionsPanel({
             )}
 
             {collections.length === 0 ? (
-              <div className="flex flex-col items-center justify-center gap-2 py-16 text-center">
-                <Luggage size={26} className="text-slate-300" />
-                <p className="text-[12px] font-semibold text-slate-500">
-                  No collections yet
-                </p>
-                <p className="max-w-[16rem] text-[11px] text-slate-400">
-                  Group items to pack for a trip, lend out, or set aside — each
-                  shows where it lives, and you can check the set out and back
-                  in.
-                </p>
-              </div>
+              <EmptyState
+                className="gap-2 py-16"
+                icon={<Luggage size={26} className="text-slate-300" />}
+                title="No collections yet"
+                description="Group items to pack for a trip, lend out, or set aside — each shows where it lives, and you can check the set out and back in."
+                descriptionClassName="max-w-[16rem] text-[11px] text-slate-400"
+              />
             ) : (
               <div className="flex flex-col gap-2">
                 {collections.map((c) => {

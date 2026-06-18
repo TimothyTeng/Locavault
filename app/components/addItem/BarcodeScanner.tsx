@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { CloseButton } from "~/components/common/CloseButton";
 
 type Props = {
   onDetect: (raw: string, format?: string) => void;
@@ -140,19 +141,10 @@ export function BarcodeScanner({ onDetect, onClose }: Props) {
           <span className="text-[10px] font-bold uppercase tracking-widest text-slate-700">
             Scan barcode
           </span>
-          <button
+          <CloseButton
             onClick={onClose}
             className="w-7 h-7 rounded-full border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700 transition-all"
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-              <path
-                d="M1 1l8 8M9 1L1 9"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
+          />
         </div>
 
         {/* Camera view */}

@@ -7,6 +7,7 @@ import {
   type RecipeMatch,
 } from "~/utils/helpers/recipes.helper";
 import { useDialog } from "~/components/common/useDialog";
+import { EmptyState } from "~/components/common/EmptyState";
 
 type Filter = "all" | "cook" | "almost" | "useup";
 
@@ -158,18 +159,19 @@ export function RecipesPanel({
         {/* List */}
         <div className="flex-1 overflow-auto px-4 pb-6">
           {shown.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-1 py-16 text-center">
-              <p className="text-[12px] font-semibold text-slate-500">
-                {matches.length === 0
+            <EmptyState
+              className="gap-1 py-16"
+              title={
+                matches.length === 0
                   ? "Add some food to see recipe ideas"
-                  : "No recipes match that filter"}
-              </p>
-              <p className="text-[11px] text-slate-400">
-                {matches.length === 0
+                  : "No recipes match that filter"
+              }
+              description={
+                matches.length === 0
                   ? "Recipes read the edible items in this store."
-                  : "Try “All”, or clear the search."}
-              </p>
-            </div>
+                  : "Try “All”, or clear the search."
+              }
+            />
           ) : (
             <div className="flex flex-col gap-2.5">
               {shown.map((m) => (

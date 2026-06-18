@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { AddItemForm } from "#components/addItem/addItemForm";
 import type { ItemType } from "~/lib/itemTypes";
+import { CloseButton } from "~/components/common/CloseButton";
 
 type Props = {
   isOpen: boolean;
@@ -63,19 +64,7 @@ export function AddItemPanel({
           <span className="text-[10px] font-bold uppercase tracking-widest text-slate-800">
             Add Item
           </span>
-          <button
-            onClick={onClose}
-            className="w-7 h-7 rounded-full border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:border-slate-400 transition-all"
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-              <path
-                d="M1 1l8 8M9 1L1 9"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
+          <CloseButton onClick={onClose} />
         </div>
 
         {/* Form — scrollable */}
@@ -106,19 +95,7 @@ export function AddItemPanel({
         <span className="text-[10px] font-bold uppercase tracking-widest text-slate-800">
           Add Item
         </span>
-        <button
-          onClick={onClose}
-          className="w-7 h-7 rounded-full border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:border-slate-400 transition-all"
-        >
-          <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-            <path
-              d="M1 1l8 8M9 1L1 9"
-              stroke="currentColor"
-              strokeWidth="1.6"
-              strokeLinecap="round"
-            />
-          </svg>
-        </button>
+        <CloseButton onClick={onClose} />
       </div>
 
       {/* Form */}

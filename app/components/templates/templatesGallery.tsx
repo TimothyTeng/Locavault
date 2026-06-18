@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFetcher, useNavigate } from "react-router";
 import type { TemplateWithBlocks } from "~/types/templateTypes";
 import { TemplateCard } from "./templateCard";
+import { CloseButton } from "~/components/common/CloseButton";
 
 type StoreOption = { id: string; name: string };
 
@@ -310,19 +311,10 @@ function FromStoreModal({
           <span className="text-[11px] font-bold uppercase tracking-widest text-slate-700">
             Save store as template
           </span>
-          <button
+          <CloseButton
             onClick={onClose}
             className="w-7 h-7 rounded-full border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700"
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-              <path
-                d="M1 1l8 8M9 1L1 9"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
+          />
         </div>
 
         <div className="px-5 py-4 flex flex-col gap-3">
