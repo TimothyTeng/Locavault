@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { X } from "lucide-react";
+import { useDialog } from "~/components/common/useDialog";
 import { parseQuickAdd } from "~/utils/helpers/quickAdd.helper";
 import { inferTypeFromLabel } from "~/lib/itemTypes";
 import type { ItemType } from "~/types/itemTypeTypes";
@@ -32,6 +33,7 @@ export function QuickAddPanel({
   const [text, setText] = useState("");
   const [blockId, setBlockId] = useState<string | null>(defaultBlockId);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const dialogRef = useDialog(isOpen, onClose);
 
   useEffect(() => {
     if (isOpen) {
@@ -65,13 +67,16 @@ export function QuickAddPanel({
         onClick={onClose}
       />
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        aria-label="Quick add items"
+        tabIndex={-1}
         onKeyDown={(e) => {
-          if (e.key === "Escape") onClose();
+          // Escape/focus-trap handled by useDialog; keep the submit shortcut.
           if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
         }}
-        className="fixed left-1/2 top-1/2 z-50 flex w-full max-w-md -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl"
+        className="fixed left-1/2 top-1/2 z-50 flex w-full max-w-md -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-2xl bg-white shadow-2xl outline-none"
       >
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <div>

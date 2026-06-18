@@ -14,6 +14,7 @@ import {
 import type { Item } from "~/types/storeTypes";
 import type { BlocksMap } from "~/types/storeViewFinderTypes";
 import type { Collection, CollectionKind } from "~/types/collectionTypes";
+import { useDialog } from "~/components/common/useDialog";
 
 const KIND_LABEL: Record<CollectionKind, string> = {
   packing: "Packing",
@@ -74,6 +75,7 @@ export function CollectionsPanel({
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
+  const dialogRef = useDialog(isOpen, onClose);
 
   const open = openId
     ? (collections.find((c) => c.id === openId) ?? null)
@@ -96,9 +98,12 @@ export function CollectionsPanel({
         onClick={onClose}
       />
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        className={`fixed right-0 top-0 z-50 flex h-full w-full flex-col bg-white shadow-2xl font-mono ${
+        aria-label="Collections"
+        tabIndex={-1}
+        className={`fixed right-0 top-0 z-50 flex h-full w-full flex-col bg-white shadow-2xl font-mono outline-none ${
           isMobile ? "" : "max-w-md"
         }`}
       >

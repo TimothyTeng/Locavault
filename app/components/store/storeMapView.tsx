@@ -828,7 +828,7 @@ function GlyphChip({ item }: { item: Item }) {
       {photo ? (
         <img
           src={photo}
-          alt=""
+          alt={item.name}
           loading="lazy"
           className="h-full w-full object-cover"
         />
@@ -992,7 +992,7 @@ function ItemRow({
       {photo ? (
         <img
           src={photo}
-          alt=""
+          alt={item.name}
           loading="lazy"
           className="h-5 w-5 shrink-0 rounded object-cover border border-slate-200 bg-white"
         />

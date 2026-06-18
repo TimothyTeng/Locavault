@@ -6,6 +6,7 @@ import {
   prettyIngredient,
   type RecipeMatch,
 } from "~/utils/helpers/recipes.helper";
+import { useDialog } from "~/components/common/useDialog";
 
 type Filter = "all" | "cook" | "almost" | "useup";
 
@@ -33,6 +34,7 @@ export function RecipesPanel({
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
+  const dialogRef = useDialog(isOpen, onClose);
 
   const matches = useMemo(() => matchRecipes(items), [items]);
 
@@ -67,9 +69,12 @@ export function RecipesPanel({
         onClick={onClose}
       />
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        className={`fixed right-0 top-0 z-50 flex h-full w-full flex-col bg-white shadow-2xl font-mono ${
+        aria-label="Recipes"
+        tabIndex={-1}
+        className={`fixed right-0 top-0 z-50 flex h-full w-full flex-col bg-white shadow-2xl font-mono outline-none ${
           isMobile ? "" : "max-w-md"
         }`}
       >

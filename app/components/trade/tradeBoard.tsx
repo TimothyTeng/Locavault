@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { TypeIcon } from "~/components/store/typeIcon";
 import { useFetcherFailureToast } from "~/components/common/toast";
+import { useDialog } from "~/components/common/useDialog";
 import type { ItemType } from "~/types/itemTypeTypes";
 import type {
   TradeListing,
@@ -568,6 +569,7 @@ function MakeOfferModal({
 }) {
   const [message, setMessage] = useState("");
   const [offeredItemId, setOfferedItemId] = useState("");
+  const dialogRef = useDialog(true, onClose);
 
   return (
     <>
@@ -576,9 +578,12 @@ function MakeOfferModal({
         onClick={onClose}
       />
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl bg-white shadow-2xl"
+        aria-label="Propose a trade"
+        tabIndex={-1}
+        className="fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl bg-white shadow-2xl outline-none"
       >
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <div>

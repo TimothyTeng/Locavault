@@ -14,6 +14,7 @@ import {
   itemRunoutDays,
 } from "~/utils/helpers/storeTable.helper";
 import { describeUsage } from "~/utils/helpers/usage.helper";
+import { useDialog } from "~/components/common/useDialog";
 
 export function ItemDetailPopup({
   item,
@@ -32,6 +33,7 @@ export function ItemDetailPopup({
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const dialogRef = useDialog(true, onClose);
 
   // Editable fields
   const [name, setName] = useState(item.name);
@@ -134,7 +136,12 @@ export function ItemDetailPopup({
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-xl border border-slate-200 shadow-xl w-full max-w-sm p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${item.name} details`}
+        tabIndex={-1}
+        className="bg-white rounded-xl border border-slate-200 shadow-xl w-full max-w-sm p-6 flex flex-col gap-4 max-h-[90vh] overflow-y-auto outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

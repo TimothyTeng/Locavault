@@ -111,7 +111,7 @@ export function ItemCard({
             {photo ? (
               <img
                 src={photo}
-                alt=""
+                alt={item.name}
                 loading="lazy"
                 className="w-6 h-6 rounded-md object-cover border border-slate-200 bg-white shrink-0"
               />
