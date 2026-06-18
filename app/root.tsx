@@ -7,6 +7,7 @@ import { ClerkProvider } from "@clerk/react-router";
 import { ErrorState } from "~/components/common/errorState";
 import { RouteProgress } from "~/components/common/routeProgress";
 import { ToastProvider } from "~/components/common/toast";
+import { logError } from "~/lib/logger";
 
 export const middleware: Route.MiddlewareFunction[] = [clerkMiddleware()];
 
@@ -42,5 +43,6 @@ export default function App({ loaderData }: Route.ComponentProps) {
 }
 
 export function ErrorBoundary({ error }: Route.ErrorBoundaryProps) {
+  logError(error, { boundary: "root" });
   return <ErrorState error={error} />;
 }

@@ -650,9 +650,22 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
      (none → redirect, viewer/public filtered) on `/store/:id` and its action;
      owner/editor required for `/store/:id/edit`; owner-only mutations via
      `verifyStoreOwner`/`verifyTemplateOwner`; `/api/barcode` 401s when signed out.
-   - ⬜ *Next (from the audit):* shared panel/modal/button/empty-state component
-     pass (dedupe the hand-rolled variants — best done with a browser to verify);
-     error monitoring; a focused typing pass for the remaining `any`s.
+   - ✅ *Done (audit):* a focused typing pass cleared the remaining explicit
+     `any`s (lint warnings 20 → 12); **lightweight in-app error monitoring** —
+     `app/lib/logger.ts`'s `logError` emits one structured JSON line per real
+     failure (5xx / thrown `Error`) to the console, tagged `env: server|client`,
+     skipping expected 4xx control-flow throws. Wired into both error boundaries
+     (root + per-route); the single sink swaps for an external service later
+     without call-site churn.
+   - ⬜ *Next (from the audit):* a shared-component dedup pass — an inventory found
+     hand-rolled duplication across **slide-in panels** (add-item, purchases,
+     members, recipes, collections), **modals** (AddBlock, quick-add, item-detail,
+     make-offer), **buttons** (primary/secondary/ghost/danger + a close-`✕` repeated
+     in 11+ files), and **empty states** (dashboard, purchases, recipes,
+     collections, trade). Proposed primitives in `components/common/`: `CloseButton`
+     + `EmptyState` first (lowest risk), then `Button`, then `SidePanel` /`Modal`
+     (reusing the existing `useDialog` hook). Best executed with a browser to verify
+     no visual regressions.
 
 ---
 
