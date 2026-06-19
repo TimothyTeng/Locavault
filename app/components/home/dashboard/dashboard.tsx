@@ -12,6 +12,7 @@ import type {
 import { StoreCard } from "./storecard";
 import { EmptyState } from "./emptystate";
 import { AttentionDigest } from "./attentionDigest";
+import { Button } from "~/components/common/Button";
 import { CountUp } from "#components/common/countUp";
 
 // ── Main Dashboard ─────────────────────────────────────────
@@ -181,15 +182,15 @@ export default function Dashboard({
             {pinnedCount > 0 && ` · ${pinnedCount} pinned`}
           </p>
         </div>
-        <button
+        <Button
+          variant="primary"
+          size="lg"
           onClick={() => navigate("/addstore")}
-          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500
-                     text-white text-sm font-semibold rounded-xl transition-colors
-                     shadow-sm shadow-emerald-900/10 self-start sm:self-auto"
+          className="shadow-sm shadow-emerald-900/10 self-start sm:self-auto"
         >
           <Plus size={15} strokeWidth={2.4} />
           New store
-        </button>
+        </Button>
       </div>
 
       {/* ── Foresight digest ── */}
