@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { CloseButton } from "~/components/common/CloseButton";
 import {
   PRESET_COLORS,
   BLOCK_KIND_META,
@@ -121,21 +122,11 @@ export function AddBlockModal({ onAdd, onClose }: Props) {
           <span className="text-sm font-semibold text-gray-800 tracking-tight">
             New block type
           </span>
-          <button
+          <CloseButton
             onClick={onClose}
-            aria-label="Close"
-            className="w-7 h-7 flex items-center justify-center rounded-full
-                       text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
-          >
-            <svg width="11" height="11" viewBox="0 0 11 11" fill="none">
-              <path
-                d="M1 1l9 9M10 1L1 10"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
+            size={11}
+            className="w-7 h-7 flex items-center justify-center rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+          />
         </div>
 
         {/* Body */}

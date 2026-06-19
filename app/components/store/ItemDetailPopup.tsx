@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
+import { CloseButton } from "~/components/common/CloseButton";
 import type { Item } from "~/types/storeTypes";
 import {
   fieldsForType,
@@ -162,19 +163,12 @@ export function ItemDetailPopup({
               </p>
             )}
           </div>
-          <button
+          <CloseButton
             onClick={onClose}
+            size={14}
+            strokeWidth={1.8}
             className="text-slate-300 hover:text-slate-600 transition-colors ml-3 shrink-0"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path
-                d="M2 2l10 10M12 2L2 12"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
+          />
         </div>
 
         {/* Fields */}
