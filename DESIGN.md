@@ -657,15 +657,33 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
      skipping expected 4xx control-flow throws. Wired into both error boundaries
      (root + per-route); the single sink swaps for an external service later
      without call-site churn.
-   - ⬜ *Next (from the audit):* a shared-component dedup pass — an inventory found
-     hand-rolled duplication across **slide-in panels** (add-item, purchases,
-     members, recipes, collections), **modals** (AddBlock, quick-add, item-detail,
-     make-offer), **buttons** (primary/secondary/ghost/danger + a close-`✕` repeated
-     in 11+ files), and **empty states** (dashboard, purchases, recipes,
-     collections, trade). Proposed primitives in `components/common/`: `CloseButton`
-     + `EmptyState` first (lowest risk), then `Button`, then `SidePanel` /`Modal`
-     (reusing the existing `useDialog` hook). Best executed with a browser to verify
-     no visual regressions.
+   - 🟡 *In progress (component dedup):* `CloseButton` (all hand-rolled close-`✕`
+     buttons), `EmptyState` (recipes + collections), and `Button` (variant × size
+     scale; the primary emerald CTAs migrated) are done and live in
+     `components/common/`. **Remaining is not a clean dedup:** the secondary buttons
+     are a distinct `uppercase tracking-widest font-bold` pill style spread across
+     ~15 controls at inconsistent slate-800/900, text-10/11, rounded-md/lg sizes
+     (and several are toggles/tabs, not buttons) — standardising them is a design
+     decision, best folded into the polish backlog below. `SidePanel`/`Modal`
+     (Phase 3) is deferred pending the panel-presentation rethink (#3 below).
+
+   ### Next iteration — product polish (review 2026-06-19)
+
+   1. **Stretchable fixtures.** Furniture sprites still read as *duplicated* tiles
+      at larger sizes, which looks unprofessional. Want a cleaner stretch/9-slice so
+      a block reads as one coherent object while still visually representing the
+      real item (people should recognise their pantry/shelf/cabinet).
+   2. **Store-map coordinate guides.** The A–J / 1–10 ruler labels are too faint and
+      don't line up cleanly with the grid lines — bump contrast and align to the
+      cell boundaries (`GridRuler`).
+   3. **Panel presentation.** The slide-in side panels feel slightly out of place.
+      Research how other products surface this kind of secondary content (e.g. a
+      docked sheet, a centred modal, an inline drawer) and pick a more polished
+      pattern. This subsumes the deferred `SidePanel`/`Modal` extraction + the
+      secondary-button standardisation.
+   4. **Recipes.** Let users add their own recipes; then integrate a public-recipe
+      source — a recipes API and/or web-scraping — so the library isn't only the
+      seeded set.
 
 ---
 
