@@ -331,29 +331,48 @@ export function StoreMapView({
                 height: contentH,
               }}
             >
-              {/* Room regions — passive grouping layer, behind tiles */}
-              {rooms.map((r) => (
-                <div
-                  key={r.id}
-                  data-room-id={r.id}
-                  className="absolute rounded-md pointer-events-none"
-                  style={{
-                    left: r.x * cell,
-                    top: r.y * cell,
-                    width: r.w * cell,
-                    height: r.h * cell,
-                    background: `${r.border}0e`,
-                    border: `1.5px dashed ${r.border}59`,
-                  }}
-                >
-                  <span
-                    className="absolute left-1 top-1 rounded bg-white/80 px-1 font-mono uppercase tracking-wide leading-none"
-                    style={{ fontSize: 9, color: r.border, paddingBlock: 1 }}
+              {/* Room regions — passive grouping layer, behind tiles. The
+                  focused room (selected in the room bar) gets a solid ring so
+                  it's obvious which room you're zoomed into. */}
+              {rooms.map((r) => {
+                const isFocused = r.id === focusRoomId;
+                const dimmed = focusRoomId !== null && !isFocused;
+                return (
+                  <div
+                    key={r.id}
+                    data-room-id={r.id}
+                    className="absolute rounded-md pointer-events-none transition-all duration-200"
+                    style={{
+                      left: r.x * cell,
+                      top: r.y * cell,
+                      width: r.w * cell,
+                      height: r.h * cell,
+                      background: isFocused ? `${r.border}1f` : `${r.border}0e`,
+                      border: isFocused
+                        ? `2px solid ${r.border}`
+                        : `1.5px dashed ${r.border}59`,
+                      boxShadow: isFocused
+                        ? `0 0 0 3px ${r.border}26`
+                        : undefined,
+                      opacity: dimmed ? 0.45 : 1,
+                    }}
                   >
-                    {r.label}
-                  </span>
-                </div>
-              ))}
+                    <span
+                      className="absolute left-1 top-1 rounded px-1 font-mono uppercase tracking-wide leading-none"
+                      style={{
+                        fontSize: 9,
+                        paddingBlock: 1,
+                        color: isFocused ? "#fff" : r.border,
+                        background: isFocused
+                          ? r.border
+                          : "rgba(255,255,255,0.8)",
+                      }}
+                    >
+                      {r.label}
+                    </span>
+                  </div>
+                );
+              })}
 
               {Object.entries(blocks).map(([bid, b]) => {
                 if (b.kind === "room") return null;
@@ -562,21 +581,34 @@ export function StoreMapView({
               setFocusRoomId(null);
               setZoom(1);
             }}
-            className="shrink-0 rounded-md px-2 py-0.5 text-[10px] font-mono text-slate-500 hover:bg-slate-100"
+            aria-pressed={focusRoomId === null}
+            className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-mono transition-colors ${
+              focusRoomId === null
+                ? "bg-slate-900 text-white"
+                : "text-slate-500 hover:bg-slate-100"
+            }`}
           >
             All
           </button>
-          {rooms.map((r) => (
-            <button
-              key={r.id}
-              onClick={() => zoomToRoom(r)}
-              title={`Zoom to ${r.label || "room"}`}
-              className="shrink-0 rounded-md px-2 py-0.5 text-[10px] font-mono transition-all hover:brightness-95"
-              style={{ color: r.border, background: `${r.border}14` }}
-            >
-              {r.label || "Room"}
-            </button>
-          ))}
+          {rooms.map((r) => {
+            const isActive = r.id === focusRoomId;
+            return (
+              <button
+                key={r.id}
+                onClick={() => zoomToRoom(r)}
+                title={`Zoom to ${r.label || "room"}`}
+                aria-pressed={isActive}
+                className="shrink-0 rounded-md px-2 py-0.5 text-[10px] font-mono transition-all hover:brightness-95"
+                style={{
+                  color: isActive ? "#fff" : r.border,
+                  background: isActive ? r.border : `${r.border}14`,
+                  boxShadow: isActive ? `0 0 0 2px ${r.border}40` : undefined,
+                }}
+              >
+                {r.label || "Room"}
+              </button>
+            );
+          })}
         </div>
       )}
 

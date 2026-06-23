@@ -612,6 +612,25 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
      `SPRITE_BUILDERS(W,H)`, run-length-merged rects. A 1×3 cabinet is one tall
      cabinet; a 4×1 counter is one run. (Toward the Stardew-style top-down look —
      **in-code sprites**, no external tileset.)
+   - ✅ *Done (vector fixtures — supersedes the pixel sprites above):* the pixel
+     art still read as *duplicated tiles* at larger sizes (backlog #1). Replaced
+     the 16×16 pixel engine with **top-down vector** fixtures — `app/lib/
+     fixtures.tsx` is now a small typed primitive DSL (`R`/`L`/`C` → rects/lines/
+     circles) and one `BUILDERS[id](W,H,tones)` per fixture, recomputed at the
+     block's size. Each piece carries its real-world signature (shelf = stocked
+     cubbies with *varied* contents, cabinet = recessed door panels + handles,
+     bed = pillows + duvet, sofa = backrest + arms + seamed seat, fridge =
+     fridge/freezer split, sink = basin + faucet…), so a block reads as ONE
+     recognisable object and the repeating parts (shelves, doors, cushions) are a
+     *modest, size-keyed* count — never tiled. Crisp at any zoom (no bitmaps).
+     `FixtureGraphic` keeps its `{fixture, color, cols, rows}` API, so the editor
+     canvas, store map, and block picker pick it up unchanged. Appliances
+     (fridge/freezer/stove/sink/washer) switched `single → fit` so they fill the
+     footprint you draw; small discrete objects (bin/nightstand/toilet/plant)
+     stay `single` (capped + centred so they don't smear in a big block). Colours
+     still derive from the block via in-hue `shade()` tones. *Follow-up:* the
+     dashboard/gallery thumbnails still draw plain coloured rects — could render
+     mini fixtures too, but they may be too small to read.
    - ✅ *Done (wall system):* an edge-based **wall layer** — segments live on the
      grid lines *between* cells, auto-join into runs + corner posts. They're drawn
      and edited from the **Draw** tab, not a separate mode: the draw toolbar carries
@@ -669,10 +688,11 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
 
    ### Next iteration — product polish (review 2026-06-19)
 
-   1. **Stretchable fixtures.** Furniture sprites still read as *duplicated* tiles
-      at larger sizes, which looks unprofessional. Want a cleaner stretch/9-slice so
-      a block reads as one coherent object while still visually representing the
-      real item (people should recognise their pantry/shelf/cabinet).
+   1. ~~**Stretchable fixtures.** Furniture sprites still read as *duplicated*
+      tiles at larger sizes, which looks unprofessional.~~ **✅ Done** — replaced
+      the pixel sprites with top-down **vector** fixtures (see "Done (vector
+      fixtures)" above); each block reads as one recognisable, non-tiled object
+      and stays crisp at any zoom.
    2. **Store-map coordinate guides.** The A–J / 1–10 ruler labels are too faint and
       don't line up cleanly with the grid lines — bump contrast and align to the
       cell boundaries (`GridRuler`).
