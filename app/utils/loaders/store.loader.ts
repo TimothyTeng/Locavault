@@ -34,6 +34,7 @@ import {
   setCollectionCheckedOut,
   getCollectionStoreId,
   getBlockStoreId,
+  getCustomFixturesByIds,
 } from "~/lib/queries";
 import { estimateUsage } from "~/utils/helpers/usage.helper";
 import {
@@ -172,6 +173,12 @@ export const loader = async (args: LoaderFunctionArgs) => {
     usage: estimateUsage(item, logsByItem.get(item.id) ?? [], now),
   }));
 
+  // Resolve any custom fixtures placed on this store's blocks (by id, so a
+  // shared/public store still renders the owner's custom fixtures).
+  const customFixtures = await getCustomFixturesByIds(
+    store.blocks.map((b) => b.fixture).filter((f): f is string => !!f),
+  );
+
   return {
     accessLevel,
     store,
@@ -180,6 +187,7 @@ export const loader = async (args: LoaderFunctionArgs) => {
     userId,
     purchaseOrders,
     collections,
+    customFixtures,
   };
 };
 

@@ -7,6 +7,8 @@ import { GridControls } from "./GridControls";
 import { ZoomControls } from "./ZoomControl";
 import { ModeToggle, handlesForMode, type Mode } from "./ModeToggle";
 import { DrawToolbar } from "../blockPicker/DrawToolbar";
+import { CustomFixtureProvider } from "#lib/fixtures";
+import type { CustomFixture } from "#types/customFixtureTypes";
 import { useZoom } from "#utils/useZoom";
 import { DEFAULT_BLOCKS } from "#types/BlockTypes";
 import type { BlocksMap, BlockState } from "#types/storeViewFinderTypes";
@@ -69,7 +71,10 @@ export default function StoreViewFinder({
   onSave,
   saveLabel,
 }: Props) {
-  const { userId } = useLoaderData();
+  const { userId, customFixtures = [] } = useLoaderData() as {
+    userId: string;
+    customFixtures?: CustomFixture[];
+  };
   const fetcher = useFetcher();
   const navigate = useNavigate();
 
@@ -490,163 +495,166 @@ export default function StoreViewFinder({
   // ── Render ────────────────────────────────────────────────
 
   return (
-    <div className="flex flex-col lg:flex-row h-full w-full overflow-hidden bg-white font-mono p-3 sm:p-6 gap-3 sm:gap-4">
-      {/* ── Left: Canvas ─────────────────────────────────────── */}
-      <div className="flex flex-col lg:w-1/2 min-w-0 min-h-0 overflow-hidden h-[55vh] lg:h-auto">
-        {/* Main toolbar */}
-        <div className="flex items-center justify-between px-3 sm:px-4 h-11 shrink-0 bg-white border-b border-slate-200 gap-2">
-          <span className="hidden sm:block text-[10px] font-bold uppercase tracking-widest text-slate-400 shrink-0">
-            Floor Plan
-          </span>
-          <div className="flex items-center gap-2 flex-1 sm:flex-initial justify-between sm:justify-end">
-            <ModeToggle mode={mode} onChange={onModeChange} />
-          </div>
-          <div className="flex items-center gap-1 shrink-0">
-            <ZoomControls
-              zoom={zoom}
-              onZoomIn={() => setZoom((z) => Math.min(3, z + 0.1))}
-              onZoomOut={() => setZoom((z) => Math.max(0.5, z - 0.1))}
-            />
-          </div>
-        </div>
-
-        {/* Draw mode — inline block + wall picker toolbar */}
-        {isDrawMode && (
-          <DrawToolbar
-            selectedBlock={selectedBlock}
-            onSelectionChange={onSelectBlock}
-            wallKind={drawWallKind}
-            onWallKindChange={setDrawWallKind}
-          />
-        )}
-
-        {/* Select mode — hint bar */}
-        {isSelectMode && (
-          <div className="px-4 py-1.5 bg-slate-800 shrink-0 flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
-            <span className="text-[10px] font-mono text-slate-300">
-              {selectedIds.size > 0 || selectedWallKeys.size > 0 ? (
-                <>
-                  <span className="font-bold text-white">
-                    {selectedIds.size + selectedWallKeys.size}
-                  </span>
-                  {" selected · drag to move · "}
-                  <span className="text-slate-400">⌫ to delete</span>
-                </>
-              ) : (
-                "Drag to box-select · click a block or wall to select it"
-              )}
+    <CustomFixtureProvider fixtures={customFixtures}>
+      <div className="flex flex-col lg:flex-row h-full w-full overflow-hidden bg-white font-mono p-3 sm:p-6 gap-3 sm:gap-4">
+        {/* ── Left: Canvas ─────────────────────────────────────── */}
+        <div className="flex flex-col lg:w-1/2 min-w-0 min-h-0 overflow-hidden h-[55vh] lg:h-auto">
+          {/* Main toolbar */}
+          <div className="flex items-center justify-between px-3 sm:px-4 h-11 shrink-0 bg-white border-b border-slate-200 gap-2">
+            <span className="hidden sm:block text-[10px] font-bold uppercase tracking-widest text-slate-400 shrink-0">
+              Floor Plan
             </span>
+            <div className="flex items-center gap-2 flex-1 sm:flex-initial justify-between sm:justify-end">
+              <ModeToggle mode={mode} onChange={onModeChange} />
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <ZoomControls
+                zoom={zoom}
+                onZoomIn={() => setZoom((z) => Math.min(3, z + 0.1))}
+                onZoomOut={() => setZoom((z) => Math.max(0.5, z - 0.1))}
+              />
+            </div>
           </div>
-        )}
 
-        <div
-          ref={canvasWrapperRef}
-          className="flex-1 overflow-auto p-4 min-h-0 overscroll-none"
-          onClick={() => {
-            if (!isDrawMode && !isSelectMode) setSelectedId(null);
-          }}
-        >
+          {/* Draw mode — inline block + wall picker toolbar */}
+          {isDrawMode && (
+            <DrawToolbar
+              selectedBlock={selectedBlock}
+              onSelectionChange={onSelectBlock}
+              wallKind={drawWallKind}
+              onWallKindChange={setDrawWallKind}
+              customFixtures={customFixtures}
+            />
+          )}
+
+          {/* Select mode — hint bar */}
+          {isSelectMode && (
+            <div className="px-4 py-1.5 bg-slate-800 shrink-0 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-sky-400 shrink-0" />
+              <span className="text-[10px] font-mono text-slate-300">
+                {selectedIds.size > 0 || selectedWallKeys.size > 0 ? (
+                  <>
+                    <span className="font-bold text-white">
+                      {selectedIds.size + selectedWallKeys.size}
+                    </span>
+                    {" selected · drag to move · "}
+                    <span className="text-slate-400">⌫ to delete</span>
+                  </>
+                ) : (
+                  "Drag to box-select · click a block or wall to select it"
+                )}
+              </span>
+            </div>
+          )}
+
           <div
-            className="relative"
-            style={{
-              width: `${zoom * 100}%`,
-              paddingTop: showRuler ? RULER : 0,
-              paddingLeft: showRuler ? RULER : 0,
+            ref={canvasWrapperRef}
+            className="flex-1 overflow-auto p-4 min-h-0 overscroll-none"
+            onClick={() => {
+              if (!isDrawMode && !isSelectMode) setSelectedId(null);
             }}
           >
-            {showRuler && <GridRuler cols={COLS} rows={ROWS} size={RULER} />}
-            <GridCanvas
-              key={`${COLS}-${ROWS}`}
-              cols={COLS}
-              rows={ROWS}
-              blocks={blocks}
-              handles={handles}
-              selectedId={selectedId}
-              selectedIds={selectedIds}
-              onClick={onBlockClick}
-              onShiftSelect={onShiftSelect}
-              onLayoutChange={onLayoutChange}
-              onDrawComplete={onDrawComplete}
-              onSelectionBox={onSelectionBox}
-              onGroupMovePreview={onGroupMovePreview}
-              onGroupMoveCommit={onGroupMoveCommit}
-              drawMode={isDrawMode}
-              selectMode={isSelectMode}
-              walls={walls}
-              drawWallKind={drawWallKind}
-              selectedWallKeys={selectedWallKeys}
-              onWallSelect={onWallSelect}
-              onWallsChange={setWalls}
-              captureTouches={isDrawMode || isSelectMode}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* ── Right: Controls + Form ────────────────────────────── */}
-      <div className="flex flex-col lg:w-1/2 shrink-0 bg-white border-t lg:border-t-0 lg:border-l border-slate-200 overflow-y-auto max-h-64 lg:max-h-none px-5">
-        <div className="flex items-center justify-between px-6 h-14 shrink-0 border-b border-slate-200">
-          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-800">
-            {onSave
-              ? "New Template"
-              : initialData
-                ? "Edit Store"
-                : "Store View Finder"}
-          </span>
-          <span className="text-[10px] text-slate-400">
-            {Object.keys(blocks).length} block
-            {Object.keys(blocks).length !== 1 ? "s" : ""}
-          </span>
-        </div>
-
-        <div className="mt-4 px-6 pb-4 border-b border-slate-100">
-          <FieldLabel>Grid Size</FieldLabel>
-          <div className="mt-2">
-            <GridControls
-              cols={COLS}
-              rows={ROWS}
-              onColsChange={onColsChange}
-              onRowsChange={onRowsChange}
-            />
-            <label className="mt-3 flex items-center gap-2 text-[11px] font-mono text-slate-500 cursor-pointer select-none">
-              <input
-                type="checkbox"
-                checked={showRuler}
-                onChange={(e) => setShowRuler(e.target.checked)}
-                className="accent-slate-700"
+            <div
+              className="relative"
+              style={{
+                width: `${zoom * 100}%`,
+                paddingTop: showRuler ? RULER : 0,
+                paddingLeft: showRuler ? RULER : 0,
+              }}
+            >
+              {showRuler && <GridRuler cols={COLS} rows={ROWS} size={RULER} />}
+              <GridCanvas
+                key={`${COLS}-${ROWS}`}
+                cols={COLS}
+                rows={ROWS}
+                blocks={blocks}
+                handles={handles}
+                selectedId={selectedId}
+                selectedIds={selectedIds}
+                onClick={onBlockClick}
+                onShiftSelect={onShiftSelect}
+                onLayoutChange={onLayoutChange}
+                onDrawComplete={onDrawComplete}
+                onSelectionBox={onSelectionBox}
+                onGroupMovePreview={onGroupMovePreview}
+                onGroupMoveCommit={onGroupMoveCommit}
+                drawMode={isDrawMode}
+                selectMode={isSelectMode}
+                walls={walls}
+                drawWallKind={drawWallKind}
+                selectedWallKeys={selectedWallKeys}
+                onWallSelect={onWallSelect}
+                onWallsChange={setWalls}
+                captureTouches={isDrawMode || isSelectMode}
               />
-              Coordinate guides (A1 · B3)
-            </label>
+            </div>
           </div>
         </div>
 
-        {/* Block picker section removed — now lives in DrawToolbar above the canvas */}
-
-        <div className="px-6 py-5 flex-1 min-h-0 pb-8">
-          <StoreForm
-            initialValues={
-              initialData
-                ? {
-                    name: initialData.name,
-                    tags: initialData.tags,
-                    description: initialData.description,
-                  }
-                : undefined
-            }
-            submitLabel={
-              onSave
-                ? (saveLabel ?? "Save template")
+        {/* ── Right: Controls + Form ────────────────────────────── */}
+        <div className="flex flex-col lg:w-1/2 shrink-0 bg-white border-t lg:border-t-0 lg:border-l border-slate-200 overflow-y-auto max-h-64 lg:max-h-none px-5">
+          <div className="flex items-center justify-between px-6 h-14 shrink-0 border-b border-slate-200">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-800">
+              {onSave
+                ? "New Template"
                 : initialData
-                  ? "Save changes"
-                  : "Save"
-            }
-            onSubmit={(name, tags, description) =>
-              submitForm(name, tags, description)
-            }
-          />
+                  ? "Edit Store"
+                  : "Store View Finder"}
+            </span>
+            <span className="text-[10px] text-slate-400">
+              {Object.keys(blocks).length} block
+              {Object.keys(blocks).length !== 1 ? "s" : ""}
+            </span>
+          </div>
+
+          <div className="mt-4 px-6 pb-4 border-b border-slate-100">
+            <FieldLabel>Grid Size</FieldLabel>
+            <div className="mt-2">
+              <GridControls
+                cols={COLS}
+                rows={ROWS}
+                onColsChange={onColsChange}
+                onRowsChange={onRowsChange}
+              />
+              <label className="mt-3 flex items-center gap-2 text-[11px] font-mono text-slate-500 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showRuler}
+                  onChange={(e) => setShowRuler(e.target.checked)}
+                  className="accent-slate-700"
+                />
+                Coordinate guides (A1 · B3)
+              </label>
+            </div>
+          </div>
+
+          {/* Block picker section removed — now lives in DrawToolbar above the canvas */}
+
+          <div className="px-6 py-5 flex-1 min-h-0 pb-8">
+            <StoreForm
+              initialValues={
+                initialData
+                  ? {
+                      name: initialData.name,
+                      tags: initialData.tags,
+                      description: initialData.description,
+                    }
+                  : undefined
+              }
+              submitLabel={
+                onSave
+                  ? (saveLabel ?? "Save template")
+                  : initialData
+                    ? "Save changes"
+                    : "Save"
+              }
+              onSubmit={(name, tags, description) =>
+                submitForm(name, tags, description)
+              }
+            />
+          </div>
         </div>
       </div>
-    </div>
+    </CustomFixtureProvider>
   );
 }

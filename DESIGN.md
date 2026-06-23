@@ -631,6 +631,29 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
      still derive from the block via in-hue `shade()` tones. *Follow-up:* the
      dashboard/gallery thumbnails still draw plain coloured rects — could render
      mini fixtures too, but they may be too small to read.
+   - ✅ *Done (categorized picker + room select):* the Add-block modal now leads
+     with a category gallery (Storage / Furniture / Appliances / Objects) and a
+     **Structural** group (Plain / Room / Divider / Stairs) — stairs & dividers are
+     no longer top-level "types" (`category` on `FIXTURE_META`). The store-map room
+     selector marks the active room button and rings the focused room (others dim);
+     selecting already centres it. The **desk** was redrawn as table-family (inset
+     top + corner legs + drawer pedestal).
+   - 🟡 *In progress (custom fixtures — freeform builder):* users can draw their
+     **own** fixtures and use them like built-ins. A freeform shape editor
+     (`CustomFixtureEditor`) — add rect / bar / circle base shapes, drag to move,
+     drag the corner to resize, per-shape fill tone, layer, duplicate, delete —
+     saves a `customFixtures` row (`{name, category, defaultColor, shapes}`, shapes
+     a JSON `CustomShape[]` in a normalised 0–100 box; migration `0003`). Shapes are
+     colour-relative (each names a tone resolved from the block colour at render),
+     so a custom fixture recolours per block like the built-ins. `block.fixture` is
+     now free text — a built-in `FixtureId` **or** a `cf_<id>` (`FixtureRef`); blocks
+     resolve `cf_*` through a `CustomFixtureProvider` context (loaded per page). The
+     Add-block modal's **Custom** group lists your fixtures + a ＋New tile (editor);
+     CRUD via `/api/fixtures` (per-user authorised). Wired into the addstore /
+     editstore / templates.new editors and the store map. *Pending:* the `0003`
+     migration must be applied to the live Turso DB before it works end-to-end;
+     custom fixtures on a template/store shared with another user won't resolve for
+     them yet (owner-scoped library).
    - ✅ *Done (wall system):* an edge-based **wall layer** — segments live on the
      grid lines *between* cells, auto-join into runs + corner posts. They're drawn
      and edited from the **Draw** tab, not a separate mode: the draw toolbar carries
@@ -704,6 +727,46 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
    4. **Recipes.** Let users add their own recipes; then integrate a public-recipe
       source — a recipes API and/or web-scraping — so the library isn't only the
       seeded set.
+
+   ### Task list — status (updated 2026-06-23)
+
+   **✅ Done & verified this session** (typecheck · lint 0-err · 59 tests · build):
+   - **Vector fixtures** — all 22 fixtures rewritten as top-down vector art; no
+     duplicated-tile look; appliances fill footprint, small objects stay centred
+     *(committed `7f0ab81`)*.
+   - **Desk redesign** — table-family (inset + corner legs + drawer pedestal)
+     *(committed `7f0ab81`)*.
+   - **Categorized picker** — Add-block modal grouped Storage / Furniture /
+     Appliances / Objects + Structural; stairs/dividers demoted *(committed
+     `7f0ab81`)*.
+   - **Room select** — focused room ring + dim others + active button on the store
+     map *(committed `7f0ab81`)*.
+   - **Custom fixture builder (P1)** — freeform shape editor + `customFixtures`
+     table/queries + `/api/fixtures` CRUD + `FixtureRef` (`cf_*`) +
+     `CustomFixtureProvider` render path + picker "Custom" group; wired into
+     addstore / editstore / templates-new / store map *(pending-commit)*.
+
+   **⏳ Pending — immediate (custom fixtures):**
+   - [ ] **Apply migration `0003` to the live Turso DB** (`drizzle-kit migrate`) —
+         REQUIRED for the builder to work end-to-end. Needs explicit go-ahead.
+   - [ ] **Verify** the full flow in-app via HMR (create → select → place → render
+         on the store map) once the migration is applied.
+
+   **⏳ Pending — custom fixtures P2/P3:**
+   - [ ] **Sharing:** a `cf_*` placed on a store/template shared with another user
+         doesn't resolve for them (owner-scoped library). Resolve placed ids for
+         viewers, or copy shapes onto shared templates.
+   - [ ] **Editor-edit edge case:** an *editor* (non-owner) editing a store that
+         uses the *owner's* custom fixtures won't see them in the edit canvas
+         (editstore loads only the editing user's library).
+   - [ ] **Manage-library UI** (rename/delete outside the picker); optional
+         thumbnails rendering custom fixtures.
+
+   **⏳ Pending — original polish backlog:**
+   - [ ] **#2 Store-map ruler** contrast + cell-boundary alignment (`GridRuler`).
+   - [ ] **#3 Panel presentation** rethink (subsumes `SidePanel`/`Modal` extraction
+         + secondary-button standardisation).
+   - [ ] **#4 Recipes** — add-your-own + public-recipe API / scraping.
 
 ---
 

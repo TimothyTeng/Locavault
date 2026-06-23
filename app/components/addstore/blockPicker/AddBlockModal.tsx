@@ -1,17 +1,20 @@
 import { useState, useRef, useEffect } from "react";
+import { useFetcher } from "react-router";
 import { CloseButton } from "~/components/common/CloseButton";
 import { PRESET_COLORS, type Block, type BlockKind } from "#types/BlockTypes";
-import type { FixtureId } from "#types/fixtureTypes";
 import {
   FIXTURE_IDS,
   FIXTURE_META,
   FIXTURE_CATEGORIES,
   FixtureGraphic,
 } from "#lib/fixtures";
+import type { CustomFixture, FixtureRef } from "#types/customFixtureTypes";
+import { CustomFixtureEditor } from "./CustomFixtureEditor";
 
 type Props = {
   onAdd: (b: Omit<Block, "id">) => void;
   onClose: () => void;
+  customFixtures?: CustomFixture[];
 };
 
 // SVG icons per kind
@@ -92,11 +95,15 @@ const STRUCTURAL: {
   { key: "stairs", label: "Stairs", kind: "stairs", icon: KIND_ICONS.stairs },
 ];
 
-export function AddBlockModal({ onAdd, onClose }: Props) {
+export function AddBlockModal({ onAdd, onClose, customFixtures = [] }: Props) {
   const [name, setName] = useState("");
   const [color, setColor] = useState(PRESET_COLORS[0]);
   const [kind, setKind] = useState<BlockKind>("standard");
-  const [fixture, setFixture] = useState<FixtureId | null>(null);
+  const [fixture, setFixture] = useState<FixtureRef | null>(null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [editing, setEditing] = useState<CustomFixture | null>(null);
+  const fixtureFetcher = useFetcher();
+  const savingFixture = fixtureFetcher.state !== "idle";
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -202,6 +209,76 @@ export function AddBlockModal({ onAdd, onClose }: Props) {
                 </div>
               </div>
             ))}
+
+            {/* Custom — the user's own fixtures, plus a tile to create one */}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                Custom
+              </span>
+              <div className="grid grid-cols-4 gap-2">
+                {customFixtures.map((cf) => {
+                  const active = kind === "standard" && fixture === cf.id;
+                  return (
+                    <div key={cf.id} className="relative group">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setKind("standard");
+                          setFixture(cf.id);
+                          setColor(cf.defaultColor);
+                          if (!name.trim()) setName(cf.name);
+                        }}
+                        className={`w-full flex flex-col items-center gap-1 py-2 px-1 rounded-lg border-2 transition-all cursor-pointer ${
+                          active
+                            ? "border-gray-700"
+                            : "border-gray-200 hover:border-gray-300"
+                        }`}
+                      >
+                        <div className="w-7 h-7 rounded overflow-hidden bg-gray-50">
+                          <FixtureGraphic
+                            fixture={cf.id}
+                            color={active ? color : cf.defaultColor}
+                            cols={1}
+                            rows={1}
+                            className="w-full h-full"
+                          />
+                        </div>
+                        <span
+                          className="text-gray-600 text-center leading-tight truncate w-full"
+                          style={{ fontSize: "10px" }}
+                        >
+                          {cf.name}
+                        </span>
+                      </button>
+                      <button
+                        type="button"
+                        title="Edit fixture"
+                        onClick={() => {
+                          setEditing(cf);
+                          setEditorOpen(true);
+                        }}
+                        className="absolute top-0.5 right-0.5 w-4 h-4 rounded bg-white/90 border border-gray-200 text-gray-400 opacity-0 group-hover:opacity-100 flex items-center justify-center hover:text-gray-700 text-[8px] leading-none"
+                      >
+                        ✎
+                      </button>
+                    </div>
+                  );
+                })}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditing(null);
+                    setEditorOpen(true);
+                  }}
+                  className="flex flex-col items-center justify-center gap-1 py-2 px-1 rounded-lg border-2 border-dashed border-gray-200 text-gray-400 hover:border-emerald-300 hover:text-emerald-500 transition-colors"
+                >
+                  <span className="w-7 h-7 flex items-center justify-center text-lg leading-none">
+                    +
+                  </span>
+                  <span style={{ fontSize: "10px" }}>New</span>
+                </button>
+              </div>
+            </div>
 
             {/* Structural — plain zones + room / divider / stairs */}
             <div className="flex flex-col gap-1.5">
@@ -387,6 +464,38 @@ export function AddBlockModal({ onAdd, onClose }: Props) {
           </button>
         </div>
       </div>
+
+      {editorOpen && (
+        <CustomFixtureEditor
+          initial={editing}
+          busy={savingFixture}
+          onClose={() => setEditorOpen(false)}
+          onDelete={(id) => {
+            fixtureFetcher.submit(
+              { _action: "delete", id },
+              {
+                method: "post",
+                action: "/api/fixtures",
+                encType: "application/json",
+              },
+            );
+            // If the deleted fixture was selected, fall back to plain.
+            if (fixture === id) setFixture(null);
+            setEditorOpen(false);
+          }}
+          onSave={(data) => {
+            fixtureFetcher.submit(
+              { _action: editing ? "update" : "create", ...data },
+              {
+                method: "post",
+                action: "/api/fixtures",
+                encType: "application/json",
+              },
+            );
+            setEditorOpen(false);
+          }}
+        />
+      )}
     </>
   );
 }

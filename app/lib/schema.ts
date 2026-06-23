@@ -1,6 +1,5 @@
 import { text, integer, sqliteTable } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
-import { FIXTURE_IDS } from "~/types/fixtureTypes";
 
 // ─── STORES ────────────────────────────────────────────────
 
@@ -44,7 +43,8 @@ export const blocks = sqliteTable("blocks", {
   kind: text("kind", { enum: ["standard", "divider", "stairs", "room"] })
     .notNull()
     .default("standard"),
-  fixture: text("fixture", { enum: FIXTURE_IDS }), // null = plain coloured block
+  // A built-in FixtureId or a custom "cf_<id>" (see customFixtures); null = plain.
+  fixture: text("fixture"),
 });
 
 // ─── ITEMS ─────────────────────────────────────────────────
@@ -231,7 +231,8 @@ export const templateBlocks = sqliteTable("template_blocks", {
   kind: text("kind", { enum: ["standard", "divider", "stairs", "room"] })
     .notNull()
     .default("standard"),
-  fixture: text("fixture", { enum: FIXTURE_IDS }), // null = plain coloured block
+  // A built-in FixtureId or a custom "cf_<id>" (see customFixtures); null = plain.
+  fixture: text("fixture"),
 });
 
 export const templatesRelations = relations(templates, ({ many }) => ({
@@ -244,6 +245,29 @@ export const templateBlocksRelations = relations(templateBlocks, ({ one }) => ({
     references: [templates.id],
   }),
 }));
+
+// ─── CUSTOM FIXTURES ───────────────────────────────────────
+// A user-authored fixture: a named set of base shapes (drawn in the freeform
+// editor) usable on blocks like the built-ins. `shapes` is a JSON CustomShape[]
+// in a normalised 0–100 box; colours resolve from the block's colour at render
+// time. Referenced by blocks/template_blocks via `fixture = "cf_<id>"`.
+export const customFixtures = sqliteTable("custom_fixtures", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => `cf_${crypto.randomUUID()}`),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  category: text("category", {
+    enum: ["storage", "furniture", "appliance", "object"],
+  })
+    .notNull()
+    .default("object"),
+  defaultColor: text("default_color").notNull().default("#64748b"),
+  shapes: text("shapes").notNull().default("[]"),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
+    () => new Date(),
+  ),
+});
 
 // ─── COLLECTIONS / PACKING ─────────────────────────────────
 // A named set of item references for a purpose (packing a trip, a trade pile,

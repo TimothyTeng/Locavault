@@ -1,6 +1,10 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { getAuth } from "~/lib/auth";
-import { updateStoreWithBlocks, verifyStoreAccess } from "~/lib/queries";
+import {
+  updateStoreWithBlocks,
+  verifyStoreAccess,
+  getCustomFixturesByUser,
+} from "~/lib/queries";
 import type { BlockDetails, BlocksMap } from "~/types/storeViewFinderTypes";
 import type { Wall } from "~/types/wallTypes";
 
@@ -37,8 +41,11 @@ export const loader = async (args: LoaderFunctionArgs) => {
     ]),
   );
 
+  const customFixtures = await getCustomFixturesByUser(userId);
+
   return {
     userId,
+    customFixtures,
     initialData: {
       storeId: store.id,
       name: store.name,

@@ -1,5 +1,5 @@
 import type { BlockKind } from "./BlockTypes";
-import type { FixtureId } from "./fixtureTypes";
+import type { FixtureRef } from "./customFixtureTypes";
 import type { Wall } from "./wallTypes";
 
 /** Single source of truth for a block — position, size, appearance, and kind */
@@ -12,8 +12,9 @@ export type BlockState = {
   border: string;
   label: string;
   kind: BlockKind;
-  /** Optional furniture fixture (shelf/fridge/…); null/undefined = plain block. */
-  fixture?: FixtureId | null;
+  /** Fixture reference — a built-in FixtureId or a custom "cf_<id>"; null/
+   *  undefined = plain coloured block. */
+  fixture?: FixtureRef | null;
 };
 
 /** Keyed map of all blocks in the editor: blockId → BlockState */
@@ -33,7 +34,7 @@ export type BlockDetails = {
   x: number;
   y: number;
   kind: BlockKind;
-  fixture?: FixtureId | null;
+  fixture?: FixtureRef | null;
 };
 
 export type CreateStoreInput = {

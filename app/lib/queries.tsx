@@ -13,7 +13,10 @@ import {
   collections,
   collectionItems,
   tradeOffers,
+  customFixtures,
 } from "./schema";
+import type { CustomFixture, CustomShape } from "~/types/customFixtureTypes";
+import type { FixtureCategory } from "~/types/fixtureTypes";
 import type { Collection, CollectionKind } from "~/types/collectionTypes";
 import type {
   TradeListing,
@@ -1443,4 +1446,106 @@ export async function acceptTradeOffer(id: string) {
       );
   }
   return offer;
+}
+
+// ─── CUSTOM FIXTURES ───────────────────────────────────────
+
+function parseCustomFixture(
+  row: typeof customFixtures.$inferSelect,
+): CustomFixture {
+  let shapes: CustomShape[] = [];
+  try {
+    const parsed = JSON.parse(row.shapes);
+    if (Array.isArray(parsed)) shapes = parsed as CustomShape[];
+  } catch {
+    shapes = [];
+  }
+  return {
+    id: row.id,
+    userId: row.userId,
+    name: row.name,
+    category: row.category,
+    defaultColor: row.defaultColor,
+    shapes,
+    createdAt: row.createdAt ? row.createdAt.getTime() : null,
+  };
+}
+
+/** All custom fixtures owned by a user (newest first). */
+export async function getCustomFixturesByUser(
+  userId: string,
+): Promise<CustomFixture[]> {
+  const rows = await db
+    .select()
+    .from(customFixtures)
+    .where(eq(customFixtures.userId, userId))
+    .orderBy(desc(customFixtures.createdAt));
+  return rows.map(parseCustomFixture);
+}
+
+/** Resolve a set of custom-fixture ids (e.g. those placed on a store's blocks),
+ *  regardless of owner — so a shared/public store still renders them. */
+export async function getCustomFixturesByIds(
+  ids: string[],
+): Promise<CustomFixture[]> {
+  const unique = [...new Set(ids.filter((id) => id.startsWith("cf_")))];
+  if (unique.length === 0) return [];
+  const rows = await db
+    .select()
+    .from(customFixtures)
+    .where(inArray(customFixtures.id, unique));
+  return rows.map(parseCustomFixture);
+}
+
+export async function createCustomFixture(input: {
+  userId: string;
+  name: string;
+  category: FixtureCategory;
+  defaultColor: string;
+  shapes: CustomShape[];
+}): Promise<CustomFixture> {
+  const [row] = await db
+    .insert(customFixtures)
+    .values({
+      userId: input.userId,
+      name: input.name,
+      category: input.category,
+      defaultColor: input.defaultColor,
+      shapes: JSON.stringify(input.shapes ?? []),
+    })
+    .returning();
+  return parseCustomFixture(row);
+}
+
+export async function updateCustomFixture(
+  id: string,
+  userId: string,
+  patch: {
+    name?: string;
+    category?: FixtureCategory;
+    defaultColor?: string;
+    shapes?: CustomShape[];
+  },
+): Promise<CustomFixture | null> {
+  const set: Partial<typeof customFixtures.$inferInsert> = {};
+  if (patch.name !== undefined) set.name = patch.name;
+  if (patch.category !== undefined) set.category = patch.category;
+  if (patch.defaultColor !== undefined) set.defaultColor = patch.defaultColor;
+  if (patch.shapes !== undefined) set.shapes = JSON.stringify(patch.shapes);
+  if (Object.keys(set).length === 0) return null;
+  const [row] = await db
+    .update(customFixtures)
+    .set(set)
+    .where(and(eq(customFixtures.id, id), eq(customFixtures.userId, userId)))
+    .returning();
+  return row ? parseCustomFixture(row) : null;
+}
+
+export async function deleteCustomFixture(
+  id: string,
+  userId: string,
+): Promise<void> {
+  await db
+    .delete(customFixtures)
+    .where(and(eq(customFixtures.id, id), eq(customFixtures.userId, userId)));
 }

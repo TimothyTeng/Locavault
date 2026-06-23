@@ -1,9 +1,16 @@
+import { createContext, useContext, useMemo, type ReactNode } from "react";
 import {
   FIXTURE_IDS,
   type FixtureId,
   type FixtureFill,
   type FixtureCategory,
 } from "~/types/fixtureTypes";
+import {
+  isCustomFixtureRef,
+  type CustomFixture,
+  type CustomShape,
+  type FixtureRef,
+} from "~/types/customFixtureTypes";
 
 export { FIXTURE_IDS };
 export type { FixtureId };
@@ -931,6 +938,97 @@ export const FIXTURE_CATEGORIES: { id: FixtureCategory; label: string }[] = [
   { id: "object", label: "Objects" },
 ];
 
+// ── Custom fixtures ──────────────────────────────────────────────────────────
+// User-authored fixtures resolve through a context, so any block can render one
+// by id (cf_*) without prop-threading. Provided per page from the loader data;
+// the default empty map means an unresolved custom fixture renders nothing.
+const CustomFixtureContext = createContext<Record<string, CustomFixture>>({});
+
+export function CustomFixtureProvider({
+  fixtures,
+  children,
+}: {
+  fixtures: CustomFixture[];
+  children: ReactNode;
+}) {
+  const map = useMemo(
+    () => Object.fromEntries(fixtures.map((f) => [f.id, f])),
+    [fixtures],
+  );
+  return (
+    <CustomFixtureContext.Provider value={map}>
+      {children}
+    </CustomFixtureContext.Provider>
+  );
+}
+
+// Resolve a shape's tone to concrete fill/stroke from the block colour, so a
+// custom fixture recolours per block exactly like the built-ins.
+function toneStyle(tone: CustomShape["tone"], t: Tones) {
+  switch (tone) {
+    case "outline":
+      return {
+        fill: "none",
+        fo: undefined as number | undefined,
+        stroke: t.st,
+      };
+    case "light":
+      return { fill: t.light, fo: 0.45, stroke: t.st };
+    case "mid":
+      return { fill: t.mid, fo: 0.5, stroke: t.st };
+    case "body":
+    default:
+      return { fill: t.body, fo: 0.16, stroke: t.st };
+  }
+}
+
+/** The fill/stroke a custom-fixture shape `tone` resolves to for a block colour
+ *  — shared with the freeform editor so its preview matches the final render. */
+export function customShapeStyle(tone: CustomShape["tone"], color: string) {
+  const ts = toneStyle(tone, tones(color));
+  return { fill: ts.fill, fillOpacity: ts.fo, stroke: ts.stroke };
+}
+
+// Render a custom fixture's shapes within the normalised 0–100 design box.
+function renderCustomShapes(shapes: CustomShape[], color: string) {
+  const t = tones(color);
+  return shapes.map((sh, i) => {
+    const ts = toneStyle(sh.tone, t);
+    if (sh.type === "circle")
+      return (
+        <ellipse
+          key={i}
+          cx={sh.x + sh.w / 2}
+          cy={sh.y + sh.h / 2}
+          rx={sh.w / 2}
+          ry={sh.h / 2}
+          fill={ts.fill}
+          fillOpacity={ts.fo}
+          stroke={ts.stroke}
+          strokeWidth={1.4}
+        />
+      );
+    const rx =
+      sh.type === "bar"
+        ? Math.min(sh.w, sh.h) / 2
+        : Math.min(sh.w, sh.h) * 0.08;
+    return (
+      <rect
+        key={i}
+        x={sh.x}
+        y={sh.y}
+        width={sh.w}
+        height={sh.h}
+        rx={rx}
+        fill={ts.fill}
+        fillOpacity={ts.fo}
+        stroke={ts.stroke}
+        strokeWidth={1.4}
+      />
+    );
+  });
+}
+
 // ── Render ───────────────────────────────────────────────────────────────────
 function renderPrims(prims: Prim[]) {
   return prims.map((p, i) => {
@@ -999,19 +1097,46 @@ export function FixtureGraphic({
   className,
   style,
 }: {
-  fixture: FixtureId;
+  fixture: FixtureRef;
   color: string;
   cols: number;
   rows: number;
   className?: string;
   style?: React.CSSProperties;
 }) {
+  const customFixtures = useContext(CustomFixtureContext);
   const t = tones(color);
   const W = Math.max(1, cols) * N;
   const H = Math.max(1, rows) * N;
-  const build = BUILDERS[fixture];
 
-  if (FIXTURE_META[fixture].fill === "single") {
+  // Custom fixture (cf_*): draw its shapes from the 0–100 design box, scaled to
+  // fill the footprint. Renders nothing if unresolved (e.g. a viewer without the
+  // owner's library loaded).
+  if (isCustomFixtureRef(fixture)) {
+    const cf = customFixtures[fixture];
+    if (!cf) return null;
+    return (
+      <svg
+        className={className}
+        viewBox="0 0 100 100"
+        width="100%"
+        height="100%"
+        preserveAspectRatio="none"
+        style={style}
+        aria-hidden
+      >
+        {renderCustomShapes(cf.shapes, color)}
+      </svg>
+    );
+  }
+
+  // Built-in fixture.
+  const builtin = fixture as FixtureId;
+  const build = BUILDERS[builtin];
+  const meta = FIXTURE_META[builtin];
+  if (!build || !meta) return null;
+
+  if (meta.fill === "single") {
     const s = clamp(Math.min(W, H), N, N * 2);
     const ox = (W - s) / 2,
       oy = (H - s) / 2;

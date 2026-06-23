@@ -5,13 +5,14 @@ import {
   type LoaderFunctionArgs,
 } from "react-router";
 import { requireAuth } from "~/lib/auth";
-import { createTemplate } from "~/lib/queries";
+import { createTemplate, getCustomFixturesByUser } from "~/lib/queries";
 import type { BlockDetails } from "~/types/storeViewFinderTypes";
 import type { Wall } from "~/types/wallTypes";
 
 export const loader = async (args: LoaderFunctionArgs) => {
   const userId = await requireAuth(args);
-  return { userId };
+  const customFixtures = await getCustomFixturesByUser(userId);
+  return { userId, customFixtures };
 };
 
 export const action = async (args: ActionFunctionArgs) => {

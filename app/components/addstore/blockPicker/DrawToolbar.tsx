@@ -3,6 +3,7 @@ import { AddBlockModal } from "./AddBlockModal";
 import { DEFAULT_BLOCKS, type Block } from "#types/BlockTypes";
 import { FixtureGraphic } from "#lib/fixtures";
 import type { WallKind } from "#types/wallTypes";
+import type { CustomFixture } from "#types/customFixtureTypes";
 
 interface DrawToolbarProps {
   selectedBlock: Block;
@@ -11,6 +12,8 @@ interface DrawToolbarProps {
   /** Active wall tool (null = drawing blocks, not walls). */
   wallKind: WallKind | null;
   onWallKindChange: (kind: WallKind) => void;
+  /** The signed-in user's custom fixtures (for the picker's Custom group). */
+  customFixtures?: CustomFixture[];
 }
 
 // Small glyph for each wall tool pill.
@@ -139,6 +142,7 @@ export function DrawToolbar({
   onBlocksChange,
   wallKind,
   onWallKindChange,
+  customFixtures = [],
 }: DrawToolbarProps) {
   const [blocks, setBlocks] = useState<Block[]>(DEFAULT_BLOCKS);
   const [modalOpen, setModalOpen] = useState(false);
@@ -406,7 +410,11 @@ export function DrawToolbar({
       </button>
 
       {modalOpen && (
-        <AddBlockModal onAdd={handleAdd} onClose={() => setModalOpen(false)} />
+        <AddBlockModal
+          onAdd={handleAdd}
+          onClose={() => setModalOpen(false)}
+          customFixtures={customFixtures}
+        />
       )}
     </div>
   );

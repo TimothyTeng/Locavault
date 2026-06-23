@@ -1,4 +1,4 @@
-import type { FixtureId } from "./fixtureTypes";
+import type { FixtureRef } from "./customFixtureTypes";
 
 export const PRESET_COLORS = [
   "#2d6b44",
@@ -47,8 +47,9 @@ interface BlockBase {
   id: string;
   name: string;
   color: string;
-  /** Optional furniture fixture; null/undefined = plain coloured block. */
-  fixture?: FixtureId | null;
+  /** Fixture reference — a built-in FixtureId or a custom "cf_<id>";
+   *  null/undefined = plain coloured block. */
+  fixture?: FixtureRef | null;
 }
 
 export interface StandardBlock extends BlockBase {
