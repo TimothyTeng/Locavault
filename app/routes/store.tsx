@@ -73,6 +73,7 @@ export default function StorePage() {
     purchaseOrders,
     collections: dbCollections,
     customFixtures,
+    userRecipes,
   } = useLoaderData<typeof loader>();
 
   const { state } = useLocation();
@@ -1248,6 +1249,8 @@ export default function StorePage() {
               onAddMissing={canEdit ? handleAddMissingToList : undefined}
               listedNames={listedNames}
               isMobile={isMobile}
+              userRecipes={userRecipes}
+              canAddRecipe={!!userId}
             />
             <CollectionsPanel
               isOpen={collectionsOpen}

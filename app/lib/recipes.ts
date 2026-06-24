@@ -5,6 +5,8 @@
 // (see recipes.helper.ts) because we match "what you typically keep", not exact
 // counts — exact-quantity tracking is precisely what Locavault refuses to require.
 
+import type { RecipeIngredient, RecipeStep } from "~/types/recipeTypes";
+
 export type RecipeTag =
   | "breakfast"
   | "lunch"
@@ -20,14 +22,32 @@ export type Recipe = {
   id: string;
   name: string;
   blurb: string;
-  /** Canonical ingredient names (lowercase, singular where natural). */
-  ingredients: string[];
-  tags: RecipeTag[];
+  /** Ingredients with optional structured measurements (amount + unit). */
+  ingredients: RecipeIngredient[];
+  /** Ordered preparation steps (user recipes); seeded recipes omit them. */
+  steps?: RecipeStep[];
+  /** Photo URL (no upload infra — see DESIGN.md §7). */
+  imageUrl?: string;
+  /** Source page when imported from the web. */
+  sourceUrl?: string;
+  tags: string[];
   minutes: number;
   serves: number;
+  /** True for user-saved recipes (vs the seeded library) — drives edit/delete. */
+  custom?: boolean;
 };
 
-export const RECIPES: Recipe[] = [
+/**
+ * Seed entries are written terse — ingredients as plain canonical names. They're
+ * normalised to the runtime `Recipe` shape (ingredients → `{ name }`) in the
+ * `RECIPES` export below, so the 37 entries below need no measurement noise.
+ */
+type SeedRecipe = Omit<Recipe, "ingredients" | "steps" | "custom" | "tags"> & {
+  ingredients: string[];
+  tags: RecipeTag[];
+};
+
+const SEED: SeedRecipe[] = [
   // ── Breakfast ──
   {
     id: "scrambled-eggs",
@@ -380,3 +400,9 @@ export const RECIPES: Recipe[] = [
     serves: 24,
   },
 ];
+
+/** The seeded library, normalised to the runtime `Recipe` shape. */
+export const RECIPES: Recipe[] = SEED.map((r) => ({
+  ...r,
+  ingredients: r.ingredients.map((name) => ({ name })),
+}));

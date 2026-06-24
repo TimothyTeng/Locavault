@@ -14,7 +14,10 @@ import {
   collectionItems,
   tradeOffers,
   customFixtures,
+  recipes,
 } from "./schema";
+import type { RecipeIngredient, RecipeStep } from "~/types/recipeTypes";
+import type { Recipe } from "./recipes";
 import type { CustomFixture, CustomShape } from "~/types/customFixtureTypes";
 import type { FixtureCategory } from "~/types/fixtureTypes";
 import type { Collection, CollectionKind } from "~/types/collectionTypes";
@@ -1548,4 +1551,111 @@ export async function deleteCustomFixture(
   await db
     .delete(customFixtures)
     .where(and(eq(customFixtures.id, id), eq(customFixtures.userId, userId)));
+}
+
+// ─── RECIPES ───────────────────────────────────────────────
+// A user's saved recipe library. Ingredients/steps/tags are JSON columns; we
+// parse them into the runtime `Recipe` shape with `custom: true` so they drop
+// straight into the matcher + panel. All mutations are user-scoped.
+
+function parseJsonArray<T>(raw: string): T[] {
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseUserRecipe(row: typeof recipes.$inferSelect): Recipe {
+  return {
+    id: row.id,
+    name: row.name,
+    blurb: row.blurb ?? "",
+    imageUrl: row.imageUrl ?? undefined,
+    sourceUrl: row.sourceUrl ?? undefined,
+    ingredients: parseJsonArray<RecipeIngredient>(row.ingredients),
+    steps: parseJsonArray<RecipeStep>(row.steps),
+    tags: parseJsonArray<string>(row.tags),
+    minutes: row.minutes ?? 0,
+    serves: row.serves ?? 1,
+    custom: true,
+  };
+}
+
+type RecipeInput = {
+  name: string;
+  blurb?: string | null;
+  imageUrl?: string | null;
+  sourceUrl?: string | null;
+  ingredients: RecipeIngredient[];
+  steps: RecipeStep[];
+  tags: string[];
+  minutes?: number | null;
+  serves?: number | null;
+};
+
+/** All recipes saved by a user (newest first), as runtime `Recipe`s. */
+export async function getUserRecipes(userId: string): Promise<Recipe[]> {
+  const rows = await db
+    .select()
+    .from(recipes)
+    .where(eq(recipes.userId, userId))
+    .orderBy(desc(recipes.createdAt));
+  return rows.map(parseUserRecipe);
+}
+
+export async function createUserRecipe(
+  input: RecipeInput & { userId: string },
+): Promise<Recipe> {
+  const [row] = await db
+    .insert(recipes)
+    .values({
+      userId: input.userId,
+      name: input.name,
+      blurb: input.blurb ?? null,
+      imageUrl: input.imageUrl ?? null,
+      sourceUrl: input.sourceUrl ?? null,
+      ingredients: JSON.stringify(input.ingredients ?? []),
+      steps: JSON.stringify(input.steps ?? []),
+      tags: JSON.stringify(input.tags ?? []),
+      minutes: input.minutes ?? null,
+      serves: input.serves ?? null,
+    })
+    .returning();
+  return parseUserRecipe(row);
+}
+
+export async function updateUserRecipe(
+  id: string,
+  userId: string,
+  patch: Partial<RecipeInput>,
+): Promise<Recipe | null> {
+  const set: Partial<typeof recipes.$inferInsert> = {};
+  if (patch.name !== undefined) set.name = patch.name;
+  if (patch.blurb !== undefined) set.blurb = patch.blurb;
+  if (patch.imageUrl !== undefined) set.imageUrl = patch.imageUrl;
+  if (patch.sourceUrl !== undefined) set.sourceUrl = patch.sourceUrl;
+  if (patch.ingredients !== undefined)
+    set.ingredients = JSON.stringify(patch.ingredients);
+  if (patch.steps !== undefined) set.steps = JSON.stringify(patch.steps);
+  if (patch.tags !== undefined) set.tags = JSON.stringify(patch.tags);
+  if (patch.minutes !== undefined) set.minutes = patch.minutes;
+  if (patch.serves !== undefined) set.serves = patch.serves;
+  if (Object.keys(set).length === 0) return null;
+  const [row] = await db
+    .update(recipes)
+    .set(set)
+    .where(and(eq(recipes.id, id), eq(recipes.userId, userId)))
+    .returning();
+  return row ? parseUserRecipe(row) : null;
+}
+
+export async function deleteUserRecipe(
+  id: string,
+  userId: string,
+): Promise<void> {
+  await db
+    .delete(recipes)
+    .where(and(eq(recipes.id, id), eq(recipes.userId, userId)));
 }

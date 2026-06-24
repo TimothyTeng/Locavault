@@ -269,6 +269,36 @@ export const customFixtures = sqliteTable("custom_fixtures", {
   ),
 });
 
+// ─── RECIPES ───────────────────────────────────────────────
+// A user's saved recipe library (DESIGN.md §7). User-scoped like customFixtures
+// (no store FK) — recipes are matched against whichever store's pantry is open.
+// Ingredients / steps / tags are JSON columns (mirrors customFixtures.shapes):
+// they always load together and we never query an individual ingredient across
+// recipes. `imageUrl` is a plain URL (no upload infra) — auto-filled by the
+// JSON-LD URL importer. See app/types/recipeTypes.ts for the JSON shapes.
+
+export const recipes = sqliteTable("recipes", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => `ur_${crypto.randomUUID()}`),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  blurb: text("blurb"),
+  imageUrl: text("image_url"),
+  sourceUrl: text("source_url"),
+  // JSON: { name: string; amount?: number; unit?: string }[]
+  ingredients: text("ingredients").notNull().default("[]"),
+  // JSON: { text: string; imageUrl?: string }[]
+  steps: text("steps").notNull().default("[]"),
+  // JSON: string[]
+  tags: text("tags").notNull().default("[]"),
+  minutes: integer("minutes"),
+  serves: integer("serves"),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
+    () => new Date(),
+  ),
+});
+
 // ─── COLLECTIONS / PACKING ─────────────────────────────────
 // A named set of item references for a purpose (packing a trip, a trade pile,
 // a custom group) — distinct from the shopping list (things to acquire). v1 is

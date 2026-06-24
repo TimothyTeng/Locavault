@@ -35,6 +35,7 @@ import {
   getCollectionStoreId,
   getBlockStoreId,
   getCustomFixturesByIds,
+  getUserRecipes,
 } from "~/lib/queries";
 import { estimateUsage } from "~/utils/helpers/usage.helper";
 import {
@@ -179,6 +180,10 @@ export const loader = async (args: LoaderFunctionArgs) => {
     store.blocks.map((b) => b.fixture).filter((f): f is string => !!f),
   );
 
+  // The signed-in user's saved recipe library — matched against this store's
+  // pantry in the Recipes panel (user-scoped, like customFixtures).
+  const userRecipes = userId ? await getUserRecipes(userId) : [];
+
   return {
     accessLevel,
     store,
@@ -188,6 +193,7 @@ export const loader = async (args: LoaderFunctionArgs) => {
     purchaseOrders,
     collections,
     customFixtures,
+    userRecipes,
   };
 };
 
