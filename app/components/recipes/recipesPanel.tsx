@@ -70,7 +70,7 @@ export function RecipesPanel({
         role="dialog"
         aria-label="Recipes"
         tabIndex={-1}
-        className={`fixed top-0 z-50 flex h-full w-full flex-col border-l border-slate-200 bg-white shadow-2xl font-mono outline-none ${
+        className={`absolute inset-y-0 z-30 flex w-full flex-col border-l border-slate-200 bg-white shadow-2xl font-mono outline-none ${
           isMobile ? "right-0" : "right-11 max-w-md"
         }`}
       >

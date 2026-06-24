@@ -1239,6 +1239,55 @@ export default function StorePage() {
                 restockCount={restockCount}
               />
             )}
+
+            {/* Side panels — docked beside the rail, sharing its top/bottom */}
+            <RecipesPanel
+              isOpen={recipesOpen}
+              onClose={() => setRecipesOpen(false)}
+              items={items}
+              onAddMissing={canEdit ? handleAddMissingToList : undefined}
+              listedNames={listedNames}
+              isMobile={isMobile}
+            />
+            <CollectionsPanel
+              isOpen={collectionsOpen}
+              onClose={() => setCollectionsOpen(false)}
+              collections={collections}
+              items={items}
+              blocks={blocks}
+              canEdit={canEdit}
+              onCreate={handleCreateCollection}
+              onRename={handleRenameCollection}
+              onSetKind={handleSetCollectionKind}
+              onDelete={handleDeleteCollection}
+              onAddItem={handleAddCollectionItem}
+              onTogglePacked={handleToggleCollectionPacked}
+              onRemoveItem={handleRemoveCollectionItem}
+              onCheckout={handleCheckoutCollection}
+              onAddGapsToList={canEdit ? handleAddMissingToList : undefined}
+              onLocate={handleJumpToItem}
+              isMobile={isMobile}
+            />
+            {canEdit && (
+              <PurchaseOrderPanel
+                isOpen={purchaseOrderOpen}
+                onClose={() => setPurchaseOrderOpen(false)}
+                items={purchaseOrder}
+                blocks={blocks}
+                storeItems={items}
+                checkedIds={checkedPOIds}
+                onToggleChecked={handleTogglePOChecked}
+                onCommitChecked={handleCommitCheckedPO}
+                onAdd={handleAddPOItem}
+                onAddScanned={handleAddScannedPOItem}
+                onAddFromSuggestion={handleAddPOItemFromSuggestion}
+                onAddAll={handleAddAllSuggestions}
+                onUpdate={handleUpdatePOItem}
+                onDelete={handleDeletePOItem}
+                onBuy={handleBuyPOItem}
+                isMobile={isMobile}
+              />
+            )}
           </div>
         </div>
 
@@ -1281,53 +1330,6 @@ export default function StorePage() {
             onSubmit={handleQuickAdd}
             categories={categories}
             defaultBlockId={highlightedCell}
-          />
-        )}
-        <RecipesPanel
-          isOpen={recipesOpen}
-          onClose={() => setRecipesOpen(false)}
-          items={items}
-          onAddMissing={canEdit ? handleAddMissingToList : undefined}
-          listedNames={listedNames}
-          isMobile={isMobile}
-        />
-        <CollectionsPanel
-          isOpen={collectionsOpen}
-          onClose={() => setCollectionsOpen(false)}
-          collections={collections}
-          items={items}
-          blocks={blocks}
-          canEdit={canEdit}
-          onCreate={handleCreateCollection}
-          onRename={handleRenameCollection}
-          onSetKind={handleSetCollectionKind}
-          onDelete={handleDeleteCollection}
-          onAddItem={handleAddCollectionItem}
-          onTogglePacked={handleToggleCollectionPacked}
-          onRemoveItem={handleRemoveCollectionItem}
-          onCheckout={handleCheckoutCollection}
-          onAddGapsToList={canEdit ? handleAddMissingToList : undefined}
-          onLocate={handleJumpToItem}
-          isMobile={isMobile}
-        />
-        {canEdit && (
-          <PurchaseOrderPanel
-            isOpen={purchaseOrderOpen}
-            onClose={() => setPurchaseOrderOpen(false)}
-            items={purchaseOrder}
-            blocks={blocks}
-            storeItems={items}
-            checkedIds={checkedPOIds}
-            onToggleChecked={handleTogglePOChecked}
-            onCommitChecked={handleCommitCheckedPO}
-            onAdd={handleAddPOItem}
-            onAddScanned={handleAddScannedPOItem}
-            onAddFromSuggestion={handleAddPOItemFromSuggestion}
-            onAddAll={handleAddAllSuggestions}
-            onUpdate={handleUpdatePOItem}
-            onDelete={handleDeletePOItem}
-            onBuy={handleBuyPOItem}
-            isMobile={isMobile}
           />
         )}
       </div>

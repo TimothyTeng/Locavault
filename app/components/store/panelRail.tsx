@@ -129,7 +129,13 @@ export function PanelRail({
   ];
 
   return (
-    <div className="group absolute right-0 top-0 bottom-0 z-40 flex w-11 flex-col gap-0.5 overflow-hidden border-l border-slate-200 bg-white/95 py-2 backdrop-blur transition-[width] duration-200 ease-out hover:w-48 hover:shadow-[-8px_0_24px_rgba(15,23,42,0.08)]">
+    <div
+      className={`group absolute right-0 top-0 bottom-0 z-40 flex w-11 flex-col gap-0.5 overflow-hidden border-l border-slate-200 bg-white/95 py-2 backdrop-blur transition-[width] duration-200 ease-out ${
+        active === null
+          ? "hover:w-48 hover:shadow-[-8px_0_24px_rgba(15,23,42,0.08)]"
+          : ""
+      }`}
+    >
       {tabs
         .filter((t) => t.show)
         .map((t) => {
