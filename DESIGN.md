@@ -720,11 +720,13 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
       faint and don't line up cleanly.~~ **✅ Done** — darker/semibold/tabular
       labels + faint gutter bands; positions were already cell-aligned
       (`GridRuler`).
-   3. **Panel presentation.** The slide-in side panels feel slightly out of place.
-      Research how other products surface this kind of secondary content (e.g. a
-      docked sheet, a centred modal, an inline drawer) and pick a more polished
-      pattern. This subsumes the deferred `SidePanel`/`Modal` extraction + the
-      secondary-button standardisation.
+   3. **Panel presentation.** ~~The slide-in side panels feel slightly out of
+      place.~~ **🟡 In progress** — picked the **tab rail** pattern (the panels
+      were side-panels wearing a modal's blocking scrim; the fix is making them
+      non-blocking, not switching to modals). A right-edge `PanelRail` toggles the
+      side panels, which now keep the map live (no backdrop). Modals stay for true
+      atomic tasks (confirms, make-offer). Still to do: shared `SidePanel`
+      extraction + non-blocking focus semantics + secondary-button standardisation.
    4. **Recipes.** Let users add their own recipes; then integrate a public-recipe
       source — a recipes API and/or web-scraping — so the library isn't only the
       seeded set.
@@ -748,10 +750,10 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
      addstore / editstore / templates-new / store map *(pending-commit)*.
 
    **⏳ Pending — immediate (custom fixtures):**
-   - [ ] **Apply migration `0003` to the live Turso DB** (`drizzle-kit migrate`) —
-         REQUIRED for the builder to work end-to-end. Needs explicit go-ahead.
+   - [x] **Apply migration `0003` to the live Turso DB** — applied 2026-06-24
+         (`custom_fixtures` table now live).
    - [ ] **Verify** the full flow in-app via HMR (create → select → place → render
-         on the store map) once the migration is applied.
+         on the store map).
 
    **⏳ Pending — custom fixtures P2/P3:**
    - [ ] **Sharing:** a `cf_*` placed on a store/template shared with another user
@@ -768,8 +770,14 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
          tabular, 10px) + faint gutter bands so the A1/B3 guides read against the
          map background; positions were already cell-aligned (`GridRuler`).
          *(pending your visual confirm via HMR)*
-   - [ ] **#3 Panel presentation** rethink (subsumes `SidePanel`/`Modal` extraction
-         + secondary-button standardisation).
+   - [~] **#3 Panel presentation** — chose the **tab rail** pattern. Built a
+         right-edge `PanelRail` (Shopping / Recipes / Collections / Members) and
+         made the panels **non-blocking**: dropped the `bg-black/40` scrim on
+         Recipes & Collections so the map stays live, offset all panels by the
+         rail, removed the duplicated desktop-toolbar buttons. *(pending your HMR
+         check.)* Follow-ups: a proper shared `SidePanel` extraction + focus
+         semantics (aria-modal/trap) for non-blocking; secondary-button
+         standardisation.
    - [ ] **#4 Recipes** — add-your-own + public-recipe API / scraping.
 
 ---

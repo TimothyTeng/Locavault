@@ -15,6 +15,7 @@ import { Map as MapIcon, List as ListIcon } from "lucide-react";
 import { StoreHeader } from "~/components/store/storeHeader";
 import { StoreLoading } from "~/components/store/storeLoading";
 import { StoreToolbar } from "~/components/store/storeToolbar";
+import { PanelRail, type RailPanel } from "~/components/store/panelRail";
 import { StoreTable } from "~/components/store/storeTable";
 import { type Item, type ItemStatus } from "~/types/storeTypes";
 import type { ItemType } from "~/types/itemTypeTypes";
@@ -125,6 +126,25 @@ export default function StorePage() {
   const [collectionsOpen, setCollectionsOpen] = useState(false);
   // Ids the user has ticked off ("got it") but not yet committed to inventory
   const [checkedPOIds, setCheckedPOIds] = useState<Set<string>>(new Set());
+
+  // One side panel at a time — the rail (and the mobile toolbar) route through
+  // this so opening one closes the others (and the add-item panel).
+  const openPanel = (panel: RailPanel | null) => {
+    setAddItemOpen(false);
+    setRecipesOpen(panel === "recipes");
+    setCollectionsOpen(panel === "collections");
+    setPurchaseOrderOpen(panel === "shopping");
+    setMembersPanelOpen(panel === "members");
+  };
+  const activePanel: RailPanel | null = recipesOpen
+    ? "recipes"
+    : collectionsOpen
+      ? "collections"
+      : purchaseOrderOpen
+        ? "shopping"
+        : membersPanelOpen
+          ? "members"
+          : null;
 
   const { zoom, setZoom } = useZoom(0.5, 3);
   const onZoomIn = () => setZoom((z: number) => Math.min(3, z + 0.1));
@@ -967,24 +987,23 @@ export default function StorePage() {
               setAddItemOpen(false);
               setQuickAddOpen(true);
             }}
-            onRecipes={() => {
-              setAddItemOpen(false);
-              setRecipesOpen((v) => !v);
-            }}
-            onCollections={() => {
-              setAddItemOpen(false);
-              setCollectionsOpen((v) => !v);
-            }}
-            onMembersToggle={() => setMembersPanelOpen((v) => !v)}
+            onRecipes={() =>
+              openPanel(activePanel === "recipes" ? null : "recipes")
+            }
+            onCollections={() =>
+              openPanel(activePanel === "collections" ? null : "collections")
+            }
+            onMembersToggle={() =>
+              openPanel(activePanel === "members" ? null : "members")
+            }
             accessLevel={accessLevel}
             store={store}
             onToggleVisibility={handleToggleStoreVisibility}
             isMobile={isMobile}
             restockCount={restockCount}
-            onPurchaseOrder={() => {
-              setAddItemOpen(false);
-              setPurchaseOrderOpen((v) => !v);
-            }}
+            onPurchaseOrder={() =>
+              openPanel(activePanel === "shopping" ? null : "shopping")
+            }
           />
 
           {/* Global item search — always available, jumps to an item's zone */}
@@ -1205,6 +1224,18 @@ export default function StorePage() {
                 members={members}
                 onRemoveMember={handleRemoveMember}
                 onClose={() => setMembersPanelOpen(false)}
+                isMobile={isMobile}
+              />
+            )}
+
+            {/* Right-edge tab rail (desktop) — toggles the side panels */}
+            {!isMobile && (
+              <PanelRail
+                active={activePanel}
+                onSelect={(p) => openPanel(activePanel === p ? null : p)}
+                canEdit={canEdit}
+                isOwner={isOwner}
+                restockCount={restockCount}
               />
             )}
           </div>

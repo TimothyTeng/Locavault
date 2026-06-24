@@ -95,17 +95,12 @@ export function CollectionsPanel({
   return (
     <>
       <div
-        className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm"
-        onClick={onClose}
-      />
-      <div
         ref={dialogRef}
         role="dialog"
-        aria-modal="true"
         aria-label="Collections"
         tabIndex={-1}
-        className={`fixed right-0 top-0 z-50 flex h-full w-full flex-col bg-white shadow-2xl font-mono outline-none ${
-          isMobile ? "" : "max-w-md"
+        className={`fixed top-0 z-50 flex h-full w-full flex-col border-l border-slate-200 bg-white shadow-2xl font-mono outline-none ${
+          isMobile ? "right-0" : "right-11 max-w-md"
         }`}
       >
         {/* Header */}

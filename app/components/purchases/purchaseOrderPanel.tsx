@@ -121,10 +121,10 @@ export function PurchaseOrderPanel({
   return (
     <div
       className={[
-        "fixed top-16 right-0 h-[calc(100vh-4rem)] z-50 w-1/2",
+        "fixed top-16 right-11 h-[calc(100vh-4rem)] z-50 w-1/2 max-w-md",
         "bg-white border-l border-slate-200 shadow-2xl",
         "flex flex-col transition-transform duration-300 ease-out",
-        isOpen ? "translate-x-0" : "translate-x-full",
+        isOpen ? "translate-x-0" : "translate-x-[calc(100%_+_3rem)]",
       ].join(" ")}
     >
       {header}

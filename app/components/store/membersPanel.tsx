@@ -7,6 +7,7 @@ type Props = {
   members: StoreMember[];
   onRemoveMember: (userId: string) => void;
   onClose: () => void;
+  isMobile?: boolean;
 };
 
 type Tab = "editor" | "viewer";
@@ -22,6 +23,7 @@ export function MembersPanel({
   members,
   onRemoveMember,
   onClose,
+  isMobile = false,
 }: Props) {
   const { id: storeId } = useParams();
   const [activeTab, setActiveTab] = useState<Tab>("editor");
@@ -59,14 +61,11 @@ export function MembersPanel({
 
   return (
     <>
-      {/* Backdrop */}
-      {isOpen && <div className="absolute inset-0 z-10" onClick={onClose} />}
-
-      {/* Panel */}
+      {/* Non-blocking docked panel (no backdrop — the map stays interactive). */}
       <div
-        className={`absolute top-0 right-0 h-full w-80 bg-white border-l border-slate-200 z-20 flex flex-col shadow-xl transition-transform duration-200 ${
-          isOpen ? "translate-x-0" : "translate-x-full"
-        }`}
+        className={`absolute top-0 h-full w-80 bg-white border-l border-slate-200 z-20 flex flex-col shadow-xl transition-transform duration-200 ${
+          isMobile ? "right-0" : "right-11"
+        } ${isOpen ? "translate-x-0" : "translate-x-full"}`}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 h-10 border-b border-slate-100 shrink-0">
