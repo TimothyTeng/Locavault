@@ -1044,6 +1044,7 @@ export default function StorePage() {
                 isOwner={isOwner}
                 walls={store?.walls ?? []}
                 storeIsPublic={store?.isPublic ?? false}
+                isMobile={isMobile}
                 pulseZoneId={highlightedCell}
                 pulseItemId={selectedItemId}
                 onSaveItem={handleSaveItem}
