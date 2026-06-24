@@ -716,9 +716,10 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
       the pixel sprites with top-down **vector** fixtures (see "Done (vector
       fixtures)" above); each block reads as one recognisable, non-tiled object
       and stays crisp at any zoom.
-   2. **Store-map coordinate guides.** The A–J / 1–10 ruler labels are too faint and
-      don't line up cleanly with the grid lines — bump contrast and align to the
-      cell boundaries (`GridRuler`).
+   2. ~~**Store-map coordinate guides.** The A–J / 1–10 ruler labels are too
+      faint and don't line up cleanly.~~ **✅ Done** — darker/semibold/tabular
+      labels + faint gutter bands; positions were already cell-aligned
+      (`GridRuler`).
    3. **Panel presentation.** The slide-in side panels feel slightly out of place.
       Research how other products surface this kind of secondary content (e.g. a
       docked sheet, a centred modal, an inline drawer) and pick a more polished
@@ -763,7 +764,10 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
          thumbnails rendering custom fixtures.
 
    **⏳ Pending — original polish backlog:**
-   - [ ] **#2 Store-map ruler** contrast + cell-boundary alignment (`GridRuler`).
+   - [x] **#2 Store-map ruler** — bumped label contrast (slate-500, semibold,
+         tabular, 10px) + faint gutter bands so the A1/B3 guides read against the
+         map background; positions were already cell-aligned (`GridRuler`).
+         *(pending your visual confirm via HMR)*
    - [ ] **#3 Panel presentation** rethink (subsumes `SidePanel`/`Modal` extraction
          + secondary-button standardisation).
    - [ ] **#4 Recipes** — add-your-own + public-recipe API / scraping.
