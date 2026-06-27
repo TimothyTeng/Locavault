@@ -25,7 +25,11 @@ import {
   type RecipeMatch,
 } from "~/utils/helpers/recipes.helper";
 import { formatAmount } from "~/utils/helpers/units";
-import { dateKey, parseDateKey, dayParts } from "~/utils/helpers/calendar.helper";
+import {
+  dateKey,
+  parseDateKey,
+  dayParts,
+} from "~/utils/helpers/calendar.helper";
 import { useDialog } from "~/components/common/useDialog";
 import { EmptyState } from "~/components/common/EmptyState";
 import { RecipeEditor } from "./RecipeEditor";
@@ -712,7 +716,10 @@ function RecipeDetail({
               ) : (
                 <div className="flex flex-col gap-2.5">
                   <div className="flex items-center gap-2">
-                    <CalendarPlus size={15} className="shrink-0 text-slate-400" />
+                    <CalendarPlus
+                      size={15}
+                      className="shrink-0 text-slate-400"
+                    />
                     <span className="flex-1 text-[11px] font-bold uppercase tracking-widest text-slate-500">
                       Add to calendar
                     </span>
@@ -746,7 +753,9 @@ function RecipeDetail({
                             : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
                         }`}
                       >
-                        <span className={`h-2 w-2 rounded-full ${MEAL_TONE[t]}`} />
+                        <span
+                          className={`h-2 w-2 rounded-full ${MEAL_TONE[t]}`}
+                        />
                         {t}
                       </button>
                     ))}

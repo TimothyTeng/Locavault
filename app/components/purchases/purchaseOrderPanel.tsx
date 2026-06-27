@@ -22,6 +22,8 @@ type Props = {
   onUpdate: (item: PurchaseOrderItem) => void;
   onDelete: (id: string) => void;
   onBuy: (id: string) => void;
+  mealNeeds?: string[];
+  onAddNames?: (names: string[]) => void;
   isMobile?: boolean;
 };
 
@@ -41,6 +43,8 @@ export function PurchaseOrderPanel({
   onUpdate,
   onDelete,
   onBuy,
+  mealNeeds,
+  onAddNames,
   isMobile = false,
 }: Props) {
   useEffect(() => {
@@ -112,6 +116,8 @@ export function PurchaseOrderPanel({
             onUpdate={onUpdate}
             onDelete={onDelete}
             onBuy={onBuy}
+            mealNeeds={mealNeeds}
+            onAddNames={onAddNames}
           />
         </div>
       </div>

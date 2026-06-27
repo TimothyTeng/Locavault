@@ -8,6 +8,7 @@ import {
 } from "~/utils/helpers/barcode.helper";
 import { PurchaseOrderRow } from "./purchaseOrderRow";
 import { PurchaseOrderSuggestions } from "./purchaseOrderSuggestions";
+import { PurchaseOrderMealSuggestions } from "./purchaseOrderMealSuggestions";
 import { BarcodeScanner } from "../addItem/BarcodeScanner";
 
 type Props = {
@@ -24,6 +25,9 @@ type Props = {
   onUpdate: (item: PurchaseOrderItem) => void;
   onDelete: (id: string) => void;
   onBuy: (id: string) => void;
+  /** Ingredient names upcoming scheduled meals need but the store is out of. */
+  mealNeeds?: string[];
+  onAddNames?: (names: string[]) => void;
 };
 
 export function PurchaseOrderList({
@@ -40,6 +44,8 @@ export function PurchaseOrderList({
   onUpdate,
   onDelete,
   onBuy,
+  mealNeeds = [],
+  onAddNames,
 }: Props) {
   const [scanOpen, setScanOpen] = useState(false);
   const [looking, setLooking] = useState(false);
@@ -70,6 +76,17 @@ export function PurchaseOrderList({
         onAdd={onAddFromSuggestion}
         onAddAll={onAddAll}
       />
+
+      {/* For upcoming meals (inline) */}
+      {onAddNames && (
+        <PurchaseOrderMealSuggestions
+          names={mealNeeds}
+          existingNames={
+            new Set([...existingNames].map((n) => n.toLowerCase()))
+          }
+          onAdd={onAddNames}
+        />
+      )}
 
       {/* Your list */}
       {items.length === 0 ? (

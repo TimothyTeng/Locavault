@@ -166,7 +166,9 @@ export function CalendarPanel({
   const periodHasMeals = [...periodKeys].some((k) => byDay.get(k)?.length);
 
   const step = (dir: 1 | -1) =>
-    setCursor((c) => (view === "week" ? addDays(c, dir * 7) : addMonths(c, dir)));
+    setCursor((c) =>
+      view === "week" ? addDays(c, dir * 7) : addMonths(c, dir),
+    );
 
   const openPicker = (key: string) => {
     setQuery("");
@@ -291,7 +293,9 @@ export function CalendarPanel({
       ) : showNeeds ? (
         /* ── Needs for the period ── */
         <NeedsView
-          label={view === "week" ? weekLabel(weekStart) : monthLabel(monthStart)}
+          label={
+            view === "week" ? weekLabel(weekStart) : monthLabel(monthStart)
+          }
           period={view}
           needs={needs}
           onBack={() => setShowNeeds(false)}
