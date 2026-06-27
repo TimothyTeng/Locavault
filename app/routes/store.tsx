@@ -41,6 +41,7 @@ import { CustomFixtureProvider } from "~/lib/fixtures";
 import { ItemCardGrid } from "~/components/store/itemCardGrid";
 import { GlobalSearch } from "~/components/store/globalSearch";
 import { blocksToBlocksMap } from "#utils/helpers/store.helper";
+import { decrementForIngredient } from "#utils/helpers/recipeCook.helper";
 import { getItemStatus } from "#utils/helpers/storeTable.helper";
 import { useIsMobile } from "~/utils/useIsMobile";
 import type { loader } from "#utils/loaders/store.loader";
@@ -823,6 +824,33 @@ export default function StorePage() {
     );
   };
 
+  // Recipes → "Cooked this": subtract the used ingredients from stock (optimistic),
+  // then persist + log via the store action so prediction learns from it.
+  const handleCookedRecipe = (
+    rows: { itemId: string; amount?: number; unit?: string }[],
+    servings: number,
+  ) => {
+    if (!rows.length) return;
+    setItems((prev) =>
+      prev.map((it) => {
+        const r = rows.find((x) => x.itemId === it.id);
+        if (!r) return it;
+        const dec = decrementForIngredient(
+          { amount: r.amount, unit: r.unit },
+          it.unit,
+          servings,
+        );
+        return dec > 0
+          ? { ...it, quantity: Math.max(0, it.quantity - dec) }
+          : it;
+      }),
+    );
+    fetcher.submit(
+      { _action: "cookedRecipe", servings, items: rows },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
   // Lowercase names already on the shopping list — lets recipe cards show which
   // missing ingredients are already queued.
   const listedNames = new Set(purchaseOrder.map((p) => p.name.toLowerCase()));
@@ -1276,6 +1304,7 @@ export default function StorePage() {
               blocks={blocks}
               onAddMissing={canEdit ? handleAddMissingToList : undefined}
               onAddHaveToList={canEdit ? handleAddHaveToList : undefined}
+              onCooked={canEdit ? handleCookedRecipe : undefined}
               onShowOnMap={handleShowIngredientOnMap}
               listedNames={listedNames}
               listedItemIds={listedItemIds}

@@ -38,6 +38,7 @@ import {
   getUserRecipes,
 } from "~/lib/queries";
 import { estimateUsage } from "~/utils/helpers/usage.helper";
+import { decrementForIngredient } from "~/utils/helpers/recipeCook.helper";
 import {
   requireText,
   optText,
@@ -346,6 +347,42 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
       });
     }
     return { ok: true };
+  }
+
+  // "Cooked this": subtract the ingredients a recipe used from stock and log the
+  // consumption (feeds run-out prediction). Measurement-aware via the shared
+  // helper; rows carry the recipe ingredient's amount/unit, the item supplies
+  // its own unit. Lenient — unmatched/incompatible units get a coarse nudge.
+  if (data._action === "cookedRecipe") {
+    const servings = toQty(data.servings, 1, { min: 1, max: 100 });
+    const rows = Array.isArray(data.items) ? data.items : [];
+    let decremented = 0;
+    for (const r of rows) {
+      if (!r || typeof r.itemId !== "string") continue;
+      const item = await ensureItemInStore(r.itemId);
+      if (item.quantity <= 0) continue;
+      const dec = decrementForIngredient(
+        {
+          amount: typeof r.amount === "number" ? r.amount : undefined,
+          unit: typeof r.unit === "string" ? r.unit : undefined,
+        },
+        item.unit,
+        servings,
+      );
+      if (dec <= 0) continue;
+      const newQty = Math.max(0, item.quantity - dec);
+      if (newQty === item.quantity) continue;
+      await updateItem(item.id, { quantity: newQty });
+      await createItemLog(
+        item.id,
+        item.storeId,
+        newQty - item.quantity,
+        userId,
+        "cooked",
+      );
+      decremented++;
+    }
+    return { ok: true, decremented };
   }
 
   if (data._action === "removeMember") {

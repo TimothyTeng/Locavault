@@ -11,6 +11,8 @@ import {
   Pencil,
   ExternalLink,
   MapPin,
+  ChefHat,
+  Minus,
 } from "lucide-react";
 import type { Item } from "~/types/storeTypes";
 import type { BlocksMap } from "~/types/storeViewFinderTypes";
@@ -60,6 +62,7 @@ export function RecipesPanel({
   blocks,
   onAddMissing,
   onAddHaveToList,
+  onCooked,
   onShowOnMap,
   listedNames,
   listedItemIds,
@@ -73,6 +76,10 @@ export function RecipesPanel({
   blocks?: BlocksMap;
   onAddMissing?: (ingredients: string[]) => void;
   onAddHaveToList?: (items: Item[]) => void;
+  onCooked?: (
+    rows: { itemId: string; amount?: number; unit?: string }[],
+    servings: number,
+  ) => void;
   onShowOnMap?: (item: Item) => void;
   listedNames?: Set<string>;
   listedItemIds?: Set<string>;
@@ -151,6 +158,7 @@ export function RecipesPanel({
             onClose={onClose}
             onAddMissing={onAddMissing}
             onAddHaveToList={onAddHaveToList}
+            onCooked={onCooked}
             onShowOnMap={onShowOnMap}
             listedNames={listedNames}
             listedItemIds={listedItemIds}
@@ -425,6 +433,7 @@ function RecipeDetail({
   onClose,
   onAddMissing,
   onAddHaveToList,
+  onCooked,
   onShowOnMap,
   listedNames,
   listedItemIds,
@@ -436,6 +445,10 @@ function RecipeDetail({
   onClose: () => void;
   onAddMissing?: (ingredients: string[]) => void;
   onAddHaveToList?: (items: Item[]) => void;
+  onCooked?: (
+    rows: { itemId: string; amount?: number; unit?: string }[],
+    servings: number,
+  ) => void;
   onShowOnMap?: (item: Item) => void;
   listedNames?: Set<string>;
   listedItemIds?: Set<string>;
@@ -443,6 +456,17 @@ function RecipeDetail({
 }) {
   const { recipe, ingredients, missing, cookable } = match;
   const [broken, setBroken] = useState(false);
+  const [batch, setBatch] = useState(1);
+
+  // Rows the "Cooked this" action will decrement: in-stock ingredients with a
+  // resolved item, carrying the recipe's amount/unit.
+  const cookRows = ingredients
+    .filter((s) => s.inStock && s.items[0])
+    .map((s) => ({
+      itemId: s.items[0].id,
+      amount: s.ingredient.amount,
+      unit: s.ingredient.unit,
+    }));
 
   const missingPretty = missing.map(prettyIngredient);
   const toAdd = missingPretty.filter((n) => !listedNames?.has(n.toLowerCase()));
@@ -640,6 +664,45 @@ function RecipeDetail({
               </div>
             )}
           </div>
+
+          {/* Cooked this → decrement stock */}
+          {onCooked && cookRows.length > 0 && (
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/60 p-2.5">
+              <ChefHat size={16} className="shrink-0 text-slate-400" />
+              <span className="flex-1 text-[11px] leading-tight text-slate-500">
+                Cooked it? Subtract what you used from stock.
+              </span>
+              <div className="flex shrink-0 items-center gap-0.5 rounded-lg border border-slate-200 bg-white px-1">
+                <button
+                  type="button"
+                  onClick={() => setBatch((b) => Math.max(1, b - 1))}
+                  disabled={batch <= 1}
+                  aria-label="Fewer batches"
+                  className="rounded p-1 text-slate-400 transition-colors hover:text-slate-700 disabled:opacity-30"
+                >
+                  <Minus size={12} />
+                </button>
+                <span className="w-6 text-center text-[11px] font-bold text-slate-700">
+                  ×{batch}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setBatch((b) => Math.min(20, b + 1))}
+                  aria-label="More batches"
+                  className="rounded p-1 text-slate-400 transition-colors hover:text-slate-700"
+                >
+                  <Plus size={12} />
+                </button>
+              </div>
+              <button
+                type="button"
+                onClick={() => onCooked(cookRows, batch)}
+                className="shrink-0 rounded-lg bg-emerald-600 px-3 py-2 text-[11px] font-bold uppercase tracking-widest text-white transition-colors hover:bg-emerald-700"
+              >
+                Cooked
+              </button>
+            </div>
+          )}
 
           {/* Steps */}
           {recipe.steps && recipe.steps.length > 0 && (

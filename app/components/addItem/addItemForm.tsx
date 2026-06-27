@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { FieldLabel } from "../addstore/storeViewFinder/StoreForm";
 import { runOutDays } from "~/utils/helpers/store.helper";
+import { UNIT_OPTIONS } from "~/utils/helpers/units";
 import {
   resolveBarcode,
   FOOD_CATEGORY_RE,
@@ -376,10 +377,18 @@ export function AddItemForm({
             <input
               type="text"
               value={unit}
-              placeholder="kg, pcs…"
+              placeholder="ml, g, pcs…"
+              list="measure-units"
               onChange={(e) => setUnit(e.target.value)}
               className={inputClass}
             />
+            {/* Known units enable recipe "cooked this" stock decrement; free
+                text is still allowed. */}
+            <datalist id="measure-units">
+              {UNIT_OPTIONS.map((u) => (
+                <option key={u.value} value={u.value} />
+              ))}
+            </datalist>
           </div>
         )}
       </div>
