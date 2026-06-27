@@ -10,8 +10,10 @@ import {
   ChevronLeft,
   Pencil,
   ExternalLink,
+  MapPin,
 } from "lucide-react";
 import type { Item } from "~/types/storeTypes";
+import type { BlocksMap } from "~/types/storeViewFinderTypes";
 import type { Recipe } from "~/lib/recipes";
 import {
   matchRecipes,
@@ -55,8 +57,12 @@ export function RecipesPanel({
   isOpen,
   onClose,
   items,
+  blocks,
   onAddMissing,
+  onAddHaveToList,
+  onShowOnMap,
   listedNames,
+  listedItemIds,
   isMobile = false,
   userRecipes = [],
   canAddRecipe = false,
@@ -64,8 +70,12 @@ export function RecipesPanel({
   isOpen: boolean;
   onClose: () => void;
   items: Item[];
+  blocks?: BlocksMap;
   onAddMissing?: (ingredients: string[]) => void;
+  onAddHaveToList?: (items: Item[]) => void;
+  onShowOnMap?: (item: Item) => void;
   listedNames?: Set<string>;
+  listedItemIds?: Set<string>;
   isMobile?: boolean;
   userRecipes?: Recipe[];
   canAddRecipe?: boolean;
@@ -136,10 +146,14 @@ export function RecipesPanel({
         {detail ? (
           <RecipeDetail
             match={detail}
+            blocks={blocks}
             onBack={() => setDetailId(null)}
             onClose={onClose}
             onAddMissing={onAddMissing}
+            onAddHaveToList={onAddHaveToList}
+            onShowOnMap={onShowOnMap}
             listedNames={listedNames}
+            listedItemIds={listedItemIds}
             onEdit={
               detail.recipe.custom ? () => setEditing(detail.recipe) : undefined
             }
@@ -406,17 +420,25 @@ function RecipeCard({
 /** Full recipe — photo, availability, steps, one-tap add-missing. */
 function RecipeDetail({
   match,
+  blocks,
   onBack,
   onClose,
   onAddMissing,
+  onAddHaveToList,
+  onShowOnMap,
   listedNames,
+  listedItemIds,
   onEdit,
 }: {
   match: RecipeMatch;
+  blocks?: BlocksMap;
   onBack: () => void;
   onClose: () => void;
   onAddMissing?: (ingredients: string[]) => void;
+  onAddHaveToList?: (items: Item[]) => void;
+  onShowOnMap?: (item: Item) => void;
   listedNames?: Set<string>;
+  listedItemIds?: Set<string>;
   onEdit?: () => void;
 }) {
   const { recipe, ingredients, missing, cookable } = match;
@@ -515,31 +537,86 @@ function RecipeDetail({
               )}
             </div>
             <ul className="flex flex-col gap-1">
-              {ingredients.map((s, i) => (
-                <li
-                  key={i}
-                  className="flex items-center gap-2.5 rounded-lg px-1 py-1 text-[12px]"
-                >
-                  <span
-                    aria-hidden
-                    className={`h-2 w-2 shrink-0 rounded-full ${
-                      s.inStock ? "bg-emerald-500" : "bg-slate-300"
-                    }`}
-                  />
-                  <span
-                    className={s.inStock ? "text-slate-700" : "text-slate-400"}
+              {ingredients.map((s, i) => {
+                const pretty = prettyIngredient(s.ingredient.name);
+                const item = s.items[0];
+                const blockLabel = item?.blockId
+                  ? blocks?.[item.blockId]?.label
+                  : undefined;
+                const listed = s.inStock
+                  ? s.items.some((it) => listedItemIds?.has(it.id))
+                  : !!listedNames?.has(pretty.toLowerCase());
+                const canAddRow = s.inStock
+                  ? !!onAddHaveToList
+                  : !!onAddMissing;
+                const addRow = () => {
+                  if (s.inStock) {
+                    if (item && onAddHaveToList) onAddHaveToList([item]);
+                  } else if (onAddMissing) onAddMissing([pretty]);
+                };
+                const measure =
+                  s.ingredient.amount != null
+                    ? formatAmount(s.ingredient.amount) +
+                      (s.ingredient.unit ? ` ${s.ingredient.unit}` : "") +
+                      " "
+                    : "";
+                return (
+                  <li
+                    key={i}
+                    className="flex items-center gap-2 rounded-lg px-1 py-1 text-[12px]"
                   >
-                    {(s.ingredient.amount != null
-                      ? formatAmount(s.ingredient.amount) +
-                        (s.ingredient.unit ? ` ${s.ingredient.unit}` : "") +
-                        " "
-                      : "") + prettyIngredient(s.ingredient.name)}
-                  </span>
-                  {s.expiring && (
-                    <Leaf size={11} className="shrink-0 text-amber-500" />
-                  )}
-                </li>
-              ))}
+                    <span
+                      aria-hidden
+                      className={`h-2 w-2 shrink-0 rounded-full ${
+                        s.inStock ? "bg-emerald-500" : "bg-slate-300"
+                      }`}
+                    />
+                    <span
+                      className={`min-w-0 flex-1 truncate ${
+                        s.inStock ? "text-slate-700" : "text-slate-400"
+                      }`}
+                    >
+                      {measure + pretty}
+                    </span>
+                    {s.expiring && (
+                      <Leaf size={11} className="shrink-0 text-amber-500" />
+                    )}
+                    {s.inStock && blockLabel && onShowOnMap && item && (
+                      <button
+                        onClick={() => onShowOnMap(item)}
+                        title={`Show ${blockLabel} on the map`}
+                        className="flex shrink-0 items-center gap-0.5 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-700"
+                      >
+                        <MapPin size={10} />
+                        <span className="max-w-[5rem] truncate">
+                          {blockLabel}
+                        </span>
+                      </button>
+                    )}
+                    {canAddRow &&
+                      (listed ? (
+                        <span
+                          title="On the shopping list"
+                          className="shrink-0 text-emerald-500"
+                        >
+                          <Check size={13} strokeWidth={2.5} />
+                        </span>
+                      ) : (
+                        <button
+                          onClick={addRow}
+                          title={
+                            s.inStock
+                              ? "Restock — add to shopping list"
+                              : "Add to shopping list"
+                          }
+                          className="shrink-0 rounded-md p-0.5 text-slate-300 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                        >
+                          <Plus size={14} strokeWidth={2.5} />
+                        </button>
+                      ))}
+                  </li>
+                );
+              })}
             </ul>
             {onAddMissing && missing.length > 0 && toAdd.length === 0 && (
               <div className="mt-2 flex items-center justify-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-600">

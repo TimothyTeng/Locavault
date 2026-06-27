@@ -313,6 +313,13 @@ export default function StorePage() {
     if (item.blockId) setPageView("map");
   };
 
+  // Recipes → "where is it": pulse the ingredient's block on the map. On mobile
+  // the panel is full-screen, so close it to reveal the (mini)map underneath.
+  const handleShowIngredientOnMap = (item: Item) => {
+    handleJumpToItem(item);
+    if (isMobile) setRecipesOpen(false);
+  };
+
   // Open the add-item panel pre-targeted to a zone (or unassigned).
   const handleAddItemToZone = (blockId: string | null) => {
     setHighlightedCell(blockId);
@@ -800,9 +807,29 @@ export default function StorePage() {
     );
   };
 
+  // Recipes → shopping list (the other direction): restock an ingredient you DO
+  // have, as a linked PO row, skipping items already queued.
+  const handleAddHaveToList = (toAdd: Item[]) => {
+    const queued = new Set(
+      purchaseOrder.filter((p) => p.itemId).map((p) => p.itemId as string),
+    );
+    const fresh = toAdd.filter((it) => !queued.has(it.id));
+    if (!fresh.length) return;
+    const built = fresh.map(buildPOFromItem);
+    setPurchaseOrder((prev) => [...prev, ...built.map((b) => b.optimistic)]);
+    fetcher.submit(
+      { _action: "createPOItems", items: built.map((b) => b.payload) },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
   // Lowercase names already on the shopping list — lets recipe cards show which
   // missing ingredients are already queued.
   const listedNames = new Set(purchaseOrder.map((p) => p.name.toLowerCase()));
+  // Ids of items already queued (linked PO rows) — for the on-hand "listed" tick.
+  const listedItemIds = new Set(
+    purchaseOrder.filter((p) => p.itemId).map((p) => p.itemId as string),
+  );
 
   // ── Collections / packing ──
   const submitCollection = (
@@ -1246,8 +1273,12 @@ export default function StorePage() {
               isOpen={recipesOpen}
               onClose={() => setRecipesOpen(false)}
               items={items}
+              blocks={blocks}
               onAddMissing={canEdit ? handleAddMissingToList : undefined}
+              onAddHaveToList={canEdit ? handleAddHaveToList : undefined}
+              onShowOnMap={handleShowIngredientOnMap}
               listedNames={listedNames}
+              listedItemIds={listedItemIds}
               isMobile={isMobile}
               userRecipes={userRecipes}
               canAddRecipe={!!userId}
