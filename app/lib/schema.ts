@@ -367,6 +367,41 @@ export const collectionItemsRelations = relations(
   }),
 );
 
+// ─── MEAL PLAN ─────────────────────────────────────────────
+// A recipe scheduled on a day (DESIGN.md §7). Per-store planning data (like
+// collections / shopping list — owner/editor only). `recipeRef` is a recipe id
+// (a `ur_*` user recipe or a seeded id) so it is intentionally NOT a FK;
+// `recipeName` is denormalised so the entry still reads if the recipe is deleted.
+
+export const scheduledMeals = sqliteTable("scheduled_meals", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  storeId: text("store_id")
+    .notNull()
+    .references(() => stores.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  recipeRef: text("recipe_ref").notNull(),
+  recipeName: text("recipe_name").notNull(),
+  // Local "YYYY-MM-DD" — date-only, so a planned day never drifts by timezone.
+  dateKey: text("date_key").notNull(),
+  mealType: text("meal_type", {
+    enum: ["breakfast", "lunch", "dinner", "snack"],
+  })
+    .notNull()
+    .default("dinner"),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
+    () => new Date(),
+  ),
+});
+
+export const scheduledMealsRelations = relations(scheduledMeals, ({ one }) => ({
+  store: one(stores, {
+    fields: [scheduledMeals.storeId],
+    references: [stores.id],
+  }),
+}));
+
 // ─── TRADE OFFERS ──────────────────────────────────────────
 // Steam-style trade offers on a Bazaar listing: a requester proposes a swap for
 // someone else's listed item, optionally offering one of their own listings in
@@ -422,6 +457,7 @@ export const storesRelations = relations(stores, ({ many }) => ({
   itemLogs: many(itemLogs),
   purchaseOrderItems: many(purchaseOrderItems),
   collections: many(collections),
+  scheduledMeals: many(scheduledMeals),
 }));
 
 export const blocksRelations = relations(blocks, ({ one }) => ({

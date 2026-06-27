@@ -7,7 +7,34 @@ import type { ReactNode } from "react";
  * area, desktop only; mobile keeps the toolbar buttons.
  */
 
-export type RailPanel = "shopping" | "recipes" | "collections" | "members";
+export type RailPanel =
+  | "shopping"
+  | "recipes"
+  | "mealPlan"
+  | "collections"
+  | "members";
+
+function CalendarIcon() {
+  return (
+    <svg width="20" height="20" viewBox="0 0 12 12" fill="none" aria-hidden>
+      <rect
+        x="1.5"
+        y="2.5"
+        width="9"
+        height="8"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="1.1"
+      />
+      <path
+        d="M1.5 4.5h9M4 1.5v2M8 1.5v2"
+        stroke="currentColor"
+        strokeWidth="1.1"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 
 function BagIcon() {
   return (
@@ -119,6 +146,12 @@ export function PanelRail({
       badge: restockCount,
     },
     { id: "recipes", label: "Recipes", icon: <ForkIcon />, show: true },
+    {
+      id: "mealPlan",
+      label: "Meal plan",
+      icon: <CalendarIcon />,
+      show: canEdit,
+    },
     {
       id: "collections",
       label: "Collections",

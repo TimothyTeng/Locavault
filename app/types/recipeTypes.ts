@@ -23,3 +23,25 @@ export type RecipeStep = {
 // A user-saved recipe parsed from the DB is returned as the runtime `Recipe`
 // shape (app/lib/recipes.ts) with `custom: true`, so it drops straight into the
 // matcher, panel, and editor — no separate persistence type is needed.
+
+/** A planned meal slot. */
+export type MealType = "breakfast" | "lunch" | "dinner" | "snack";
+
+export const MEAL_TYPES: MealType[] = ["breakfast", "lunch", "dinner", "snack"];
+
+/**
+ * A recipe scheduled on a day (DESIGN.md §7 meal planning). Per-store. `recipeRef`
+ * is a recipe id — a `ur_*` user recipe or a seeded id — so it's intentionally
+ * NOT a FK; `recipeName` is denormalised so the entry still reads if the recipe
+ * is later deleted. `dateKey` is a local "YYYY-MM-DD" (date-only, no timezone
+ * drift for a calendar).
+ */
+export type ScheduledMeal = {
+  id: string;
+  storeId: string;
+  recipeRef: string;
+  recipeName: string;
+  dateKey: string;
+  mealType: MealType;
+  createdAt: number | null;
+};

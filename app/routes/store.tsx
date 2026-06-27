@@ -30,6 +30,8 @@ import {
   type QuickAddItem,
 } from "~/components/addItem/quickAddPanel";
 import { RecipesPanel } from "~/components/recipes/recipesPanel";
+import { MealPlanPanel } from "~/components/recipes/mealPlanPanel";
+import type { ScheduledMeal, MealType } from "~/types/recipeTypes";
 import { useFetcherFailureToast } from "~/components/common/toast";
 import { CollectionsPanel } from "~/components/collections/collectionsPanel";
 import type { Collection, CollectionKind } from "~/types/collectionTypes";
@@ -75,6 +77,7 @@ export default function StorePage() {
     collections: dbCollections,
     customFixtures,
     userRecipes,
+    scheduledMeals: dbScheduledMeals,
   } = useLoaderData<typeof loader>();
 
   const { state } = useLocation();
@@ -115,7 +118,12 @@ export default function StorePage() {
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [recipesOpen, setRecipesOpen] = useState(false);
+  const [mealPlanOpen, setMealPlanOpen] = useState(false);
   const [minimapExpanded, setMinimapExpanded] = useState(false);
+
+  const [scheduledMeals, setScheduledMeals] = useState<ScheduledMeal[]>(
+    (dbScheduledMeals as ScheduledMeal[]) ?? [],
+  );
 
   const [purchaseOrder, setPurchaseOrder] = useState<PurchaseOrderItem[]>(
     (purchaseOrders as PurchaseOrderItem[]) ?? [],
@@ -134,19 +142,22 @@ export default function StorePage() {
   const openPanel = (panel: RailPanel | null) => {
     setAddItemOpen(false);
     setRecipesOpen(panel === "recipes");
+    setMealPlanOpen(panel === "mealPlan");
     setCollectionsOpen(panel === "collections");
     setPurchaseOrderOpen(panel === "shopping");
     setMembersPanelOpen(panel === "members");
   };
   const activePanel: RailPanel | null = recipesOpen
     ? "recipes"
-    : collectionsOpen
-      ? "collections"
-      : purchaseOrderOpen
-        ? "shopping"
-        : membersPanelOpen
-          ? "members"
-          : null;
+    : mealPlanOpen
+      ? "mealPlan"
+      : collectionsOpen
+        ? "collections"
+        : purchaseOrderOpen
+          ? "shopping"
+          : membersPanelOpen
+            ? "members"
+            : null;
 
   const { zoom, setZoom } = useZoom(0.5, 3);
   const onZoomIn = () => setZoom((z: number) => Math.min(3, z + 0.1));
@@ -291,6 +302,11 @@ export default function StorePage() {
     if (!purchaseOrders || fetcher.state !== "idle") return;
     setPurchaseOrder(purchaseOrders as PurchaseOrderItem[]);
   }, [purchaseOrders]);
+
+  useEffect(() => {
+    if (!dbScheduledMeals || fetcher.state !== "idle") return;
+    setScheduledMeals(dbScheduledMeals as ScheduledMeal[]);
+  }, [dbScheduledMeals]);
 
   // ── Handlers ──
   const handleSelectItem = (item: Item) => {
@@ -851,6 +867,48 @@ export default function StorePage() {
     );
   };
 
+  // ── Meal plan ──
+  const handleScheduleMeal = (
+    recipeRef: string,
+    recipeName: string,
+    dateKey: string,
+    mealType: MealType,
+  ) => {
+    // Use the optimistic id as the server id so a quick add-then-remove lines up.
+    const mealId = crypto.randomUUID();
+    setScheduledMeals((prev) => [
+      ...prev,
+      {
+        id: mealId,
+        storeId: id!,
+        recipeRef,
+        recipeName,
+        dateKey,
+        mealType,
+        createdAt: Date.now(),
+      },
+    ]);
+    fetcher.submit(
+      {
+        _action: "scheduleMeal",
+        id: mealId,
+        recipeRef,
+        recipeName,
+        dateKey,
+        mealType,
+      },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
+  const handleUnscheduleMeal = (mealId: string) => {
+    setScheduledMeals((prev) => prev.filter((m) => m.id !== mealId));
+    fetcher.submit(
+      { _action: "unscheduleMeal", id: mealId },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
   // Lowercase names already on the shopping list — lets recipe cards show which
   // missing ingredients are already queued.
   const listedNames = new Set(purchaseOrder.map((p) => p.name.toLowerCase()));
@@ -1045,6 +1103,9 @@ export default function StorePage() {
             }}
             onRecipes={() =>
               openPanel(activePanel === "recipes" ? null : "recipes")
+            }
+            onMealPlan={() =>
+              openPanel(activePanel === "mealPlan" ? null : "mealPlan")
             }
             onCollections={() =>
               openPanel(activePanel === "collections" ? null : "collections")
@@ -1311,6 +1372,17 @@ export default function StorePage() {
               isMobile={isMobile}
               userRecipes={userRecipes}
               canAddRecipe={!!userId}
+            />
+            <MealPlanPanel
+              isOpen={mealPlanOpen}
+              onClose={() => setMealPlanOpen(false)}
+              isMobile={isMobile}
+              meals={scheduledMeals}
+              items={items}
+              userRecipes={userRecipes}
+              onSchedule={handleScheduleMeal}
+              onUnschedule={handleUnscheduleMeal}
+              onAddMissing={canEdit ? handleAddMissingToList : undefined}
             />
             <CollectionsPanel
               isOpen={collectionsOpen}

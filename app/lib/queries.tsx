@@ -15,8 +15,14 @@ import {
   tradeOffers,
   customFixtures,
   recipes,
+  scheduledMeals,
 } from "./schema";
-import type { RecipeIngredient, RecipeStep } from "~/types/recipeTypes";
+import type {
+  RecipeIngredient,
+  RecipeStep,
+  ScheduledMeal,
+  MealType,
+} from "~/types/recipeTypes";
 import type { Recipe } from "./recipes";
 import type { CustomFixture, CustomShape } from "~/types/customFixtureTypes";
 import type { FixtureCategory } from "~/types/fixtureTypes";
@@ -1658,4 +1664,68 @@ export async function deleteUserRecipe(
   await db
     .delete(recipes)
     .where(and(eq(recipes.id, id), eq(recipes.userId, userId)));
+}
+
+// ─── MEAL PLAN ─────────────────────────────────────────────
+// Recipes scheduled on a day, per store (owner/editor planning data). All
+// mutations are scoped to the store; the loader/action authorises store access.
+
+function parseScheduledMeal(
+  row: typeof scheduledMeals.$inferSelect,
+): ScheduledMeal {
+  return {
+    id: row.id,
+    storeId: row.storeId,
+    recipeRef: row.recipeRef,
+    recipeName: row.recipeName,
+    dateKey: row.dateKey,
+    mealType: row.mealType,
+    createdAt: row.createdAt ? row.createdAt.getTime() : null,
+  };
+}
+
+/** All meals scheduled in a store, ordered by day. */
+export async function getScheduledMeals(
+  storeId: string,
+): Promise<ScheduledMeal[]> {
+  const rows = await db
+    .select()
+    .from(scheduledMeals)
+    .where(eq(scheduledMeals.storeId, storeId))
+    .orderBy(scheduledMeals.dateKey);
+  return rows.map(parseScheduledMeal);
+}
+
+export async function createScheduledMeal(input: {
+  id?: string;
+  storeId: string;
+  userId: string;
+  recipeRef: string;
+  recipeName: string;
+  dateKey: string;
+  mealType: MealType;
+}): Promise<ScheduledMeal> {
+  const [row] = await db
+    .insert(scheduledMeals)
+    .values({
+      ...(input.id ? { id: input.id } : {}),
+      storeId: input.storeId,
+      userId: input.userId,
+      recipeRef: input.recipeRef,
+      recipeName: input.recipeName,
+      dateKey: input.dateKey,
+      mealType: input.mealType,
+    })
+    .returning();
+  return parseScheduledMeal(row);
+}
+
+/** Delete a scheduled meal, scoped to its store (cross-store guard). */
+export async function deleteScheduledMeal(
+  id: string,
+  storeId: string,
+): Promise<void> {
+  await db
+    .delete(scheduledMeals)
+    .where(and(eq(scheduledMeals.id, id), eq(scheduledMeals.storeId, storeId)));
 }

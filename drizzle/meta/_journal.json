@@ -36,6 +36,13 @@
       "when": 1782317199497,
       "tag": "0004_zippy_war_machine",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1782545911620,
+      "tag": "0005_wide_squirrel_girl",
+      "breakpoints": true
     }
   ]
 }

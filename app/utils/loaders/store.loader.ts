@@ -36,6 +36,9 @@ import {
   getBlockStoreId,
   getCustomFixturesByIds,
   getUserRecipes,
+  getScheduledMeals,
+  createScheduledMeal,
+  deleteScheduledMeal,
 } from "~/lib/queries";
 import { estimateUsage } from "~/utils/helpers/usage.helper";
 import { decrementForIngredient } from "~/utils/helpers/recipeCook.helper";
@@ -49,6 +52,7 @@ import {
 import { toActionResult } from "~/utils/loaders/actionResult";
 import type { UsageLog } from "~/types/storeTypes";
 import type { ItemType } from "~/types/itemTypeTypes";
+import { MEAL_TYPES, type MealType } from "~/types/recipeTypes";
 
 /** Window of consumption history (days) pulled to estimate usage. */
 const USAGE_WINDOW_DAYS = 120;
@@ -145,16 +149,23 @@ export const loader = async (args: LoaderFunctionArgs) => {
   const canEdit = accessLevel === "owner" || accessLevel === "editor";
 
   const usageSince = new Date(Date.now() - USAGE_WINDOW_DAYS * 86_400_000);
-  const [allItems, purchaseOrders, members, usageLogs, collections] =
-    await Promise.all([
-      getItemsByStore(params.id!),
-      canEdit ? getPurchaseOrders(params.id!) : Promise.resolve([]),
-      accessLevel === "owner"
-        ? getMembersByStore(params.id!)
-        : Promise.resolve([]),
-      getUsageLogsByStore(params.id!, usageSince),
-      canEdit ? getCollections(params.id!) : Promise.resolve([]),
-    ]);
+  const [
+    allItems,
+    purchaseOrders,
+    members,
+    usageLogs,
+    collections,
+    scheduledMeals,
+  ] = await Promise.all([
+    getItemsByStore(params.id!),
+    canEdit ? getPurchaseOrders(params.id!) : Promise.resolve([]),
+    accessLevel === "owner"
+      ? getMembersByStore(params.id!)
+      : Promise.resolve([]),
+    getUsageLogsByStore(params.id!, usageSince),
+    canEdit ? getCollections(params.id!) : Promise.resolve([]),
+    canEdit ? getScheduledMeals(params.id!) : Promise.resolve([]),
+  ]);
 
   // Group usage logs by item so usage can be estimated in one pass.
   const logsByItem = new Map<string, UsageLog[]>();
@@ -195,6 +206,7 @@ export const loader = async (args: LoaderFunctionArgs) => {
     collections,
     customFixtures,
     userRecipes,
+    scheduledMeals,
   };
 };
 
@@ -383,6 +395,31 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
       decremented++;
     }
     return { ok: true, decremented };
+  }
+
+  // ── Meal plan ──
+  if (data._action === "scheduleMeal") {
+    const dateKey = String(data.dateKey ?? "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey))
+      throw new Response("Bad date", { status: 400 });
+    const mealType: MealType = MEAL_TYPES.includes(data.mealType)
+      ? data.mealType
+      : "dinner";
+    const row = await createScheduledMeal({
+      id: data.id ?? undefined,
+      storeId: params.id!,
+      userId,
+      recipeRef: String(data.recipeRef ?? "").slice(0, 200) || "custom",
+      recipeName: requireText(data.recipeName, "Recipe name").slice(0, 200),
+      dateKey,
+      mealType,
+    });
+    return { ok: true, id: row.id, optimisticId: data.optimisticId };
+  }
+
+  if (data._action === "unscheduleMeal") {
+    await deleteScheduledMeal(String(data.id ?? ""), params.id!);
+    return { ok: true };
   }
 
   if (data._action === "removeMember") {

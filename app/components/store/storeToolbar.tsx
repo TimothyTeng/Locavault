@@ -8,6 +8,7 @@ type Props = {
   onAddItem: () => void;
   onQuickAdd: () => void;
   onRecipes: () => void;
+  onMealPlan: () => void;
   onCollections: () => void;
   onMembersToggle: () => void;
   onPurchaseOrder: () => void;
@@ -43,6 +44,29 @@ function RecipeIcon() {
   );
 }
 
+/** Calendar glyph for the meal plan. */
+function CalendarIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+      <rect
+        x="1.5"
+        y="2.5"
+        width="9"
+        height="8"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <path
+        d="M1.5 4.5h9M4 1.5v2M8 1.5v2"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 /** Stacked-boxes glyph for Collections. */
 function CollectionsIcon() {
   return (
@@ -72,6 +96,7 @@ export function StoreToolbar({
   onAddItem,
   onQuickAdd,
   onRecipes,
+  onMealPlan,
   onCollections,
   onMembersToggle,
   onPurchaseOrder,
@@ -164,6 +189,17 @@ export function StoreToolbar({
         >
           <RecipeIcon />
         </button>
+
+        {/* Meal plan */}
+        {canEdit && (
+          <button
+            onClick={onMealPlan}
+            className="flex items-center justify-center w-8 h-8 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all"
+            title="Meal plan"
+          >
+            <CalendarIcon />
+          </button>
+        )}
 
         {/* Collections */}
         <button
