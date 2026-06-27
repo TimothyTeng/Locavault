@@ -30,7 +30,7 @@ import {
   type QuickAddItem,
 } from "~/components/addItem/quickAddPanel";
 import { RecipesPanel } from "~/components/recipes/recipesPanel";
-import { MealPlanPanel } from "~/components/recipes/mealPlanPanel";
+import { CalendarPanel } from "~/components/recipes/calendarPanel";
 import type { ScheduledMeal, MealType } from "~/types/recipeTypes";
 import { useFetcherFailureToast } from "~/components/common/toast";
 import { CollectionsPanel } from "~/components/collections/collectionsPanel";
@@ -118,7 +118,7 @@ export default function StorePage() {
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [recipesOpen, setRecipesOpen] = useState(false);
-  const [mealPlanOpen, setMealPlanOpen] = useState(false);
+  const [calendarOpen, setCalendarOpen] = useState(false);
   const [minimapExpanded, setMinimapExpanded] = useState(false);
 
   const [scheduledMeals, setScheduledMeals] = useState<ScheduledMeal[]>(
@@ -142,15 +142,15 @@ export default function StorePage() {
   const openPanel = (panel: RailPanel | null) => {
     setAddItemOpen(false);
     setRecipesOpen(panel === "recipes");
-    setMealPlanOpen(panel === "mealPlan");
+    setCalendarOpen(panel === "calendar");
     setCollectionsOpen(panel === "collections");
     setPurchaseOrderOpen(panel === "shopping");
     setMembersPanelOpen(panel === "members");
   };
   const activePanel: RailPanel | null = recipesOpen
     ? "recipes"
-    : mealPlanOpen
-      ? "mealPlan"
+    : calendarOpen
+      ? "calendar"
       : collectionsOpen
         ? "collections"
         : purchaseOrderOpen
@@ -1104,8 +1104,8 @@ export default function StorePage() {
             onRecipes={() =>
               openPanel(activePanel === "recipes" ? null : "recipes")
             }
-            onMealPlan={() =>
-              openPanel(activePanel === "mealPlan" ? null : "mealPlan")
+            onCalendar={() =>
+              openPanel(activePanel === "calendar" ? null : "calendar")
             }
             onCollections={() =>
               openPanel(activePanel === "collections" ? null : "collections")
@@ -1373,9 +1373,9 @@ export default function StorePage() {
               userRecipes={userRecipes}
               canAddRecipe={!!userId}
             />
-            <MealPlanPanel
-              isOpen={mealPlanOpen}
-              onClose={() => setMealPlanOpen(false)}
+            <CalendarPanel
+              isOpen={calendarOpen}
+              onClose={() => setCalendarOpen(false)}
               isMobile={isMobile}
               meals={scheduledMeals}
               items={items}

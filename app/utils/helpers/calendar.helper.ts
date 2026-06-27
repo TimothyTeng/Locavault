@@ -1,5 +1,5 @@
-// Date helpers for the meal-plan calendar (DESIGN.md §7). Date-only, local —
-// meals are keyed by "YYYY-MM-DD" so a planned day never drifts by timezone.
+// Date helpers for the store calendar (DESIGN.md §7). Date-only, local —
+// entries are keyed by "YYYY-MM-DD" so a planned day never drifts by timezone.
 // Pure: every function takes its reference date in, so they're testable.
 
 /** Local "YYYY-MM-DD" for a date. */

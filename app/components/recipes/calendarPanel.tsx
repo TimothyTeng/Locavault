@@ -24,7 +24,7 @@ import {
   dayParts,
   weekLabel,
   isSameDay,
-} from "~/utils/helpers/mealPlan.helper";
+} from "~/utils/helpers/calendar.helper";
 import { useDialog } from "~/components/common/useDialog";
 import { EmptyState } from "~/components/common/EmptyState";
 
@@ -37,12 +37,13 @@ const MEAL_TONE: Record<MealType, string> = {
 };
 
 /**
- * Meal-plan calendar (DESIGN.md §7). A week view of scheduled recipes — tap a
- * day to add a recipe to a meal slot, remove with one tap, and "shop for the
- * week" to push every lacking ingredient across the week's plan to the shopping
- * list (the planning → shopping reinforcing loop). Per-store, editor-only.
+ * Store calendar (DESIGN.md §7). A week view of scheduled recipes — tap a day to
+ * add a recipe to a meal slot, remove with one tap, and "shop for the week" to
+ * push every lacking ingredient across the week's plan to the shopping list (the
+ * planning → shopping reinforcing loop). Per-store, editor-only. Named generically
+ * ("calendar", not "meal plan") to host other reminders/entries in future.
  */
-export function MealPlanPanel({
+export function CalendarPanel({
   isOpen,
   onClose,
   isMobile = false,
@@ -140,7 +141,7 @@ export function MealPlanPanel({
     <div
       ref={dialogRef}
       role="dialog"
-      aria-label="Meal plan"
+      aria-label="Calendar"
       tabIndex={-1}
       className={`absolute inset-y-0 z-30 flex w-full flex-col border-l border-slate-200 bg-white font-mono shadow-2xl outline-none ${
         isMobile ? "right-0" : "right-11 max-w-md"
@@ -236,7 +237,7 @@ export function MealPlanPanel({
           <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-5 py-4">
             <div>
               <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                Meal plan
+                Calendar
               </span>
               <p className="text-[13px] font-bold text-slate-800">
                 Plan the week ahead

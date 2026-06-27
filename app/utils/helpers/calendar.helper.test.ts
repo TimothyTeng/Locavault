@@ -7,9 +7,9 @@ import {
   weekDays,
   isSameDay,
   weekLabel,
-} from "./mealPlan.helper";
+} from "./calendar.helper";
 
-describe("mealPlan date helpers", () => {
+describe("calendar date helpers", () => {
   it("round-trips a date key", () => {
     const d = new Date(2026, 5, 23); // 23 Jun 2026 (a Tuesday)
     expect(dateKey(d)).toBe("2026-06-23");

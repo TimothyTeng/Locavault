@@ -10,7 +10,7 @@ import type { ReactNode } from "react";
 export type RailPanel =
   | "shopping"
   | "recipes"
-  | "mealPlan"
+  | "calendar"
   | "collections"
   | "members";
 
@@ -147,8 +147,8 @@ export function PanelRail({
     },
     { id: "recipes", label: "Recipes", icon: <ForkIcon />, show: true },
     {
-      id: "mealPlan",
-      label: "Meal plan",
+      id: "calendar",
+      label: "Calendar",
       icon: <CalendarIcon />,
       show: canEdit,
     },
