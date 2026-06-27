@@ -79,3 +79,48 @@ export function weekLabel(weekStart: Date): string {
     ? `${a.month} ${a.day} – ${b.day}`
     : `${a.month} ${a.day} – ${b.month} ${b.day}`;
 }
+
+const MONTHS_FULL = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+/** Local midnight of the first day of `d`'s month. */
+export function startOfMonth(d: Date): Date {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+
+/** A new date `n` months from `d` (n may be negative); clamps day to month end. */
+export function addMonths(d: Date, n: number): Date {
+  return new Date(d.getFullYear(), d.getMonth() + n, 1);
+}
+
+/** Same calendar month (and year)? */
+export function isSameMonth(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth();
+}
+
+/**
+ * A 6×7 grid of local-midnight dates covering `month`, Monday-aligned. Always 42
+ * cells so the grid height is stable across months; leading/trailing days spill
+ * into the adjacent months (use `isSameMonth` to dim them).
+ */
+export function monthGrid(month: Date): Date[] {
+  const gridStart = startOfWeek(startOfMonth(month));
+  return Array.from({ length: 42 }, (_, i) => addDays(gridStart, i));
+}
+
+/** "June 2026" label for a month. */
+export function monthLabel(month: Date): string {
+  return `${MONTHS_FULL[month.getMonth()]} ${month.getFullYear()}`;
+}

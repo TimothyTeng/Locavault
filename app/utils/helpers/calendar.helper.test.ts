@@ -7,6 +7,11 @@ import {
   weekDays,
   isSameDay,
   weekLabel,
+  startOfMonth,
+  addMonths,
+  isSameMonth,
+  monthGrid,
+  monthLabel,
 } from "./calendar.helper";
 
 describe("calendar date helpers", () => {
@@ -51,5 +56,35 @@ describe("calendar date helpers", () => {
   it("weekLabel reads naturally, incl. across months", () => {
     expect(weekLabel(new Date(2026, 5, 22))).toBe("Jun 22 – 28");
     expect(weekLabel(new Date(2026, 5, 29))).toBe("Jun 29 – Jul 5");
+  });
+
+  it("startOfMonth returns the 1st at local midnight", () => {
+    expect(dateKey(startOfMonth(new Date(2026, 5, 23, 14)))).toBe("2026-06-01");
+  });
+
+  it("addMonths steps months and lands on the 1st", () => {
+    expect(dateKey(addMonths(new Date(2026, 5, 23), 1))).toBe("2026-07-01");
+    expect(dateKey(addMonths(new Date(2026, 0, 15), -1))).toBe("2025-12-01");
+  });
+
+  it("isSameMonth compares year + month", () => {
+    expect(isSameMonth(new Date(2026, 5, 1), new Date(2026, 5, 30))).toBe(true);
+    expect(isSameMonth(new Date(2026, 5, 1), new Date(2026, 6, 1))).toBe(false);
+    expect(isSameMonth(new Date(2025, 5, 1), new Date(2026, 5, 1))).toBe(false);
+  });
+
+  it("monthGrid is 42 Monday-aligned cells spanning the month", () => {
+    const grid = monthGrid(new Date(2026, 5, 15)); // June 2026
+    expect(grid).toHaveLength(42);
+    // June 1 2026 is a Monday → grid starts on it, no leading spill.
+    expect(dateKey(grid[0])).toBe("2026-06-01");
+    expect(dateKey(grid[41])).toBe("2026-07-12");
+    // First column is always a Monday.
+    expect(startOfWeek(grid[0])).toEqual(grid[0]);
+  });
+
+  it("monthLabel reads as full month + year", () => {
+    expect(monthLabel(new Date(2026, 5, 1))).toBe("June 2026");
+    expect(monthLabel(new Date(2025, 11, 1))).toBe("December 2025");
   });
 });
