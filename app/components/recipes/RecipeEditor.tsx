@@ -233,6 +233,10 @@ export function RecipeEditor({
     "text-[10px] font-bold uppercase tracking-widest text-slate-400";
   const inputCls =
     "w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[13px] text-slate-800 placeholder-slate-300 outline-none focus:border-slate-400 focus:bg-white";
+  // Width-free base for the ingredient row cells (each sets its own width — no
+  // `w-full` so the fixed amount/unit cells don't fight the flexible name cell).
+  const cellCls =
+    "rounded-lg border border-slate-200 bg-slate-50 py-1.5 text-[13px] text-slate-800 placeholder-slate-300 outline-none focus:border-slate-400 focus:bg-white";
 
   return (
     <>
@@ -472,12 +476,12 @@ export function RecipeEditor({
                   }
                   placeholder="Qty"
                   inputMode="decimal"
-                  className={inputCls + " w-14 px-2 py-1.5 text-center"}
+                  className={cellCls + " w-14 px-2 text-center"}
                 />
                 <select
                   value={r.unit}
                   onChange={(e) => setIng(r._id, { unit: e.target.value })}
-                  className={inputCls + " w-20 px-1.5 py-1.5"}
+                  className={cellCls + " w-[4.5rem] px-1.5"}
                 >
                   <option value="">unit</option>
                   {UNIT_OPTIONS.map((u) => (
@@ -490,7 +494,7 @@ export function RecipeEditor({
                   value={r.name}
                   onChange={(e) => setIng(r._id, { name: e.target.value })}
                   placeholder="Ingredient"
-                  className={inputCls + " flex-1 py-1.5"}
+                  className={cellCls + " min-w-0 flex-1 px-3"}
                 />
                 <button
                   type="button"
