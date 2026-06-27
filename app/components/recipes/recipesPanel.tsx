@@ -536,6 +536,21 @@ function RecipeDetail({
                 </button>
               )}
             </div>
+            {/* Legend for the per-row icons */}
+            {(onShowOnMap || onAddMissing || onAddHaveToList) && (
+              <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-slate-400">
+                {onShowOnMap && (
+                  <span className="inline-flex items-center gap-1">
+                    <MapPin size={10} /> find on the map
+                  </span>
+                )}
+                {(onAddMissing || onAddHaveToList) && (
+                  <span className="inline-flex items-center gap-1">
+                    <Plus size={10} strokeWidth={2.5} /> add to shopping list
+                  </span>
+                )}
+              </div>
+            )}
             <ul className="flex flex-col gap-1">
               {ingredients.map((s, i) => {
                 const pretty = prettyIngredient(s.ingredient.name);
