@@ -2,9 +2,24 @@ import { describe, it, expect } from "vitest";
 import {
   iso8601ToMinutes,
   parseIngredientLine,
+  parseMeasure,
   parseYield,
   parseRecipeFromJsonLd,
 } from "./recipeImport.helper";
+
+describe("parseMeasure", () => {
+  it("extracts amount + unit, ignoring trailing prose", () => {
+    expect(parseMeasure("2 tablespoons")).toEqual({ amount: 2, unit: "tbsp" });
+    expect(parseMeasure("1/2 cup")).toEqual({ amount: 0.5, unit: "cup" });
+    expect(parseMeasure("200g")).toEqual({ amount: 200, unit: "g" });
+    expect(parseMeasure("4 pounded to 1cm")).toEqual({ amount: 4 });
+  });
+  it("returns empty for unmeasured text", () => {
+    expect(parseMeasure("to taste")).toEqual({});
+    expect(parseMeasure("")).toEqual({});
+    expect(parseMeasure("a pinch")).toEqual({});
+  });
+});
 
 describe("iso8601ToMinutes", () => {
   it("parses hours and minutes", () => {

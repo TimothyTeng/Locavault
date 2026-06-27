@@ -1,16 +1,39 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useFetcher } from "react-router";
-import { X, Plus, Trash2, Link2, Loader2, ImageOff } from "lucide-react";
+import {
+  X,
+  Plus,
+  Trash2,
+  Link2,
+  Loader2,
+  ImageOff,
+  Search,
+} from "lucide-react";
 import type { Recipe } from "~/lib/recipes";
+import type { RecipeSearchResult } from "~/utils/helpers/mealdb.helper";
 import { UNIT_OPTIONS } from "~/utils/helpers/units";
 
 /**
  * Create / edit a saved recipe (DESIGN.md §7). Self-contained: owns its own
- * fetchers for the URL import (→ /api/recipe-import, pre-fills the form) and the
- * save/delete (→ /api/recipes). Submitting to those resource routes revalidates
- * the store loader, so the new recipe flows back through `userRecipes` — no
- * optimistic bookkeeping here. Closes itself on a successful save/delete.
+ * fetchers for online search (→ /api/recipe-search, TheMealDB), URL import
+ * (→ /api/recipe-import), and save/delete (→ /api/recipes) — picking a search
+ * result or importing a URL pre-fills the form. Submitting to those resource
+ * routes revalidates the store loader, so the new recipe flows back through
+ * `userRecipes` — no optimistic bookkeeping. Closes on a successful save/delete.
  */
+
+/** Loose shape that both search results and URL imports satisfy. */
+type ImportedLike = {
+  name?: string;
+  blurb?: string | null;
+  imageUrl?: string | null;
+  sourceUrl?: string | null;
+  minutes?: number | null;
+  serves?: number | null;
+  tags?: string[];
+  ingredients?: { name: string; amount?: number; unit?: string }[];
+  steps?: { text: string; imageUrl?: string }[];
+};
 
 type IngRow = { _id: number; name: string; amount: string; unit: string };
 type StepRow = { _id: number; text: string; imageUrl: string };
@@ -29,8 +52,13 @@ export function RecipeEditor({
 }) {
   const save = useFetcher<{ recipe?: Recipe; ok?: boolean; error?: string }>();
   const imp = useFetcher<{ recipe?: Partial<Recipe>; error?: string }>();
+  const search = useFetcher<{
+    results?: RecipeSearchResult[];
+    error?: string;
+  }>();
   const busy = save.state !== "idle";
   const importing = imp.state !== "idle";
+  const searching = search.state !== "idle";
 
   const [name, setName] = useState(initial?.name ?? "");
   const [blurb, setBlurb] = useState(initial?.blurb ?? "");
@@ -39,6 +67,8 @@ export function RecipeEditor({
   const [minutes, setMinutes] = useState(num(initial?.minutes));
   const [serves, setServes] = useState(num(initial?.serves));
   const [tags, setTags] = useState((initial?.tags ?? []).join(", "));
+  const [searchQuery, setSearchQuery] = useState("");
+  const [showUrlImport, setShowUrlImport] = useState(false);
   const [importUrl, setImportUrl] = useState("");
   const [imgBroken, setImgBroken] = useState(false);
 
@@ -70,10 +100,8 @@ export function RecipeEditor({
       onClose();
   }, [save.state, save.data, onClose]);
 
-  // Pre-fill from a successful URL import.
-  useEffect(() => {
-    const r = imp.data?.recipe;
-    if (imp.state !== "idle" || !r) return;
+  // Fill the form from a search result or URL import.
+  const applyRecipe = useCallback((r: ImportedLike) => {
     if (r.name) setName(r.name);
     if (r.blurb != null) setBlurb(r.blurb);
     if (r.imageUrl != null) {
@@ -83,6 +111,7 @@ export function RecipeEditor({
     if (r.sourceUrl != null) setSourceUrl(r.sourceUrl);
     if (r.minutes != null) setMinutes(num(r.minutes));
     if (r.serves != null) setServes(num(r.serves));
+    if (Array.isArray(r.tags) && r.tags.length) setTags(r.tags.join(", "));
     if (Array.isArray(r.ingredients) && r.ingredients.length)
       setIngredients(
         r.ingredients.map((i) => ({
@@ -100,7 +129,12 @@ export function RecipeEditor({
           imageUrl: s.imageUrl ?? "",
         })),
       );
-  }, [imp.state, imp.data]);
+  }, []);
+
+  // Pre-fill from a successful URL import.
+  useEffect(() => {
+    if (imp.state === "idle" && imp.data?.recipe) applyRecipe(imp.data.recipe);
+  }, [imp.state, imp.data, applyRecipe]);
 
   const setIng = (id: number, patch: Partial<IngRow>) =>
     setIngredients((p) =>
@@ -122,6 +156,19 @@ export function RecipeEditor({
     setSteps((p) => p.filter((r) => r._id !== id));
 
   const canSave = name.trim() !== "" && ingredients.some((r) => r.name.trim());
+
+  const handleSearch = () => {
+    const q = searchQuery.trim();
+    if (!q) return;
+    search.submit(
+      { q },
+      {
+        method: "post",
+        action: "/api/recipe-search",
+        encType: "application/json",
+      },
+    );
+  };
 
   const handleImport = () => {
     const url = importUrl.trim();
@@ -214,41 +261,132 @@ export function RecipeEditor({
         </div>
 
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-5 py-4">
-          {/* Import from URL */}
+          {/* Find a recipe online */}
           {!initial && (
             <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-              <span className={labelCls}>Import from a recipe page</span>
+              <span className={labelCls}>Find a recipe online</span>
               <div className="mt-1.5 flex gap-2">
-                <input
-                  value={importUrl}
-                  onChange={(e) => setImportUrl(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleImport()}
-                  placeholder="https://…"
-                  className={inputCls}
-                />
+                <div className="relative flex-1">
+                  <Search
+                    size={13}
+                    className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-300"
+                  />
+                  <input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+                    placeholder="Search recipes, e.g. chicken curry…"
+                    className={inputCls + " pl-8"}
+                  />
+                </div>
                 <button
                   type="button"
-                  onClick={handleImport}
-                  disabled={!importUrl.trim() || importing}
+                  onClick={handleSearch}
+                  disabled={!searchQuery.trim() || searching}
                   className="flex shrink-0 items-center gap-1.5 rounded-lg bg-slate-900 px-3 text-[12px] font-bold text-white transition-colors hover:bg-slate-700 disabled:opacity-40"
                 >
-                  {importing ? (
+                  {searching ? (
                     <Loader2 size={13} className="animate-spin" />
                   ) : (
-                    <Link2 size={13} />
+                    <Search size={13} />
                   )}
-                  Import
+                  Search
                 </button>
               </div>
-              {imp.data?.error && (
+
+              {search.data?.error && (
                 <p className="mt-1.5 text-[11px] text-rose-500">
-                  Couldn’t read a recipe from that page. You can still enter it
-                  by hand.
+                  Search is unavailable right now — try again, or enter the
+                  recipe by hand.
                 </p>
               )}
-              <p className="mt-1.5 text-[10px] text-slate-400">
-                Pulls the name, ingredients, and steps from most recipe sites.
-              </p>
+              {search.state === "idle" &&
+                search.data?.results &&
+                (search.data.results.length === 0 ? (
+                  <p className="mt-1.5 text-[11px] text-slate-400">
+                    No matches — try another term, paste a link, or enter it by
+                    hand.
+                  </p>
+                ) : (
+                  <ul className="mt-2 flex max-h-52 flex-col gap-1 overflow-y-auto">
+                    {search.data.results.map((r) => (
+                      <li key={r.id}>
+                        <button
+                          type="button"
+                          onClick={() => applyRecipe(r)}
+                          className="flex w-full items-center gap-2.5 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-left transition-colors hover:border-slate-300 hover:bg-slate-50"
+                        >
+                          {r.imageUrl ? (
+                            <img
+                              src={r.imageUrl}
+                              alt=""
+                              className="h-9 w-9 shrink-0 rounded-md object-cover"
+                            />
+                          ) : (
+                            <div className="h-9 w-9 shrink-0 rounded-md bg-slate-100" />
+                          )}
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-[12px] font-bold text-slate-700">
+                              {r.name}
+                            </p>
+                            {(r.area || r.category) && (
+                              <p className="truncate text-[10px] text-slate-400">
+                                {[r.area, r.category]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </p>
+                            )}
+                          </div>
+                          <Plus size={13} className="shrink-0 text-slate-300" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                ))}
+
+              {/* Secondary: paste a link (works for cooperative blogs) */}
+              <div className="mt-2">
+                {showUrlImport ? (
+                  <>
+                    <div className="flex gap-2">
+                      <input
+                        value={importUrl}
+                        onChange={(e) => setImportUrl(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && handleImport()}
+                        placeholder="https://… (recipe blog)"
+                        className={inputCls + " py-1.5 text-[12px]"}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleImport}
+                        disabled={!importUrl.trim() || importing}
+                        className="flex shrink-0 items-center gap-1.5 rounded-lg border border-slate-300 px-3 text-[12px] font-bold text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-40"
+                      >
+                        {importing ? (
+                          <Loader2 size={13} className="animate-spin" />
+                        ) : (
+                          <Link2 size={13} />
+                        )}
+                        Import
+                      </button>
+                    </div>
+                    {imp.data?.error && (
+                      <p className="mt-1.5 text-[11px] text-rose-500">
+                        Couldn’t read that page — many big sites block imports.
+                        Search above, or enter it by hand.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowUrlImport(true)}
+                    className="flex items-center gap-1 text-[11px] text-slate-400 transition-colors hover:text-slate-600"
+                  >
+                    <Link2 size={11} /> or paste a recipe link
+                  </button>
+                )}
+              </div>
             </div>
           )}
 

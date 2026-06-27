@@ -10,10 +10,12 @@ export type ImportedRecipe = {
   name: string;
   blurb?: string;
   imageUrl?: string;
+  sourceUrl?: string;
   ingredients: RecipeIngredient[];
   steps: RecipeStep[];
   minutes?: number;
   serves?: number;
+  tags?: string[];
 };
 
 const UNICODE_FRACTIONS: Record<string, number> = {
@@ -116,6 +118,29 @@ export function parseIngredientLine(raw: string): RecipeIngredient {
   if (amount != null) ing.amount = amount;
   if (unit) ing.unit = unit;
   return ing;
+}
+
+/**
+ * Parse a stand-alone measure string (e.g. TheMealDB's `strMeasure`: "2
+ * tablespoons", "1/2 cup", "200g", "to taste") into just an amount + unit,
+ * ignoring any trailing prose. Returns `{}` when there's no leading quantity.
+ */
+export function parseMeasure(raw: string): { amount?: number; unit?: string } {
+  let line = raw.replace(/\s+/g, " ").trim();
+  if (!line) return {};
+  const out: { amount?: number; unit?: string } = {};
+  const qm = line.match(QTY_RE);
+  if (qm) {
+    const v = parseQuantity(qm[1]);
+    if (v != null) out.amount = v;
+    line = line.slice(qm[0].length).trim();
+  }
+  const uw = line.match(/^([a-zA-Z]+)\b/);
+  if (uw) {
+    const u = normalizeUnit(uw[1]);
+    if (u) out.unit = u;
+  }
+  return out;
 }
 
 /** recipeYield: number | "4 servings" | array → a count. */

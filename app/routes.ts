@@ -13,4 +13,5 @@ export default [
   route("/api/fixtures", "routes/api.fixtures.ts"),
   route("/api/recipes", "routes/api.recipes.ts"),
   route("/api/recipe-import", "routes/api.recipe-import.ts"),
+  route("/api/recipe-search", "routes/api.recipe-search.ts"),
 ] satisfies RouteConfig;

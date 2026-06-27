@@ -77,8 +77,12 @@ async function fetchHtml(start: URL): Promise<FetchResult> {
         redirect: "manual",
         signal: ctrl.signal,
         headers: {
-          "user-agent": "Mozilla/5.0 (compatible; LocavaultBot/1.0)",
+          // A real browser UA — some blogs 403 obvious bots. (Big commercial
+          // sites with edge bot-mitigation will still block; use search there.)
+          "user-agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
           accept: "text/html,application/xhtml+xml",
+          "accept-language": "en-US,en;q=0.9",
         },
       });
     } catch {
