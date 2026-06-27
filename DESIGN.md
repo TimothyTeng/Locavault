@@ -338,6 +338,20 @@ A trait can raise a signal with a severity + time horizon; the item shows the
 The single *input* surface. Run-out predictions and recipe/packing gaps draft
 entries into it; the user confirms. Distinct from collections (see below).
 
+> ✅ *Done:* the **Shopping List panel** (`components/purchases/purchaseOrderPanel.tsx`)
+> splits into two tabs:
+> - **List** — the queue itself, plus an inline **"Needs restocking"** block
+>   (`purchaseOrderSuggestions.tsx`) surfacing low/out/expiring items with one-tap
+>   (and add-all) restock.
+> - **Upcoming** (`purchaseOrderUpcoming.tsx`) — ingredients the calendar's
+>   scheduled meals call for but the store is out of, scoped by a **timeframe**
+>   selector (3 days / 1 week / 2 weeks / 1 month) and tagged with the soonest day
+>   each is needed. One-tap (and add-all) → list. Fed by `MealNeed[]` (per-meal
+>   day + missing-from-stock names) computed in `store.tsx`.
+>
+> "Buying" a row adds quantity to a linked item (or creates one) then clears the
+> row; barcode scan + manual entry both add rows.
+
 ### Recipes (OUTPUT) — flagship **[DECIDED as first feature after core]**
 
 Reads items with the `edible` trait. Three jobs:
@@ -352,18 +366,40 @@ Reads items with the `edible` trait. Three jobs:
 > `matchRecipes` (`utils/helpers/recipes.helper.ts`) — **fuzzy, tokenized,
 > de-pluralised matching against "what you keep", never exact counts** (e.g.
 > "onion" ↔ "Red Onions"). Filters: **Cook now** (all on hand) / **Almost** (≤2
-> missing), each with a ring gauge. **Use it up** leads — recipes consuming items
-> expiring ≤30d get an amber banner + a top-of-panel nudge. One tap adds the
-> lacking ingredients to the shopping list (skips already-queued; cards show
-> what's listed) via the existing `createPOItems` action.
-> ⬜ *Remaining:* user-saved recipes; a recipe API for volume; a **"made this"**
-> tap that decrements matched items (closes the recipes → consumption →
-> prediction loop).
+> missing) / **Mine**, each with a ring gauge. **Use it up** leads — recipes
+> consuming items expiring ≤30d get an amber banner + a top-of-panel nudge.
+>
+> ✅ *Done (recipes module, 4 phases — see below):*
+> - **User-saved library** (table `recipes`, `ur_*` ids, user-scoped — drops into
+>   the matcher alongside the seeds). Create / edit / delete in a `RecipeEditor`
+>   modal with structured **ingredients (amount + unit), steps (+ per-step image
+>   URL), photo URL, tags, time, serves** (`types/recipeTypes.ts`).
+> - **Import, search-first:** the editor searches **TheMealDB** (free public API,
+>   `api.recipe-search.ts`) and fills the form from a result; a collapsible
+>   **paste-a-URL** path parses `schema.org/Recipe` JSON-LD server-side with an
+>   SSRF guard (`api.recipe-import.ts` + `recipeImport.helper.ts`). *(AllRecipes &
+>   many big sites return 402/403 to any server fetch — empirically confirmed — so
+>   search is the primary path; a paid discovery API can slot in via an env key.)*
+> - **Ingredient ↔ map:** the detail view shows availability dots; an in-stock
+>   ingredient links to its block (tap → pulse on the canvas). Two-way **add to
+>   shopping list** — missing *or* on-hand (restock), per-row or all-at-once.
+> - **Measurement-aware "Cooked this":** a servings ×N control decrements the
+>   matched items, converting the recipe amount into each item's unit via a unit
+>   registry (`utils/helpers/units.ts`, volume/mass/count) and logging the delta
+>   so prediction learns from it (`recipeCook.helper.ts`). Quantity stays integer
+>   (rounded) — "lenient, never exact". Items can declare a measured `unit` (datalist
+>   on the add-item form), so e.g. "50 ml vanilla essence" decrements correctly.
+> - **Schedule from a recipe:** an "Add to calendar" block (pick date + meal slot)
+>   sits beside "Cooked", so planning isn't confined to the calendar tab.
+> ⬜ *Remaining:* shopping-list rows added from a recipe land with no location
+> block (`blockId: null`) — could inherit a same-name item's block or suggest one
+> by type (parked, needs UX); a paid recipe-discovery API for breadth.
 
 Design rules learned from the critique:
-- **Volume comes from a seeded library and/or a recipe API** (Spoonacular /
-  Edamam / Samsung Food-style) + user saves — *never* depend on the user authoring
-  enough recipes.
+- **Volume comes from a seeded library and/or a recipe API** + user saves — *never*
+  depend on the user authoring enough recipes. We use a seeded library + **TheMealDB
+  search** + JSON-LD URL import; a paid API (Spoonacular / Edamam) stays a drop-in
+  option behind an env key.
 - **Match against "what you typically keep" (purchase profile), not exact
   counts.** Your buying history *is* your pantry. Avoid Grocy-style exact-quantity
   matching (it needs precise tracking we don't have); make it an in-the-moment
@@ -372,8 +408,32 @@ Design rules learned from the critique:
   core of food-first — it actively prevents waste.
 
 The reinforcing loop: track food → expiry/run-out signals → recipes suggest using
-expiring items → cooking optionally logs consumption → better prediction → smarter
-shopping list.
+expiring items → **cooking logs consumption ("Cooked this")** → better prediction
+→ smarter shopping list.
+
+### Calendar & meal planning (OUTPUT) **[DECIDED]**
+
+A per-store **calendar** in the side rail — deliberately named generically
+("calendar", not "meal plan") so it can host other reminders/entry types later.
+Today it plans meals; the planning → shopping loop is the point.
+
+> ✅ *Done:* **Calendar panel** (`components/recipes/calendarPanel.tsx`,
+> editor-only). Schedule recipes onto days in a **Week** or **Month** view
+> (toggle; month is a 6×7 Monday-aligned grid with per-meal-type dots; prev/next
+> steps by week or month; Today resets). Tap a month day → a **day-detail**
+> sub-view to add/remove that day's meals. Each scheduled meal carries a slot
+> (breakfast/lunch/dinner/snack). **Click a scheduled recipe → opens the recipes
+> panel jumped to its detail** (works even for a seeded recipe with nothing in
+> stock, via an `emptyMatch` fallback). **"What this week/month needs"** tallies
+> every ingredient the period's recipes call for into *in-stock* vs *to-buy*, with
+> one-tap (and all) add to the shopping list — the same `MealNeed[]` data feeds
+> the shopping list's **Upcoming** tab. Date math is date-only local "YYYY-MM-DD"
+> (`utils/helpers/calendar.helper.ts`, unit-tested) to avoid timezone drift.
+> Persisted in the `scheduled_meals` table (per-store; `recipeRef` is a recipe id,
+> not an FK, since seeds aren't in the DB; `recipeName` denormalised so an entry
+> still reads after a recipe is deleted).
+> ⬜ *Remaining:* non-meal reminders / entry types (the generic-naming bet);
+> drag-to-move a meal between days; cross-store / global calendar.
 
 ### Packing lists / collections (OUTPUT) — a check-out / check-in system **[DECIDED]**
 

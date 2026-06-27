@@ -108,8 +108,8 @@ app/
 │   ├── addstore/         # floor-plan editor: storeViewFinder/, blockPicker/
 │   ├── store/            # store view: table, rows, header, toolbar, minimap, members, filters
 │   ├── addItem/          # add-item slide-in panel + form + barcode scanner + quick (bulk) add
-│   ├── purchases/        # shopping-list panel, list, rows, suggestions, optional fields
-│   ├── recipes/          # recipes panel: seeded library matched against pantry (see DESIGN.md §7)
+│   ├── purchases/        # shopping-list panel (List + Upcoming tabs), list, rows, suggestions
+│   ├── recipes/          # recipes panel (library + import + cook) + calendar panel (DESIGN.md §7)
 │   ├── collections/      # collections / packing panel: group items, pick assist, check-out/in (DESIGN.md §7)
 │   ├── trade/            # the Bazaar: global trade board + offers (DESIGN.md §7)
 │   └── templates/        # templates gallery + card + save-from-store modal
@@ -172,6 +172,18 @@ All ids are `text` UUIDs (`crypto.randomUUID()`). Timestamps are `integer` epoch
 - **purchaseOrderItems** — a shopping list / restock queue. Mirrors the item field
   set, with optional `itemId` linking to an existing item. "Buying" a PO row adds
   quantity to the linked item (or creates a new item) then deletes the PO row.
+- **recipes** — a user's saved recipe (ids `ur_*`), **user-scoped** (not per-store)
+  so it matches against any store the owner opens — the custom layer over the
+  seeded library in `lib/recipes.ts`. `ingredients` (`{name, amount?, unit?}[]`),
+  `steps` (`{text, imageUrl?}[]`) and `tags` are JSON-string columns; plus
+  `blurb`, `imageUrl`, `sourceUrl`, `minutes`, `serves`. CRUD via `/api/recipes`;
+  import via `/api/recipe-search` (TheMealDB) + `/api/recipe-import` (JSON-LD).
+- **scheduledMeals** — a recipe scheduled on a day, **per-store** (FK → store,
+  cascade). `recipeRef` is a recipe id (a `ur_*` save or a seeded id) — intentionally
+  **not an FK** (seeds aren't rows); `recipeName` is denormalised so the entry reads
+  after a recipe is deleted. `dateKey` is local "YYYY-MM-DD" (date-only, no tz drift);
+  `mealType` ∈ `{breakfast, lunch, dinner, snack}`. Powers the calendar panel + the
+  shopping list's Upcoming tab.
 - **templates** — a reusable, shareable store **layout** (blocks only, no items):
   name, description, tags, `rows`/`cols`, `userId` (creator), `isPublic`,
   `usageCount`. Any signed-in user can create templates; public ones are visible
