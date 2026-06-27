@@ -34,7 +34,7 @@ import { CalendarPanel } from "~/components/recipes/calendarPanel";
 import { RECIPES, type Recipe } from "~/lib/recipes";
 import { matchRecipes, prettyIngredient } from "#utils/helpers/recipes.helper";
 import { dateKey } from "#utils/helpers/calendar.helper";
-import type { ScheduledMeal, MealType } from "~/types/recipeTypes";
+import type { ScheduledMeal, MealType, MealNeed } from "~/types/recipeTypes";
 import { useFetcherFailureToast } from "~/components/common/toast";
 import { CollectionsPanel } from "~/components/collections/collectionsPanel";
 import type { Collection, CollectionKind } from "~/types/collectionTypes";
@@ -121,6 +121,9 @@ export default function StorePage() {
   const [addItemOpen, setAddItemOpen] = useState(false);
   const [quickAddOpen, setQuickAddOpen] = useState(false);
   const [recipesOpen, setRecipesOpen] = useState(false);
+  // A recipe the recipes panel should jump straight to (set when a calendar meal
+  // is clicked); consumed + cleared by the panel.
+  const [openRecipeId, setOpenRecipeId] = useState<string | null>(null);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [minimapExpanded, setMinimapExpanded] = useState(false);
 
@@ -338,6 +341,13 @@ export default function StorePage() {
   const handleShowIngredientOnMap = (item: Item) => {
     handleJumpToItem(item);
     if (isMobile) setRecipesOpen(false);
+  };
+
+  // Calendar → open a scheduled recipe: switch to the recipes panel and jump
+  // straight to that recipe's detail view.
+  const handleOpenRecipeFromCalendar = (recipeRef: string) => {
+    openPanel("recipes");
+    setOpenRecipeId(recipeRef);
   };
 
   // Open the add-item panel pre-targeted to a zone (or unassigned).
@@ -920,35 +930,40 @@ export default function StorePage() {
     purchaseOrder.filter((p) => p.itemId).map((p) => p.itemId as string),
   );
 
-  // Ingredients that upcoming scheduled meals (today onward) call for but the
-  // store is out of — surfaced as shopping-list suggestions. dateKeys are
+  // For each upcoming scheduled meal (today onward), the day it's planned for and
+  // the ingredients its recipe needs but the store is out of. The shopping list's
+  // "Upcoming" tab unions these across a chosen timeframe. dateKeys are
   // "YYYY-MM-DD", so a lexical compare is a chronological one.
-  const upcomingMealNeeds = useMemo(() => {
+  const mealNeeds = useMemo<MealNeed[]>(() => {
     const todayKey = dateKey(new Date());
+    const future = scheduledMeals.filter((m) => m.dateKey >= todayKey);
+    if (!future.length) return [];
     const library: Recipe[] = [...userRecipes, ...RECIPES];
     const byId = new Map(library.map((r) => [r.id, r]));
+    // Resolve each referenced recipe's missing-from-stock ingredients once.
     const planned: Recipe[] = [];
     const seen = new Set<string>();
-    for (const meal of scheduledMeals) {
-      if (meal.dateKey < todayKey) continue;
+    for (const meal of future) {
       const r = byId.get(meal.recipeRef);
       if (r && !seen.has(r.id)) {
         seen.add(r.id);
         planned.push(r);
       }
     }
-    if (!planned.length) return [];
     const matchById = new Map(
       matchRecipes(items, planned).map((m) => [m.recipe.id, m]),
     );
-    const names = new Set<string>();
+    const missingByRecipe = new Map<string, string[]>();
     for (const r of planned) {
       const m = matchById.get(r.id);
       // A recipe with zero pantry matches is dropped by matchRecipes → all lacking.
       const missing = m ? m.missing : r.ingredients.map((i) => i.name);
-      missing.forEach((n) => names.add(prettyIngredient(n)));
+      missingByRecipe.set(r.id, missing.map(prettyIngredient));
     }
-    return [...names];
+    return future.map((meal) => ({
+      dateKey: meal.dateKey,
+      names: missingByRecipe.get(meal.recipeRef) ?? [],
+    }));
   }, [scheduledMeals, userRecipes, items]);
 
   // ── Collections / packing ──
@@ -1402,6 +1417,8 @@ export default function StorePage() {
               onCooked={canEdit ? handleCookedRecipe : undefined}
               onSchedule={canEdit ? handleScheduleMeal : undefined}
               onShowOnMap={handleShowIngredientOnMap}
+              openRecipeId={openRecipeId}
+              onRecipeOpened={() => setOpenRecipeId(null)}
               listedNames={listedNames}
               listedItemIds={listedItemIds}
               isMobile={isMobile}
@@ -1418,6 +1435,7 @@ export default function StorePage() {
               onSchedule={handleScheduleMeal}
               onUnschedule={handleUnscheduleMeal}
               onAddMissing={canEdit ? handleAddMissingToList : undefined}
+              onOpenRecipe={handleOpenRecipeFromCalendar}
             />
             <CollectionsPanel
               isOpen={collectionsOpen}
@@ -1455,7 +1473,7 @@ export default function StorePage() {
                 onUpdate={handleUpdatePOItem}
                 onDelete={handleDeletePOItem}
                 onBuy={handleBuyPOItem}
-                mealNeeds={upcomingMealNeeds}
+                mealNeeds={mealNeeds}
                 onAddNames={handleAddMissingToList}
                 isMobile={isMobile}
               />

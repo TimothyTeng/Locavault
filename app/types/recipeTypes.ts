@@ -45,3 +45,10 @@ export type ScheduledMeal = {
   mealType: MealType;
   createdAt: number | null;
 };
+
+/**
+ * One scheduled meal's shopping need: the day it's planned for and the pretty
+ * ingredient names that meal's recipe calls for but the store is out of. The
+ * shopping list's "Upcoming" tab unions these across a chosen timeframe.
+ */
+export type MealNeed = { dateKey: string; names: string[] };

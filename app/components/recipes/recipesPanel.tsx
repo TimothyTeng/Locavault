@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   X,
   Clock,
@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import type { Item } from "~/types/storeTypes";
 import type { BlocksMap } from "~/types/storeViewFinderTypes";
-import type { Recipe } from "~/lib/recipes";
+import { RECIPES, type Recipe } from "~/lib/recipes";
 import { type MealType, MEAL_TYPES } from "~/types/recipeTypes";
 import {
   matchRecipes,
@@ -80,6 +80,8 @@ export function RecipesPanel({
   onCooked,
   onSchedule,
   onShowOnMap,
+  openRecipeId,
+  onRecipeOpened,
   listedNames,
   listedItemIds,
   isMobile = false,
@@ -103,6 +105,10 @@ export function RecipesPanel({
     mealType: MealType,
   ) => void;
   onShowOnMap?: (item: Item) => void;
+  /** When set, jump straight to this recipe's detail view (e.g. from the calendar). */
+  openRecipeId?: string | null;
+  /** Called once the panel has consumed `openRecipeId`, so the parent can clear it. */
+  onRecipeOpened?: () => void;
   listedNames?: Set<string>;
   listedItemIds?: Set<string>;
   isMobile?: boolean;
@@ -115,6 +121,14 @@ export function RecipesPanel({
   const [editing, setEditing] = useState<Recipe | null>(null);
   const [creating, setCreating] = useState(false);
   const dialogRef = useDialog(isOpen, onClose);
+
+  // Parent requested a specific recipe (a calendar meal was clicked) — open its
+  // detail and let the parent clear the request so it can re-fire next time.
+  useEffect(() => {
+    if (!openRecipeId) return;
+    setDetailId(openRecipeId);
+    onRecipeOpened?.();
+  }, [openRecipeId, onRecipeOpened]);
 
   const matches = useMemo(
     () => matchRecipes(items, userRecipes),
@@ -159,7 +173,16 @@ export function RecipesPanel({
 
   if (!isOpen) return null;
 
-  const detail = detailId ? matchById.get(detailId) : undefined;
+  // Resolve the detail match; fall back to a zero-match stand-in so a recipe
+  // opened by id (e.g. a seeded recipe with nothing in stock, dropped by the
+  // matcher) still renders its detail rather than silently bouncing to the list.
+  const fromMatch = detailId ? matchById.get(detailId) : undefined;
+  const fallback =
+    detailId && !fromMatch
+      ? ([...userRecipes, ...RECIPES].find((r) => r.id === detailId) ??
+        undefined)
+      : undefined;
+  const detail = fromMatch ?? (fallback ? emptyMatch(fallback) : undefined);
 
   return (
     <>

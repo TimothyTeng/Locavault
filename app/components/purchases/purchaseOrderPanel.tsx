@@ -1,8 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { PurchaseOrderItem } from "~/types/purchaseOrderTypes";
 import type { BlocksMap } from "~/types/storeViewFinderTypes";
 import type { BarcodeInfo } from "~/utils/helpers/barcode.helper";
+import type { MealNeed } from "~/types/recipeTypes";
 import { PurchaseOrderList } from "./purchaseOrderList";
+import { PurchaseOrderUpcoming } from "./purchaseOrderUpcoming";
 import type { Item } from "~/types/storeTypes";
 import { CloseButton } from "~/components/common/CloseButton";
 
@@ -22,7 +24,8 @@ type Props = {
   onUpdate: (item: PurchaseOrderItem) => void;
   onDelete: (id: string) => void;
   onBuy: (id: string) => void;
-  mealNeeds?: string[];
+  /** Per-meal upcoming needs — powers the "Upcoming" tab. */
+  mealNeeds?: MealNeed[];
   onAddNames?: (names: string[]) => void;
   isMobile?: boolean;
 };
@@ -43,10 +46,12 @@ export function PurchaseOrderPanel({
   onUpdate,
   onDelete,
   onBuy,
-  mealNeeds,
+  mealNeeds = [],
   onAddNames,
   isMobile = false,
 }: Props) {
+  const [tab, setTab] = useState<"list" | "upcoming">("list");
+
   useEffect(() => {
     if (!isOpen) return;
     const handler = (e: KeyboardEvent) => {
@@ -55,6 +60,23 @@ export function PurchaseOrderPanel({
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [isOpen, onClose]);
+
+  // Distinct ingredients upcoming meals need but the store + list don't cover —
+  // the "Upcoming" tab badge.
+  const existingLower = useMemo(
+    () => new Set(items.map((i) => i.name.toLowerCase())),
+    [items],
+  );
+  const upcomingBadge = useMemo(() => {
+    const s = new Set<string>();
+    for (const need of mealNeeds)
+      for (const name of need.names)
+        if (!existingLower.has(name.toLowerCase())) s.add(name.toLowerCase());
+    return s.size;
+  }, [mealNeeds, existingLower]);
+
+  const showUpcoming = !!onAddNames;
+  const activeTab = tab === "upcoming" && showUpcoming ? "upcoming" : "list";
 
   const header = (
     <div className="flex items-center justify-between px-4 md:px-6 h-12 md:h-14 border-b border-slate-200 shrink-0">
@@ -78,13 +100,70 @@ export function PurchaseOrderPanel({
         <span className="text-[10px] font-bold uppercase tracking-widest text-slate-800">
           Shopping List
         </span>
-        {items.length > 0 && (
-          <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-[9px] font-bold text-slate-500">
-            {items.length}
-          </span>
-        )}
       </div>
       <CloseButton onClick={onClose} />
+    </div>
+  );
+
+  const tabBar = showUpcoming ? (
+    <div className="flex shrink-0 border-b border-slate-200">
+      {(
+        [
+          ["list", "List", items.length],
+          ["upcoming", "Upcoming", upcomingBadge],
+        ] as const
+      ).map(([id, label, n]) => (
+        <button
+          key={id}
+          onClick={() => setTab(id)}
+          className={`flex flex-1 items-center justify-center gap-1.5 h-9 text-[10px] font-bold uppercase tracking-widest border-b-2 transition-colors ${
+            activeTab === id
+              ? "border-slate-800 text-slate-800"
+              : "border-transparent text-slate-400 hover:text-slate-600"
+          }`}
+        >
+          {label}
+          {n > 0 && (
+            <span
+              className={`px-1.5 py-0.5 rounded-full text-[9px] ${
+                id === "upcoming"
+                  ? "bg-indigo-100 text-indigo-700"
+                  : "bg-slate-100 text-slate-500"
+              }`}
+            >
+              {n}
+            </span>
+          )}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
+  const body = (
+    <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+      {activeTab === "upcoming" && onAddNames ? (
+        <PurchaseOrderUpcoming
+          mealNeeds={mealNeeds}
+          existingNames={existingLower}
+          onAdd={onAddNames}
+        />
+      ) : (
+        <PurchaseOrderList
+          items={items}
+          blocks={blocks}
+          storeItems={storeItems}
+          checkedIds={checkedIds}
+          onToggleChecked={onToggleChecked}
+          onCommitChecked={onCommitChecked}
+          onAdd={onAdd}
+          onAddScanned={onAddScanned}
+          onAddFromSuggestion={onAddFromSuggestion}
+          onAddAll={onAddAll}
+          onUpdate={onUpdate}
+          onDelete={onDelete}
+          onBuy={onBuy}
+        />
+      )}
     </div>
   );
 
@@ -101,25 +180,8 @@ export function PurchaseOrderPanel({
         ].join(" ")}
       >
         {header}
-        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-          <PurchaseOrderList
-            items={items}
-            blocks={blocks}
-            storeItems={storeItems}
-            checkedIds={checkedIds}
-            onToggleChecked={onToggleChecked}
-            onCommitChecked={onCommitChecked}
-            onAdd={onAdd}
-            onAddScanned={onAddScanned}
-            onAddFromSuggestion={onAddFromSuggestion}
-            onAddAll={onAddAll}
-            onUpdate={onUpdate}
-            onDelete={onDelete}
-            onBuy={onBuy}
-            mealNeeds={mealNeeds}
-            onAddNames={onAddNames}
-          />
-        </div>
+        {tabBar}
+        {body}
       </div>
     );
   }
@@ -134,23 +196,8 @@ export function PurchaseOrderPanel({
       ].join(" ")}
     >
       {header}
-      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-        <PurchaseOrderList
-          items={items}
-          blocks={blocks}
-          storeItems={storeItems}
-          checkedIds={checkedIds}
-          onToggleChecked={onToggleChecked}
-          onCommitChecked={onCommitChecked}
-          onAdd={onAdd}
-          onAddScanned={onAddScanned}
-          onAddFromSuggestion={onAddFromSuggestion}
-          onAddAll={onAddAll}
-          onUpdate={onUpdate}
-          onDelete={onDelete}
-          onBuy={onBuy}
-        />
-      </div>
+      {tabBar}
+      {body}
     </div>
   );
 }

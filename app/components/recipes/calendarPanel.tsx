@@ -64,6 +64,7 @@ export function CalendarPanel({
   onSchedule,
   onUnschedule,
   onAddMissing,
+  onOpenRecipe,
 }: {
   isOpen: boolean;
   onClose: () => void;
@@ -79,6 +80,8 @@ export function CalendarPanel({
   ) => void;
   onUnschedule: (mealId: string) => void;
   onAddMissing?: (names: string[]) => void;
+  /** Open a scheduled recipe's detail (in the recipes panel). */
+  onOpenRecipe?: (recipeRef: string) => void;
 }) {
   const dialogRef = useDialog(isOpen, onClose);
   const today = useMemo(() => new Date(), []);
@@ -289,6 +292,7 @@ export function CalendarPanel({
           onClose={onClose}
           onAdd={() => openPicker(dayDetail)}
           onUnschedule={onUnschedule}
+          onOpenRecipe={onOpenRecipe}
         />
       ) : showNeeds ? (
         /* ── Needs for the period ── */
@@ -410,9 +414,15 @@ export function CalendarPanel({
                               className={`h-2 w-2 shrink-0 rounded-full ${MEAL_TONE[meal.mealType]}`}
                               title={meal.mealType}
                             />
-                            <span className="min-w-0 flex-1 truncate text-[12px] text-slate-700">
+                            <button
+                              type="button"
+                              onClick={() => onOpenRecipe?.(meal.recipeRef)}
+                              disabled={!onOpenRecipe}
+                              title={onOpenRecipe ? "Open recipe" : undefined}
+                              className="min-w-0 flex-1 truncate text-left text-[12px] text-slate-700 enabled:hover:text-indigo-600 enabled:hover:underline"
+                            >
                               {meal.recipeName}
-                            </span>
+                            </button>
                             <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-slate-400 capitalize">
                               {meal.mealType}
                             </span>
@@ -537,6 +547,7 @@ function DayDetail({
   onClose,
   onAdd,
   onUnschedule,
+  onOpenRecipe,
 }: {
   dateKey: string;
   meals: ScheduledMeal[];
@@ -545,6 +556,7 @@ function DayDetail({
   onClose: () => void;
   onAdd: () => void;
   onUnschedule: (mealId: string) => void;
+  onOpenRecipe?: (recipeRef: string) => void;
 }) {
   const p = dayParts(parseDateKey(key));
   return (
@@ -601,9 +613,15 @@ function DayDetail({
                   className={`h-2 w-2 shrink-0 rounded-full ${MEAL_TONE[meal.mealType]}`}
                   title={meal.mealType}
                 />
-                <span className="min-w-0 flex-1 truncate text-[12px] text-slate-700">
+                <button
+                  type="button"
+                  onClick={() => onOpenRecipe?.(meal.recipeRef)}
+                  disabled={!onOpenRecipe}
+                  title={onOpenRecipe ? "Open recipe" : undefined}
+                  className="min-w-0 flex-1 truncate text-left text-[12px] text-slate-700 enabled:hover:text-indigo-600 enabled:hover:underline"
+                >
                   {meal.recipeName}
-                </span>
+                </button>
                 <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide text-slate-400 capitalize">
                   {meal.mealType}
                 </span>
