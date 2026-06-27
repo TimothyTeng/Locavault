@@ -1366,6 +1366,7 @@ export default function StorePage() {
               onAddMissing={canEdit ? handleAddMissingToList : undefined}
               onAddHaveToList={canEdit ? handleAddHaveToList : undefined}
               onCooked={canEdit ? handleCookedRecipe : undefined}
+              onSchedule={canEdit ? handleScheduleMeal : undefined}
               onShowOnMap={handleShowIngredientOnMap}
               listedNames={listedNames}
               listedItemIds={listedItemIds}

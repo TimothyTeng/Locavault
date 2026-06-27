@@ -13,21 +13,32 @@ import {
   MapPin,
   ChefHat,
   Minus,
+  CalendarPlus,
 } from "lucide-react";
 import type { Item } from "~/types/storeTypes";
 import type { BlocksMap } from "~/types/storeViewFinderTypes";
 import type { Recipe } from "~/lib/recipes";
+import { type MealType, MEAL_TYPES } from "~/types/recipeTypes";
 import {
   matchRecipes,
   prettyIngredient,
   type RecipeMatch,
 } from "~/utils/helpers/recipes.helper";
 import { formatAmount } from "~/utils/helpers/units";
+import { dateKey, parseDateKey, dayParts } from "~/utils/helpers/calendar.helper";
 import { useDialog } from "~/components/common/useDialog";
 import { EmptyState } from "~/components/common/EmptyState";
 import { RecipeEditor } from "./RecipeEditor";
 
 type Filter = "all" | "cook" | "almost" | "mine";
+
+/** Subtle per-meal-type accent (mirrors the calendar panel). */
+const MEAL_TONE: Record<MealType, string> = {
+  breakfast: "bg-amber-400",
+  lunch: "bg-sky-400",
+  dinner: "bg-indigo-400",
+  snack: "bg-emerald-400",
+};
 
 /** A zero-match stand-in so a freshly-saved recipe still shows under "Mine". */
 function emptyMatch(recipe: Recipe): RecipeMatch {
@@ -63,6 +74,7 @@ export function RecipesPanel({
   onAddMissing,
   onAddHaveToList,
   onCooked,
+  onSchedule,
   onShowOnMap,
   listedNames,
   listedItemIds,
@@ -79,6 +91,12 @@ export function RecipesPanel({
   onCooked?: (
     rows: { itemId: string; amount?: number; unit?: string }[],
     servings: number,
+  ) => void;
+  onSchedule?: (
+    recipeRef: string,
+    recipeName: string,
+    dateKey: string,
+    mealType: MealType,
   ) => void;
   onShowOnMap?: (item: Item) => void;
   listedNames?: Set<string>;
@@ -159,6 +177,7 @@ export function RecipesPanel({
             onAddMissing={onAddMissing}
             onAddHaveToList={onAddHaveToList}
             onCooked={onCooked}
+            onSchedule={onSchedule}
             onShowOnMap={onShowOnMap}
             listedNames={listedNames}
             listedItemIds={listedItemIds}
@@ -434,6 +453,7 @@ function RecipeDetail({
   onAddMissing,
   onAddHaveToList,
   onCooked,
+  onSchedule,
   onShowOnMap,
   listedNames,
   listedItemIds,
@@ -449,6 +469,12 @@ function RecipeDetail({
     rows: { itemId: string; amount?: number; unit?: string }[],
     servings: number,
   ) => void;
+  onSchedule?: (
+    recipeRef: string,
+    recipeName: string,
+    dateKey: string,
+    mealType: MealType,
+  ) => void;
   onShowOnMap?: (item: Item) => void;
   listedNames?: Set<string>;
   listedItemIds?: Set<string>;
@@ -457,6 +483,10 @@ function RecipeDetail({
   const { recipe, ingredients, missing, cookable } = match;
   const [broken, setBroken] = useState(false);
   const [batch, setBatch] = useState(1);
+  const [planOpen, setPlanOpen] = useState(false);
+  const [planDate, setPlanDate] = useState(() => dateKey(new Date()));
+  const [planType, setPlanType] = useState<MealType>("dinner");
+  const [planned, setPlanned] = useState<string | null>(null);
 
   // Rows the "Cooked this" action will decrement: in-stock ingredients with a
   // resolved item, carrying the recipe's amount/unit.
@@ -664,6 +694,85 @@ function RecipeDetail({
               </div>
             )}
           </div>
+
+          {/* Add to calendar → schedule for a day + meal slot */}
+          {onSchedule && (
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-2.5">
+              {!planOpen ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPlanned(null);
+                    setPlanOpen(true);
+                  }}
+                  className="flex w-full items-center justify-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-slate-600 transition-colors hover:text-slate-900"
+                >
+                  <CalendarPlus size={14} /> Add to calendar
+                </button>
+              ) : (
+                <div className="flex flex-col gap-2.5">
+                  <div className="flex items-center gap-2">
+                    <CalendarPlus size={15} className="shrink-0 text-slate-400" />
+                    <span className="flex-1 text-[11px] font-bold uppercase tracking-widest text-slate-500">
+                      Add to calendar
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setPlanOpen(false)}
+                      aria-label="Cancel"
+                      className="rounded p-0.5 text-slate-300 transition-colors hover:text-slate-600"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <input
+                    type="date"
+                    value={planDate}
+                    onChange={(e) => {
+                      setPlanDate(e.target.value);
+                      setPlanned(null);
+                    }}
+                    className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[12px] text-slate-700 outline-none focus:border-slate-400"
+                  />
+                  <div className="flex flex-wrap gap-1.5">
+                    {MEAL_TYPES.map((t) => (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => setPlanType(t)}
+                        className={`flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest capitalize transition-colors ${
+                          planType === t
+                            ? "border-slate-900 bg-slate-900 text-white"
+                            : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"
+                        }`}
+                      >
+                        <span className={`h-2 w-2 rounded-full ${MEAL_TONE[t]}`} />
+                        {t}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!planDate}
+                    onClick={() => {
+                      if (!planDate) return;
+                      onSchedule(recipe.id, recipe.name, planDate, planType);
+                      const p = dayParts(parseDateKey(planDate));
+                      setPlanned(`${p.weekday} ${p.month} ${p.day}`);
+                    }}
+                    className="rounded-lg bg-slate-900 py-2 text-[11px] font-bold uppercase tracking-widest text-white transition-colors hover:bg-slate-700 disabled:opacity-40"
+                  >
+                    Schedule
+                  </button>
+                  {planned && (
+                    <p className="flex items-center justify-center gap-1 text-[10px] font-bold uppercase tracking-widest text-emerald-600">
+                      <Check size={12} strokeWidth={2.5} /> Added to {planned}
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Cooked this → decrement stock */}
           {onCooked && cookRows.length > 0 && (
