@@ -79,6 +79,7 @@ export default function StorePage() {
     customFixtures,
     userRecipes,
     scheduledMeals: dbScheduledMeals,
+    typeHints,
   } = useLoaderData<typeof loader>();
 
   const { state } = useLocation();
@@ -311,6 +312,63 @@ export default function StorePage() {
     if (!dbScheduledMeals || fetcher.state !== "idle") return;
     setScheduledMeals(dbScheduledMeals as ScheduledMeal[]);
   }, [dbScheduledMeals]);
+
+  // Auto-backfill: when the shopping list is open, any named row still missing a
+  // type or a location (older rows created before inference existed) gets its
+  // best guess filled in silently — no click. Each row is attempted once per
+  // session; only rows that actually change are persisted, in a single request.
+  const backfilledRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!canEdit || !purchaseOrderOpen || fetcher.state !== "idle") return;
+    const changed: PurchaseOrderItem[] = [];
+    for (const row of purchaseOrder) {
+      const named = row.name && row.name !== "New item";
+      const needs = named && (row.itemType === "other" || !row.blockId);
+      if (!needs || backfilledRef.current.has(row.id)) continue;
+      backfilledRef.current.add(row.id);
+      const inf = inferPOFields(row.name, items, blocks, typeHints);
+      const next: PurchaseOrderItem = {
+        ...row,
+        itemId: row.itemId ?? inf.matchedItemId,
+        itemType: row.itemType !== "other" ? row.itemType : inf.itemType,
+        blockId: row.blockId ?? inf.blockId,
+        unit: row.unit ?? inf.unit,
+        packageSize: row.packageSize ?? inf.packageSize,
+        minQuantity: row.minQuantity ?? inf.minQuantity,
+        useRate: row.useRate ?? inf.useRate,
+        useRatePeriod: row.useRatePeriod ?? inf.useRatePeriod,
+        cost: row.cost ?? inf.cost,
+      };
+      if (
+        next.itemType !== row.itemType ||
+        next.blockId !== row.blockId ||
+        next.unit !== row.unit ||
+        next.itemId !== row.itemId
+      ) {
+        changed.push(next);
+      }
+    }
+    if (!changed.length) return;
+    const byId = new Map(changed.map((u) => [u.id, u]));
+    setPurchaseOrder((prev) => prev.map((p) => byId.get(p.id) ?? p));
+    fetcher.submit(
+      {
+        _action: "updatePOItems",
+        items: changed.map((u) => ({
+          id: u.id,
+          itemId: u.itemId ?? null,
+          itemType: u.itemType,
+          blockId: u.blockId ?? null,
+          unit: u.unit ?? null,
+          minQuantity: u.minQuantity ?? null,
+          cost: u.cost ?? null,
+          useRate: u.useRate ?? null,
+          useRatePeriod: u.useRatePeriod ?? null,
+        })),
+      },
+      { method: "POST", encType: "application/json" },
+    );
+  }, [purchaseOrder, purchaseOrderOpen, items, blocks, canEdit]);
 
   // ── Handlers ──
   const handleSelectItem = (item: Item) => {
@@ -572,18 +630,21 @@ export default function StorePage() {
   // glance at and adjust. Only runs while the row is still at defaults so it
   // never clobbers edits. See poInference.helper.
   const handleInferPOItem = (row: PurchaseOrderItem) => {
-    const inf = inferPOFields(row.name, items, blocks);
+    const inf = inferPOFields(row.name, items, blocks, typeHints);
+    // Gap-fill: keep anything the row already has, only fill blanks. Safe to run
+    // both on a fresh row (everything blank → all inferred) and as a backfill on
+    // an existing row (preserves a location/unit/type the user already set).
     const updated: PurchaseOrderItem = {
       ...row,
-      itemId: inf.matchedItemId ?? row.itemId,
-      itemType: inf.itemType,
-      blockId: inf.blockId ?? row.blockId,
-      unit: inf.unit ?? row.unit,
-      packageSize: inf.packageSize ?? row.packageSize,
-      minQuantity: inf.minQuantity ?? row.minQuantity,
-      useRate: inf.useRate ?? row.useRate,
-      useRatePeriod: inf.useRatePeriod ?? row.useRatePeriod,
-      cost: inf.cost ?? row.cost,
+      itemId: row.itemId ?? inf.matchedItemId,
+      itemType: row.itemType !== "other" ? row.itemType : inf.itemType,
+      blockId: row.blockId ?? inf.blockId,
+      unit: row.unit ?? inf.unit,
+      packageSize: row.packageSize ?? inf.packageSize,
+      minQuantity: row.minQuantity ?? inf.minQuantity,
+      useRate: row.useRate ?? inf.useRate,
+      useRatePeriod: row.useRatePeriod ?? inf.useRatePeriod,
+      cost: row.cost ?? inf.cost,
     };
     setPurchaseOrder((prev) =>
       prev.map((p) => (p.id === row.id ? updated : p)),
@@ -619,7 +680,7 @@ export default function StorePage() {
   const handleAddScannedPOItem = (info: BarcodeInfo) => {
     const optimisticId = crypto.randomUUID();
     const name = info.name || "New item";
-    const inf = inferPOFields(name, items, blocks);
+    const inf = inferPOFields(name, items, blocks, typeHints);
     // The scan is a strong "food" signal — prefer it over the name guess.
     const itemType = info.category === "Food" ? "food" : inf.itemType;
     const blockId = inf.blockId;
@@ -689,6 +750,8 @@ export default function StorePage() {
           : null,
         useRate: updated.useRate ?? null,
         useRatePeriod: updated.useRatePeriod ?? null,
+        itemType: updated.itemType,
+        packageSize: updated.packageSize ?? null,
       },
       { method: "POST", encType: "application/json" },
     );
@@ -767,14 +830,22 @@ export default function StorePage() {
     });
   };
 
-  // Commit every ticked row to inventory in a single request
+  // Commit every ticked row to inventory in a single request. A row must have a
+  // home first — locationless ones stay checked (and keep showing their amber
+  // "Set location" chip) so nothing lands in inventory without a block.
   const handleCommitCheckedPO = () => {
     const rows = purchaseOrder.filter((p) => checkedPOIds.has(p.id));
     if (!rows.length) return;
-    rows.forEach(applyBuyOptimistic);
-    setCheckedPOIds(new Set());
+    const located = rows.filter((r) => r.blockId);
+    if (!located.length) return; // all still need a location — nothing to commit
+    located.forEach(applyBuyOptimistic);
+    setCheckedPOIds((prev) => {
+      const next = new Set(prev);
+      located.forEach((r) => next.delete(r.id)); // keep the unlocated ones ticked
+      return next;
+    });
     fetcher.submit(
-      { _action: "buyPOItems", ids: rows.map((r) => r.id) },
+      { _action: "buyPOItems", ids: located.map((r) => r.id) },
       { method: "POST", encType: "application/json" },
     );
   };
@@ -868,7 +939,7 @@ export default function StorePage() {
     if (!fresh.length) return;
     const built = fresh.map((name) => {
       const optimisticId = crypto.randomUUID();
-      const inf = inferPOFields(name, items, blocks);
+      const inf = inferPOFields(name, items, blocks, typeHints);
       const optimistic: PurchaseOrderItem = {
         id: optimisticId,
         itemId: inf.matchedItemId,
@@ -915,7 +986,7 @@ export default function StorePage() {
   // Where an Upcoming ingredient would be shelved if added now — the block label
   // inference picks for it (so the user sees the destination before tapping +).
   const destinationForName = (name: string): string | null => {
-    const inf = inferPOFields(name, items, blocks);
+    const inf = inferPOFields(name, items, blocks, typeHints);
     if (!inf.blockId) return null;
     return blocks[inf.blockId]?.label || null;
   };

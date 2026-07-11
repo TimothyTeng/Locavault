@@ -39,6 +39,7 @@ import {
   getScheduledMeals,
   createScheduledMeal,
   deleteScheduledMeal,
+  getUserTypeHints,
 } from "~/lib/queries";
 import { estimateUsage } from "~/utils/helpers/usage.helper";
 import { decrementForIngredient } from "~/utils/helpers/recipeCook.helper";
@@ -162,6 +163,7 @@ export const loader = async (args: LoaderFunctionArgs) => {
     usageLogs,
     collections,
     scheduledMeals,
+    typeHints,
   ] = await Promise.all([
     getItemsByStore(params.id!),
     canEdit ? getPurchaseOrders(params.id!) : Promise.resolve([]),
@@ -171,6 +173,9 @@ export const loader = async (args: LoaderFunctionArgs) => {
     getUsageLogsByStore(params.id!, usageSince),
     canEdit ? getCollections(params.id!) : Promise.resolve([]),
     canEdit ? getScheduledMeals(params.id!) : Promise.resolve([]),
+    canEdit && userId
+      ? getUserTypeHints(userId)
+      : Promise.resolve({} as Record<string, ItemType>),
   ]);
 
   // Group usage logs by item so usage can be estimated in one pass.
@@ -213,6 +218,7 @@ export const loader = async (args: LoaderFunctionArgs) => {
     customFixtures,
     userRecipes,
     scheduledMeals,
+    typeHints,
   };
 };
 
@@ -529,6 +535,30 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
       ...(data.itemType ? { itemType: data.itemType } : {}),
       packageSize: optText(data.packageSize),
     });
+    return { ok: true };
+  }
+
+  // Bulk metadata backfill: fill type/location/unit (and link) on existing rows
+  // without touching name/quantity. Used to auto-fill older rows that predate
+  // inference, in one request instead of N.
+  if (data._action === "updatePOItems") {
+    const rows = Array.isArray(data.items) ? data.items : [];
+    for (const r of rows) {
+      if (!r?.id) continue;
+      await ensurePOInStore(r.id);
+      await ensureBlockInStore(r.blockId);
+      if (r.itemId) await ensureItemInStore(r.itemId);
+      await updatePurchaseOrder(r.id, {
+        ...(r.itemId !== undefined ? { itemId: r.itemId } : {}),
+        blockId: r.blockId ?? null,
+        unit: optText(r.unit),
+        minQuantity: optInt(r.minQuantity),
+        cost: optInt(r.cost),
+        useRate: optInt(r.useRate),
+        useRatePeriod: r.useRatePeriod ?? null,
+        ...(r.itemType ? { itemType: r.itemType } : {}),
+      });
+    }
     return { ok: true };
   }
 

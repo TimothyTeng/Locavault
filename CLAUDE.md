@@ -109,6 +109,7 @@ app/
 │   ├── store/            # store view: table, rows, header, toolbar, minimap, members, filters
 │   ├── addItem/          # add-item slide-in panel + form + barcode scanner + quick (bulk) add
 │   ├── purchases/        # shopping-list panel (List + Upcoming tabs), list, rows, suggestions
+│                         #   rows show inline, editable type/location/unit/pack-size chips
 │   ├── recipes/          # recipes panel (library + import + cook) + calendar panel (DESIGN.md §7)
 │   ├── collections/      # collections / packing panel: group items, pick assist, check-out/in (DESIGN.md §7)
 │   ├── trade/            # the Bazaar: global trade board + offers (DESIGN.md §7)
@@ -170,8 +171,11 @@ All ids are `text` UUIDs (`crypto.randomUUID()`). Timestamps are `integer` epoch
 - **storeInvites** — shareable `token`, role `editor` only, 7-day expiry,
   `claimedAt`. `createInvite` reuses an existing unclaimed/unexpired invite.
 - **purchaseOrderItems** — a shopping list / restock queue. Mirrors the item field
-  set, with optional `itemId` linking to an existing item. "Buying" a PO row adds
-  quantity to the linked item (or creates a new item) then deletes the PO row.
+  set (including `itemType` + a free-text `packageSize` like "500 g"), with optional
+  `itemId` linking to an existing item. "Buying" a PO row adds quantity to the
+  linked item (or creates a new item, carrying `itemType`) then deletes the PO row.
+  Rows are captured low-friction: a name is enough — `poInference.helper` fills in
+  the type, a location (never null), unit, and an item link (see Smart capture).
 - **recipes** — a user's saved recipe (ids `ur_*`), **user-scoped** (not per-store)
   so it matches against any store the owner opens — the custom layer over the
   seeded library in `lib/recipes.ts`. `ingredients` (`{name, amount?, unit?}[]`),
@@ -239,5 +243,14 @@ the client.
 - **Mobile**: `useIsMobile()` drives layout switches (e.g. the canvas becomes a
   floating `MiniMap` on mobile, full split-pane on desktop).
 - Schema changes: edit `schema.ts`, then `npx drizzle-kit generate` + `migrate`.
+- **Smart shopping-list capture** (`utils/helpers/poInference.helper.ts`): given a
+  typed/scanned name, `inferPOFields` fills the shopping-row metadata so the plain
+  name+quantity flow still yields rich, located items. Priority for the type: a
+  fuzzy-matched existing item (also links it for restock) → the user's own remembered
+  types (`getUserTypeHints`, loaded as `typeHints`) → a name lexicon → `other`. It
+  always resolves a location (a type-fitting block, else the first standard block —
+  never null). Runs on manual/scanned/recipe adds, and silently backfills existing
+  rows when the shopping list opens (bulk `updatePOItems`). Quantities are always
+  whole packages — recipe cooking-amounts never become a shopping quantity.
 - The landing page (`components/home/*`) is marketing-only and GSAP-animated;
   it renders for signed-out users. The dashboard renders for signed-in users.

@@ -170,6 +170,62 @@ export async function getStoresByUser(userId: string) {
   return db.select().from(stores).where(eq(stores.userId, userId));
 }
 
+/**
+ * The user's own name→type "memory": for every item name they've assigned a
+ * concrete (non-"other") type to — across all the stores they own, in both
+ * inventory and shopping-list rows — the type they've used most. Feeds shopping
+ * -list inference so a name typed/confirmed once is remembered everywhere after.
+ * Keyed by lower-cased, trimmed name.
+ */
+export async function getUserTypeHints(
+  userId: string,
+): Promise<Record<string, ItemType>> {
+  const owned = await db
+    .select({ id: stores.id })
+    .from(stores)
+    .where(eq(stores.userId, userId));
+  const storeIds = owned.map((s) => s.id);
+  if (!storeIds.length) return {};
+
+  const [itemRows, poRows] = await Promise.all([
+    db
+      .select({ name: items.name, itemType: items.itemType })
+      .from(items)
+      .where(
+        and(inArray(items.storeId, storeIds), ne(items.itemType, "other")),
+      ),
+    db
+      .select({
+        name: purchaseOrderItems.name,
+        itemType: purchaseOrderItems.itemType,
+      })
+      .from(purchaseOrderItems)
+      .where(
+        and(
+          inArray(purchaseOrderItems.storeId, storeIds),
+          ne(purchaseOrderItems.itemType, "other"),
+        ),
+      ),
+  ]);
+
+  // Most-used type per name wins (a simple vote across both sources).
+  const votes = new Map<string, Map<ItemType, number>>();
+  for (const r of [...itemRows, ...poRows]) {
+    const key = r.name.trim().toLowerCase();
+    if (!key) continue;
+    const tally = votes.get(key) ?? new Map<ItemType, number>();
+    tally.set(r.itemType, (tally.get(r.itemType) ?? 0) + 1);
+    votes.set(key, tally);
+  }
+  const hints: Record<string, ItemType> = {};
+  for (const [key, tally] of votes) {
+    let best: [ItemType, number] | null = null;
+    for (const entry of tally) if (!best || entry[1] > best[1]) best = entry;
+    if (best) hints[key] = best[0];
+  }
+  return hints;
+}
+
 /** Fetch a single store by ID, including its blocks */
 export async function getStoreById(
   id: string,

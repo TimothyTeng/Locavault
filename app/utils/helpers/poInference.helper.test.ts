@@ -49,11 +49,33 @@ describe("inferTypeFromName", () => {
     expect(inferTypeFromName("Chicken breast")).toBe("food");
     expect(inferTypeFromName("Whole Milk")).toBe("food");
     expect(inferTypeFromName("Bananas")).toBe("food");
+    expect(inferTypeFromName("Olive Oil")).toBe("food");
+    expect(inferTypeFromName("Ground beef")).toBe("food");
+  });
+
+  it("matches plurals and space/hyphen variants automatically", () => {
+    expect(inferTypeFromName("Carrots")).toBe("food");
+    expect(inferTypeFromName("Strawberries")).toBe("food");
+    expect(inferTypeFromName("Band-aid")).toBe("medication");
+    expect(inferTypeFromName("Paper towels")).toBe("supplies");
   });
 
   it("guesses supplies and medication", () => {
     expect(inferTypeFromName("Dish detergent")).toBe("supplies");
     expect(inferTypeFromName("Ibuprofen 200mg")).toBe("medication");
+  });
+
+  it("guesses equipment, clothing and documents", () => {
+    expect(inferTypeFromName("Frying pan")).toBe("equipment");
+    expect(inferTypeFromName("Winter jacket")).toBe("clothing");
+    expect(inferTypeFromName("Passport")).toBe("document");
+  });
+
+  it("resolves ambiguous terms by specificity/order", () => {
+    // bare "syrup" must not be medication — "maple syrup" is food.
+    expect(inferTypeFromName("Maple syrup")).toBe("food");
+    // but a medication phrase still wins.
+    expect(inferTypeFromName("Cough syrup")).toBe("medication");
   });
 
   it("returns null when nothing matches", () => {
@@ -149,5 +171,19 @@ describe("inferPOFields", () => {
     const r = inferPOFields("Widget 3000", [], blocks);
     expect(r.itemType).toBe("other");
     expect(r.blockId).toBe("pantry");
+  });
+
+  it("uses the user's remembered type for an otherwise-unknown name", () => {
+    const hints = { "widget 3000": "equipment" as const };
+    const r = inferPOFields("Widget 3000", [], blocks, hints);
+    expect(r.itemType).toBe("equipment");
+  });
+
+  it("lets a remembered type override the lexicon guess", () => {
+    // The user always files "Water" under supplies (e.g. distilled water for
+    // an iron), not food — memory wins over the lexicon.
+    const hints = { water: "supplies" as const };
+    const r = inferPOFields("Water", [], blocks, hints);
+    expect(r.itemType).toBe("supplies");
   });
 });

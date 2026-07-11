@@ -60,7 +60,9 @@ export function PurchaseOrderList({
     items.map((i) => i.itemId).filter((id): id is string => id != null),
   );
   const existingNames = new Set(items.map((i) => i.name));
-  const checkedCount = items.filter((i) => checkedIds.has(i.id)).length;
+  const checkedRows = items.filter((i) => checkedIds.has(i.id));
+  const locatedCount = checkedRows.filter((i) => i.blockId).length;
+  const unlocatedCount = checkedRows.length - locatedCount;
 
   return (
     <div className="flex flex-col h-full">
@@ -133,7 +135,14 @@ export function PurchaseOrderList({
 
       {/* Footer: Add item + commit bar */}
       <div className="shrink-0 px-4 py-3 border-t border-slate-100 flex flex-col gap-2">
-        {checkedCount > 0 && (
+        {unlocatedCount > 0 && (
+          <p className="text-[10px] font-mono text-amber-600 text-center">
+            📍 {unlocatedCount} item{unlocatedCount > 1 ? "s" : ""} need
+            {unlocatedCount > 1 ? "" : "s"} a location before{" "}
+            {unlocatedCount > 1 ? "they're" : "it's"} added
+          </p>
+        )}
+        {locatedCount > 0 && (
           <button
             onClick={onCommitChecked}
             className="w-full py-2 rounded-md bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-700 transition-colors flex items-center justify-center gap-2"
@@ -147,7 +156,7 @@ export function PurchaseOrderList({
                 strokeLinejoin="round"
               />
             </svg>
-            Add {checkedCount} to inventory
+            Add {locatedCount} to inventory
           </button>
         )}
 
