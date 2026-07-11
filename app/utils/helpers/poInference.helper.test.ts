@@ -5,6 +5,7 @@ import {
   inferBlockId,
   inferPOFields,
   buildTypeConsensus,
+  computeConsensus,
   canonicalNameKey,
   matchCrowdType,
   type TypeVote,
@@ -287,6 +288,33 @@ describe("buildTypeConsensus", () => {
       vote("milk 2%", "food", "u5"),
     ];
     expect(buildTypeConsensus(rows)).toEqual({ milk: "food" });
+  });
+});
+
+describe("computeConsensus", () => {
+  const vote = (name: string, itemType: TypeVote["itemType"], userId: string) =>
+    ({ name, itemType, userId }) as TypeVote;
+
+  it("returns surviving buckets with their distinct-user counts", () => {
+    const rows = [
+      ...["u1", "u2", "u3", "u4"].map((u) => vote("Kimchi", "food", u)),
+      vote("Kimchi", "supplies", "u5"), // one dissenter
+    ];
+    const out = computeConsensus(rows);
+    expect(out).toEqual([
+      { name: "kimchi", itemType: "food", userCount: 4, totalUsers: 5 },
+    ]);
+  });
+
+  it("is the source `buildTypeConsensus` reduces to a map", () => {
+    const rows = ["u1", "u2", "u3", "u4", "u5"].map((u) =>
+      vote("Kimchi", "food", u),
+    );
+    const detailed = computeConsensus(rows);
+    const map = buildTypeConsensus(rows);
+    expect(map).toEqual(
+      Object.fromEntries(detailed.map((c) => [c.name, c.itemType])),
+    );
   });
 });
 

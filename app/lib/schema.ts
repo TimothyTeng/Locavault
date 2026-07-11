@@ -212,6 +212,32 @@ export const purchaseOrderItemsRelations = relations(
   }),
 );
 
+// ─── NAME → TYPE CONSENSUS (crowd inference cache) ─────────
+// Materialised k-anonymous name→type map — Stage B of smart shopping-list
+// capture: the durable, cross-restart/cross-instance successor to the in-process
+// crowd cache. Rebuilt by `recomputeTypeConsensus` (lazily, when stale) from
+// everyone's items + PO rows and read by `getCrowdTypeHints` to seed inference.
+// `name` is a `canonicalNameKey` (tokenised — never a raw, user-facing name). A
+// reserved "__lastrun__" sentinel row (a value canonicalNameKey can never emit)
+// records the last rebuild time so an empty result isn't mistaken for "never ran".
+export const nameTypeConsensus = sqliteTable("name_type_consensus", {
+  name: text("name").primaryKey(),
+  itemType: text("item_type", {
+    enum: [
+      "food",
+      "medication",
+      "supplies",
+      "equipment",
+      "clothing",
+      "document",
+      "other",
+    ],
+  }).notNull(),
+  // Distinct users backing the winning type — a k-anonymity/confidence witness.
+  userCount: integer("user_count").notNull().default(0),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
 // ─── TEMPLATES ─────────────────────────────────────────────
 // A reusable, shareable store layout (blocks only — no items). Any signed-in
 // user can create templates and instantiate stores from public ones.

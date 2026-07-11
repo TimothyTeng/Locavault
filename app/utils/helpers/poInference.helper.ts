@@ -620,14 +620,32 @@ export function matchCrowdType(
  * (`minConsensus`) of that name's distinct users, else the name is dropped as
  * ambiguous. Only concrete (non-"other") types carry signal.
  */
-export function buildTypeConsensus(
+/** A surviving consensus bucket, with the counts behind it (for persistence). */
+export type ConsensusRow = {
+  /** Canonical token key (see `canonicalNameKey`). */
+  name: string;
+  itemType: ItemType;
+  /** Distinct users backing the winning type. */
+  userCount: number;
+  /** Distinct users who use this name at all (the k-anonymity denominator). */
+  totalUsers: number;
+};
+
+/**
+ * The full consensus computation: aggregate votes by canonical name, pick the
+ * winning type per name by distinct-user count, and keep only names that clear
+ * the k-anonymity (`minUsers`) and majority (`minConsensus`) gates. Returns the
+ * surviving buckets WITH their counts — the materialised table persists these;
+ * `buildTypeConsensus` reduces them to a plain name→type map for lookups.
+ */
+export function computeConsensus(
   rows: TypeVote[],
   opts: {
     minUsers?: number;
     minConsensus?: number;
     excludeUserId?: string;
   } = {},
-): Record<string, ItemType> {
+): ConsensusRow[] {
   const { minUsers = 5, minConsensus = 0.6, excludeUserId } = opts;
   // name → type → set of distinct users who filed that name under that type.
   const votes = new Map<string, Map<ItemType, Set<string>>>();
@@ -643,7 +661,7 @@ export function buildTypeConsensus(
     users.add(r.userId);
   }
 
-  const out: Record<string, ItemType> = {};
+  const out: ConsensusRow[] = [];
   for (const [key, byType] of votes) {
     let winner: ItemType | null = null;
     let winnerUsers = 0;
@@ -659,8 +677,30 @@ export function buildTypeConsensus(
     if (!winner) continue;
     if (totalUsers < minUsers) continue; // k-anonymity: not enough people
     if (winnerUsers / totalUsers < minConsensus) continue; // too ambiguous
-    out[key] = winner;
+    out.push({
+      name: key,
+      itemType: winner,
+      userCount: winnerUsers,
+      totalUsers,
+    });
   }
+  return out;
+}
+
+/**
+ * The name→type consensus map used for lookups — the reduced form of
+ * `computeConsensus` (see there for the privacy/threshold semantics).
+ */
+export function buildTypeConsensus(
+  rows: TypeVote[],
+  opts: {
+    minUsers?: number;
+    minConsensus?: number;
+    excludeUserId?: string;
+  } = {},
+): Record<string, ItemType> {
+  const out: Record<string, ItemType> = {};
+  for (const r of computeConsensus(rows, opts)) out[r.name] = r.itemType;
   return out;
 }
 

@@ -16,6 +16,7 @@ import {
   customFixtures,
   recipes,
   scheduledMeals,
+  nameTypeConsensus,
 } from "./schema";
 import type {
   RecipeIngredient,
@@ -43,7 +44,7 @@ import type { BlockKind } from "~/types/BlockTypes";
 import type { Wall } from "~/types/wallTypes";
 import { parseWalls, serializeWalls } from "~/utils/helpers/wall.helper";
 import type { ItemType } from "~/types/itemTypeTypes";
-import { buildTypeConsensus } from "~/utils/helpers/poInference.helper";
+import { computeConsensus } from "~/utils/helpers/poInference.helper";
 
 // ─── Helpers ───────────────────────────────────────────────
 
@@ -227,46 +228,110 @@ export async function getUserTypeHints(
   return hints;
 }
 
-// ─── Crowd type consensus ──────────────────────────────────
-// The k-anonymous name→type map aggregated across ALL users. It moves slowly and
-// scanning every item/PO row is expensive, so cache it process-wide with a TTL
-// (the shopping list polls every 15s — we must not rescan the tables that often).
+// ─── Crowd type consensus (Stage B: materialised) ──────────
+// The k-anonymous name→type map aggregated across ALL users. Scanning every
+// item/PO row is expensive, so it's materialised into `name_type_consensus` and
+// only rebuilt when the stored copy goes stale — a durable, cross-restart /
+// cross-instance cache. Reads take a plain table scan; a short in-process TTL
+// keeps the 15s shopping-list poll from even touching the table each time.
+const CONSENSUS_SENTINEL = "__lastrun__"; // reserved key canonicalNameKey can't emit
+const CROWD_CACHE_TTL_MS = 30 * 60 * 1000; // in-process read cache: 30 min
+const CROWD_REFRESH_MS = 6 * 60 * 60 * 1000; // rebuild the table at most every 6 h
 let crowdCache: { at: number; map: Record<string, ItemType> } | null = null;
-const CROWD_TTL_MS = 30 * 60 * 1000; // 30 min
 
 /**
- * Cross-user consensus of name→type, exposing only k-anonymous aggregates (see
- * `buildTypeConsensus`): a name surfaces only once enough distinct users agree on
- * a concrete type, so no individual's item names or contents leak. Feeds shopping
- * -list inference below the user's own memory and the curated lexicon. Cached
- * process-wide for `CROWD_TTL_MS`; any DB trouble degrades to an empty map rather
- * than breaking the store load.
+ * Rebuild `name_type_consensus` from every user's items + PO rows and return the
+ * fresh name→type map. Only k-anonymous aggregates are stored (see
+ * `computeConsensus`): a name surfaces only once enough distinct users agree on a
+ * concrete type, so no individual's item names or contents leak. The table is
+ * replaced atomically, and a `__lastrun__` sentinel records the rebuild time so an
+ * empty result reads as "computed, nothing qualified" rather than "never ran".
+ */
+export async function recomputeTypeConsensus(): Promise<
+  Record<string, ItemType>
+> {
+  const [itemVotes, poVotes] = await Promise.all([
+    db
+      .select({
+        name: items.name,
+        itemType: items.itemType,
+        userId: stores.userId,
+      })
+      .from(items)
+      .innerJoin(stores, eq(items.storeId, stores.id))
+      .where(ne(items.itemType, "other")),
+    db
+      .select({
+        name: purchaseOrderItems.name,
+        itemType: purchaseOrderItems.itemType,
+        userId: stores.userId,
+      })
+      .from(purchaseOrderItems)
+      .innerJoin(stores, eq(purchaseOrderItems.storeId, stores.id))
+      .where(ne(purchaseOrderItems.itemType, "other")),
+  ]);
+
+  const consensus = computeConsensus([...itemVotes, ...poVotes]);
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    await tx.delete(nameTypeConsensus);
+    // Sentinel first so the table is never "empty" after a real run.
+    await tx.insert(nameTypeConsensus).values({
+      name: CONSENSUS_SENTINEL,
+      itemType: "other",
+      userCount: 0,
+      updatedAt: now,
+    });
+    // Insert in chunks to stay well under libSQL's bound-parameter limit.
+    for (let i = 0; i < consensus.length; i += 100) {
+      await tx.insert(nameTypeConsensus).values(
+        consensus.slice(i, i + 100).map((c) => ({
+          name: c.name,
+          itemType: c.itemType,
+          userCount: c.userCount,
+          updatedAt: now,
+        })),
+      );
+    }
+  });
+
+  const map: Record<string, ItemType> = {};
+  for (const c of consensus) map[c.name] = c.itemType;
+  crowdCache = { at: Date.now(), map };
+  return map;
+}
+
+/**
+ * The crowd name→type map for shopping-list inference (below the user's own
+ * memory and the curated lexicon). Reads the materialised table; if it's missing
+ * a sentinel or the last rebuild is older than `CROWD_REFRESH_MS`, it triggers a
+ * rebuild first. Short-TTL cached in-process. Any DB trouble degrades to an empty
+ * map rather than breaking the store load.
  */
 export async function getCrowdTypeHints(): Promise<Record<string, ItemType>> {
   const now = Date.now();
-  if (crowdCache && now - crowdCache.at < CROWD_TTL_MS) return crowdCache.map;
+  if (crowdCache && now - crowdCache.at < CROWD_CACHE_TTL_MS)
+    return crowdCache.map;
   try {
-    const [itemVotes, poVotes] = await Promise.all([
-      db
-        .select({
-          name: items.name,
-          itemType: items.itemType,
-          userId: stores.userId,
-        })
-        .from(items)
-        .innerJoin(stores, eq(items.storeId, stores.id))
-        .where(ne(items.itemType, "other")),
-      db
-        .select({
-          name: purchaseOrderItems.name,
-          itemType: purchaseOrderItems.itemType,
-          userId: stores.userId,
-        })
-        .from(purchaseOrderItems)
-        .innerJoin(stores, eq(purchaseOrderItems.storeId, stores.id))
-        .where(ne(purchaseOrderItems.itemType, "other")),
-    ]);
-    const map = buildTypeConsensus([...itemVotes, ...poVotes]);
+    const rows = await db
+      .select({
+        name: nameTypeConsensus.name,
+        itemType: nameTypeConsensus.itemType,
+        updatedAt: nameTypeConsensus.updatedAt,
+      })
+      .from(nameTypeConsensus);
+
+    const sentinel = rows.find((r) => r.name === CONSENSUS_SENTINEL);
+    const lastRun = sentinel?.updatedAt?.getTime() ?? 0;
+    if (!sentinel || now - lastRun > CROWD_REFRESH_MS) {
+      return await recomputeTypeConsensus();
+    }
+
+    const map: Record<string, ItemType> = {};
+    for (const r of rows) {
+      if (r.name === CONSENSUS_SENTINEL) continue;
+      map[r.name] = r.itemType;
+    }
     crowdCache = { at: now, map };
     return map;
   } catch {

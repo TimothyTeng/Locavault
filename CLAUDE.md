@@ -194,6 +194,12 @@ All ids are `text` UUIDs (`crypto.randomUUID()`). Timestamps are `integer` epoch
   to everyone. `createStoreFromTemplate` instantiates a store (copies blocks with
   fresh ids, adds the owner member, bumps `usageCount`).
 - **templateBlocks** — mirrors `blocks`, FK → template (cascade delete).
+- **nameTypeConsensus** — materialised crowd `name → itemType` map (Stage B of
+  smart capture): `name` (PK, a `canonicalNameKey`, never a raw name), `itemType`,
+  `userCount` (distinct users behind the winner), `updatedAt`. Only k-anonymous
+  aggregates land here (see the Smart-capture convention). A reserved `__lastrun__`
+  sentinel row stamps the last rebuild. Not a per-user table and no FKs — a global
+  aggregate rebuilt by `recomputeTypeConsensus`.
 - **collections** — a named set of item references for a *purpose* (DESIGN.md §7),
   distinct from the shopping list: name, description, `kind` ∈ `{packing, trade,
   custom}`, `checkedOut` (the set is taken out), `userId`, FK → store (cascade).
@@ -261,9 +267,13 @@ the client.
   only surfaces once ≥5 distinct users agree on a concrete type with ≥60% consensus,
   so no individual's item names or contents can leak. Only `name → itemType` is ever
   aggregated (never userId/quantity/store/notes). It sits **below** the curated
-  lexicon (fills gaps, never overrides a curated guess) and is cached process-wide
-  (`CROWD_TTL_MS`, 30 min) so the 15s poll never rescans the tables; any DB trouble
-  degrades to an empty map rather than breaking the store load. Matching is
+  lexicon (fills gaps, never overrides a curated guess). It's **materialised**
+  (Stage B) into the `name_type_consensus` table by `recomputeTypeConsensus` and
+  read by `getCrowdTypeHints`: reads are a cheap table scan (short in-process TTL
+  over that so the 15s poll doesn't re-query), and the table is rebuilt lazily only
+  when its `__lastrun__` sentinel is older than `CROWD_REFRESH_MS` (6 h) — a
+  durable, cross-restart/cross-instance cache. Any DB trouble degrades to an empty
+  map rather than breaking the store load. Matching is
   token-based: buckets are keyed by `canonicalNameKey` (significant tokens, deduped
   + sorted, so "Whole Milk"/"organic milk"/"milk 2%" collapse to one "milk" bucket),
   and `matchCrowdType` resolves a typed name by exact canonical hit else the most
