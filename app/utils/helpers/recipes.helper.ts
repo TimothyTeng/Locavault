@@ -51,7 +51,7 @@ const STOPWORDS = new Set([
 ]);
 
 /** Lowercase, de-pluralise, drop noise words → significant tokens. */
-function tokenize(text: string): string[] {
+export function tokenize(text: string): string[] {
   return text
     .toLowerCase()
     .replace(/[^a-z\s]/g, " ")

@@ -26,6 +26,8 @@ type BarcodeResult =
       name: string;
       brand: string | null;
       unit: string | null;
+      /** OFF's free-text pack size, e.g. "500 g" — display-only "what it comes in". */
+      packageSize: string | null;
       category: "Food";
       image: string | null;
     };
@@ -111,6 +113,7 @@ export async function loader(args: LoaderFunctionArgs) {
       name,
       brand: p.brands?.trim() || null,
       unit: parseUnit(p.quantity),
+      packageSize: p.quantity?.trim() || null,
       category: "Food",
       image: p.image_front_small_url || null,
     } satisfies BarcodeResult;

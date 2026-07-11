@@ -172,6 +172,26 @@ export const purchaseOrderItems = sqliteTable("purchase_order_items", {
   expiryDate: integer("expiry_date", { mode: "timestamp" }),
   useRate: integer("use_rate"),
   useRatePeriod: text("use_rate_period", { enum: ["day", "week", "month"] }),
+  // Mirrors items.itemType so an inferred/confirmed type flows through to the
+  // bought item (instead of always defaulting to "other"). Drives traits →
+  // recipe matching + run-out prediction.
+  itemType: text("item_type", {
+    enum: [
+      "food",
+      "medication",
+      "supplies",
+      "equipment",
+      "clothing",
+      "document",
+      "other",
+    ],
+  })
+    .notNull()
+    .default("other"),
+  // Free-text "what it comes in" (e.g. "500 g"), captured opportunistically from
+  // a barcode scan — shown so the user knows the pack amount; never parsed into
+  // the (package-count) quantity.
+  packageSize: text("package_size"),
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
     () => new Date(),
   ),

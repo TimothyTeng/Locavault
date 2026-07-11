@@ -21,6 +21,8 @@ type Props = {
   /** Names already on the shopping list (lowercased). */
   existingNames: Set<string>;
   onAdd: (names: string[]) => void;
+  /** Block label this ingredient would be shelved to if added now (the hint). */
+  destinationFor?: (name: string) => string | null;
 };
 
 /**
@@ -33,6 +35,7 @@ export function PurchaseOrderUpcoming({
   mealNeeds,
   existingNames,
   onAdd,
+  destinationFor,
 }: Props) {
   const [days, setDays] = useState<number>(7);
 
@@ -124,13 +127,20 @@ export function PurchaseOrderUpcoming({
                     : "hover:bg-slate-50 cursor-pointer"
                 }`}
               >
-                <span className="min-w-0 flex items-center gap-2">
-                  <span className="text-[11px] font-mono text-slate-700 truncate">
-                    {r.name}
+                <span className="min-w-0 flex flex-col gap-0.5">
+                  <span className="flex items-center gap-2">
+                    <span className="text-[11px] font-mono text-slate-700 truncate">
+                      {r.name}
+                    </span>
+                    <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">
+                      {dayChip(r.dk)}
+                    </span>
                   </span>
-                  <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">
-                    {dayChip(r.dk)}
-                  </span>
+                  {!r.added && destinationFor?.(r.name) && (
+                    <span className="text-[9px] font-mono text-slate-400 truncate">
+                      📍 {destinationFor(r.name)}
+                    </span>
+                  )}
                 </span>
                 {r.added ? (
                   <svg width="11" height="11" viewBox="0 0 12 12" fill="none">

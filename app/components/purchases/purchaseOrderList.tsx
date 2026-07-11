@@ -22,6 +22,7 @@ type Props = {
   onAddFromSuggestion: (item: Item) => void;
   onAddAll: (items: Item[]) => void;
   onUpdate: (item: PurchaseOrderItem) => void;
+  onInfer: (item: PurchaseOrderItem) => void;
   onDelete: (id: string) => void;
   onBuy: (id: string) => void;
 };
@@ -38,6 +39,7 @@ export function PurchaseOrderList({
   onAddFromSuggestion,
   onAddAll,
   onUpdate,
+  onInfer,
   onDelete,
   onBuy,
 }: Props) {
@@ -119,6 +121,7 @@ export function PurchaseOrderList({
                   checked={checkedIds.has(item.id)}
                   onToggleChecked={onToggleChecked}
                   onUpdate={onUpdate}
+                  onInfer={onInfer}
                   onDelete={onDelete}
                   onBuy={onBuy}
                 />

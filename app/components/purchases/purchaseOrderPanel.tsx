@@ -22,11 +22,15 @@ type Props = {
   onAdd: () => void;
   onAddScanned: (info: BarcodeInfo) => void;
   onUpdate: (item: PurchaseOrderItem) => void;
+  /** Fill in best-guess metadata once a fresh row gets a real name. */
+  onInfer: (item: PurchaseOrderItem) => void;
   onDelete: (id: string) => void;
   onBuy: (id: string) => void;
   /** Per-meal upcoming needs — powers the "Upcoming" tab. */
   mealNeeds?: MealNeed[];
   onAddNames?: (names: string[]) => void;
+  /** Block label an Upcoming ingredient would be shelved to (the hint). */
+  destinationFor?: (name: string) => string | null;
   isMobile?: boolean;
 };
 
@@ -44,10 +48,12 @@ export function PurchaseOrderPanel({
   onAdd,
   onAddScanned,
   onUpdate,
+  onInfer,
   onDelete,
   onBuy,
   mealNeeds = [],
   onAddNames,
+  destinationFor,
   isMobile = false,
 }: Props) {
   const [tab, setTab] = useState<"list" | "upcoming">("list");
@@ -146,6 +152,7 @@ export function PurchaseOrderPanel({
           mealNeeds={mealNeeds}
           existingNames={existingLower}
           onAdd={onAddNames}
+          destinationFor={destinationFor}
         />
       ) : (
         <PurchaseOrderList
@@ -160,6 +167,7 @@ export function PurchaseOrderPanel({
           onAddFromSuggestion={onAddFromSuggestion}
           onAddAll={onAddAll}
           onUpdate={onUpdate}
+          onInfer={onInfer}
           onDelete={onDelete}
           onBuy={onBuy}
         />

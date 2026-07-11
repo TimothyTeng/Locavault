@@ -52,10 +52,8 @@ import { useIsMobile } from "~/utils/useIsMobile";
 import type { loader } from "#utils/loaders/store.loader";
 import { PurchaseOrderPanel } from "~/components/purchases/purchaseOrderPanel";
 import type { PurchaseOrderItem } from "~/types/purchaseOrderTypes";
-import {
-  type BarcodeInfo,
-  FOOD_CATEGORY_RE,
-} from "#utils/helpers/barcode.helper";
+import { type BarcodeInfo } from "#utils/helpers/barcode.helper";
+import { inferPOFields } from "#utils/helpers/poInference.helper";
 
 export { loader, action } from "#utils/loaders/store.loader";
 export { RouteErrorBoundary as ErrorBoundary } from "~/components/common/errorState";
@@ -557,6 +555,8 @@ export default function StorePage() {
       expiryDate: null,
       useRate: null,
       useRatePeriod: null,
+      itemType: "other",
+      packageSize: null,
       createdAt: new Date(),
       createdBy: userId ?? null,
     };
@@ -567,36 +567,81 @@ export default function StorePage() {
     );
   };
 
-  // Add a shopping-list row from a scanned barcode
+  // Once a fresh row gets a real name, fill in best-guess metadata (type,
+  // location, unit, and a link to an item you already keep) for the user to
+  // glance at and adjust. Only runs while the row is still at defaults so it
+  // never clobbers edits. See poInference.helper.
+  const handleInferPOItem = (row: PurchaseOrderItem) => {
+    const inf = inferPOFields(row.name, items, blocks);
+    const updated: PurchaseOrderItem = {
+      ...row,
+      itemId: inf.matchedItemId ?? row.itemId,
+      itemType: inf.itemType,
+      blockId: inf.blockId ?? row.blockId,
+      unit: inf.unit ?? row.unit,
+      packageSize: inf.packageSize ?? row.packageSize,
+      minQuantity: inf.minQuantity ?? row.minQuantity,
+      useRate: inf.useRate ?? row.useRate,
+      useRatePeriod: inf.useRatePeriod ?? row.useRatePeriod,
+      cost: inf.cost ?? row.cost,
+    };
+    setPurchaseOrder((prev) =>
+      prev.map((p) => (p.id === row.id ? updated : p)),
+    );
+    fetcher.submit(
+      {
+        _action: "updatePOItem",
+        id: updated.id,
+        name: updated.name,
+        quantity: updated.quantity,
+        itemId: updated.itemId ?? null,
+        blockId: updated.blockId ?? null,
+        description: updated.description ?? null,
+        sku: updated.sku ?? null,
+        unit: updated.unit ?? null,
+        minQuantity: updated.minQuantity ?? null,
+        cost: updated.cost ?? null,
+        expiryDate: updated.expiryDate
+          ? updated.expiryDate.toISOString()
+          : null,
+        useRate: updated.useRate ?? null,
+        useRatePeriod: updated.useRatePeriod ?? null,
+        itemType: updated.itemType,
+        packageSize: updated.packageSize ?? null,
+      },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
+  // Add a shopping-list row from a scanned barcode. Inference fills type +
+  // location + any match to an item you already keep; the scan supplies name,
+  // unit, expiry and (for the chip) the pack size.
   const handleAddScannedPOItem = (info: BarcodeInfo) => {
     const optimisticId = crypto.randomUUID();
-
-    // Auto-shelf food to a matching block (best-effort)
-    let scannedBlockId: string | null = null;
-    if (info.category === "Food") {
-      const foodBlock = Object.entries(blocks).find(
-        ([, b]) =>
-          (b.kind === "standard" || b.kind === undefined) &&
-          FOOD_CATEGORY_RE.test(b.label),
-      );
-      if (foodBlock) scannedBlockId = foodBlock[0];
-    }
+    const name = info.name || "New item";
+    const inf = inferPOFields(name, items, blocks);
+    // The scan is a strong "food" signal — prefer it over the name guess.
+    const itemType = info.category === "Food" ? "food" : inf.itemType;
+    const blockId = inf.blockId;
+    const unit = info.unit ?? inf.unit ?? null;
 
     const newPO: PurchaseOrderItem = {
       id: optimisticId,
-      itemId: null,
+      itemId: inf.matchedItemId,
       storeId: id!,
-      name: info.name || "New item",
+      name,
       quantity: 1,
-      blockId: scannedBlockId,
+      blockId,
       description: null,
       sku: info.sku || null,
-      unit: info.unit ?? null,
-      minQuantity: null,
-      cost: null,
+      unit,
+      minQuantity: inf.minQuantity,
+      cost: inf.cost,
       expiryDate: info.expiry ?? null,
-      useRate: null,
-      useRatePeriod: null,
+      useRate: inf.useRate,
+      useRatePeriod: inf.useRatePeriod,
+      itemType,
+      packageSize: info.packageSize ?? null,
       createdAt: new Date(),
       createdBy: userId ?? null,
     };
@@ -604,11 +649,18 @@ export default function StorePage() {
     fetcher.submit(
       {
         _action: "createPOItem",
-        name: newPO.name,
+        name,
         quantity: 1,
-        blockId: scannedBlockId,
+        itemId: inf.matchedItemId ?? null,
+        blockId,
         sku: newPO.sku,
-        unit: newPO.unit,
+        unit,
+        minQuantity: inf.minQuantity,
+        cost: inf.cost,
+        useRate: inf.useRate,
+        useRatePeriod: inf.useRatePeriod,
+        itemType,
+        packageSize: info.packageSize ?? null,
         expiryDate: info.expiry ? info.expiry.toISOString() : null,
         optimisticId,
       },
@@ -675,7 +727,7 @@ export default function StorePage() {
           description: poRow.description,
           createdAt: new Date(),
           isPublic: true,
-          itemType: "other",
+          itemType: poRow.itemType,
           sku: poRow.sku,
           unit: poRow.unit,
           minQuantity: poRow.minQuantity,
@@ -763,6 +815,8 @@ export default function StorePage() {
       expiryDate: null,
       useRate: item.useRate,
       useRatePeriod: item.useRatePeriod,
+      itemType: item.itemType ?? "other",
+      packageSize: null,
       createdAt: new Date(),
       createdBy: userId ?? null,
     };
@@ -779,6 +833,7 @@ export default function StorePage() {
       expiryDate: null,
       useRate: item.useRate ?? null,
       useRatePeriod: item.useRatePeriod ?? null,
+      itemType: item.itemType ?? "other",
     };
     return { optimistic, payload, optimisticId };
   };
@@ -802,39 +857,67 @@ export default function StorePage() {
     );
   };
 
-  // Recipes → shopping list: add the lacking ingredient names (plain, unlinked
-  // PO rows), skipping any already queued. Optimistic, reconciled by polling.
+  // Recipes → shopping list: add the lacking ingredient names, skipping any
+  // already queued. Each is inferred (type + location, linked if it matches an
+  // item you keep) so it's never a locationless, typeless row. Quantity stays 1
+  // package — recipe cooking-amounts (tbsp) never become a shopping quantity.
+  // Optimistic, reconciled by polling.
   const handleAddMissingToList = (names: string[]) => {
     const existing = new Set(purchaseOrder.map((p) => p.name.toLowerCase()));
     const fresh = names.filter((n) => !existing.has(n.toLowerCase()));
     if (!fresh.length) return;
     const built = fresh.map((name) => {
       const optimisticId = crypto.randomUUID();
+      const inf = inferPOFields(name, items, blocks);
       const optimistic: PurchaseOrderItem = {
         id: optimisticId,
-        itemId: null,
+        itemId: inf.matchedItemId,
         storeId: id!,
         name,
         quantity: 1,
-        blockId: null,
+        blockId: inf.blockId,
         description: null,
         sku: null,
-        unit: null,
-        minQuantity: null,
-        cost: null,
+        unit: inf.unit,
+        minQuantity: inf.minQuantity,
+        cost: inf.cost,
         expiryDate: null,
-        useRate: null,
-        useRatePeriod: null,
+        useRate: inf.useRate,
+        useRatePeriod: inf.useRatePeriod,
+        itemType: inf.itemType,
+        packageSize: null,
         createdAt: new Date(),
         createdBy: userId ?? null,
       };
-      return { optimistic, payload: { name, quantity: 1 } };
+      return {
+        optimistic,
+        payload: {
+          name,
+          quantity: 1,
+          itemId: inf.matchedItemId ?? null,
+          blockId: inf.blockId,
+          unit: inf.unit,
+          minQuantity: inf.minQuantity,
+          cost: inf.cost,
+          useRate: inf.useRate,
+          useRatePeriod: inf.useRatePeriod,
+          itemType: inf.itemType,
+        },
+      };
     });
     setPurchaseOrder((prev) => [...prev, ...built.map((b) => b.optimistic)]);
     fetcher.submit(
       { _action: "createPOItems", items: built.map((b) => b.payload) },
       { method: "POST", encType: "application/json" },
     );
+  };
+
+  // Where an Upcoming ingredient would be shelved if added now — the block label
+  // inference picks for it (so the user sees the destination before tapping +).
+  const destinationForName = (name: string): string | null => {
+    const inf = inferPOFields(name, items, blocks);
+    if (!inf.blockId) return null;
+    return blocks[inf.blockId]?.label || null;
   };
 
   // Recipes → shopping list (the other direction): restock an ingredient you DO
@@ -1471,10 +1554,12 @@ export default function StorePage() {
                 onAddFromSuggestion={handleAddPOItemFromSuggestion}
                 onAddAll={handleAddAllSuggestions}
                 onUpdate={handleUpdatePOItem}
+                onInfer={handleInferPOItem}
                 onDelete={handleDeletePOItem}
                 onBuy={handleBuyPOItem}
                 mealNeeds={mealNeeds}
                 onAddNames={handleAddMissingToList}
+                destinationFor={destinationForName}
                 isMobile={isMobile}
               />
             )}

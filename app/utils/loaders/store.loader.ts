@@ -92,6 +92,11 @@ async function commitPurchaseOrderRow(
       storeId: poRow.storeId,
       blockId: poRow.blockId ?? undefined,
       description: poRow.description ?? undefined,
+      // Only upgrade an existing item's type if the PO carried a concrete guess —
+      // never overwrite a real type back to "other".
+      ...(poRow.itemType && poRow.itemType !== "other"
+        ? { itemType: poRow.itemType }
+        : {}),
       sku: poRow.sku ?? undefined,
       unit: poRow.unit ?? undefined,
       minQuantity: poRow.minQuantity ?? undefined,
@@ -117,6 +122,7 @@ async function commitPurchaseOrderRow(
       storeId: poRow.storeId,
       blockId: poRow.blockId ?? undefined,
       description: poRow.description ?? undefined,
+      itemType: poRow.itemType ?? undefined,
       sku: poRow.sku ?? undefined,
       unit: poRow.unit ?? undefined,
       minQuantity: poRow.minQuantity ?? undefined,
@@ -466,6 +472,8 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
       expiryDate: optDate(data.expiryDate),
       useRate: optInt(data.useRate),
       useRatePeriod: data.useRatePeriod ?? null,
+      itemType: data.itemType ?? undefined,
+      packageSize: optText(data.packageSize),
       createdBy: userId ?? null,
     });
     return { ok: true, id: row.id, optimisticId: data.optimisticId };
@@ -491,6 +499,8 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
         expiryDate: optDate(r.expiryDate),
         useRate: optInt(r.useRate),
         useRatePeriod: r.useRatePeriod ?? null,
+        itemType: r.itemType ?? undefined,
+        packageSize: optText(r.packageSize),
         createdBy: userId ?? null,
       });
     }
@@ -500,9 +510,13 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
   if (data._action === "updatePOItem") {
     await ensurePOInStore(data.id);
     await ensureBlockInStore(data.blockId);
+    if (data.itemId) await ensureItemInStore(data.itemId);
     await updatePurchaseOrder(data.id, {
       name: requireText(data.name, "Item name"),
       quantity: toQty(data.quantity, 1, { min: 1 }),
+      // Only (re)link when the client sends an itemId — a plain name/qty edit
+      // omits it, preserving any existing link.
+      ...(data.itemId !== undefined ? { itemId: data.itemId } : {}),
       blockId: data.blockId ?? null,
       description: optText(data.description),
       sku: optText(data.sku),
@@ -512,6 +526,8 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
       expiryDate: optDate(data.expiryDate),
       useRate: optInt(data.useRate),
       useRatePeriod: data.useRatePeriod ?? null,
+      ...(data.itemType ? { itemType: data.itemType } : {}),
+      packageSize: optText(data.packageSize),
     });
     return { ok: true };
   }

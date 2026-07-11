@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { PurchaseOrderItem } from "~/types/purchaseOrderTypes";
 import type { BlocksMap } from "~/types/storeViewFinderTypes";
+import type { ItemType } from "~/types/itemTypeTypes";
+import { ITEM_TYPES, TYPE_META } from "~/lib/itemTypes";
 import { PurchaseOrderOptionalFields } from "./purchaseOrderOptionalFields";
 
 type Props = {
@@ -9,6 +11,8 @@ type Props = {
   checked: boolean;
   onToggleChecked: (id: string) => void;
   onUpdate: (updated: PurchaseOrderItem) => void;
+  /** Run best-guess inference once a fresh row gets a real name. */
+  onInfer: (row: PurchaseOrderItem) => void;
   onDelete: (id: string) => void;
   onBuy: (id: string) => void;
 };
@@ -19,55 +23,76 @@ export function PurchaseOrderRow({
   checked,
   onToggleChecked,
   onUpdate,
+  onInfer,
   onDelete,
   onBuy,
 }: Props) {
   const [optionalOpen, setOptionalOpen] = useState(false);
   const [name, setName] = useState(item.name);
   const [qty, setQty] = useState(String(item.quantity));
+  const [unit, setUnit] = useState(item.unit ?? "");
+  // Flashes the location chip when the user tries to buy a row with no location.
+  const [flashLoc, setFlashLoc] = useState(false);
 
-  const hasOptional =
-    item.description ||
-    item.sku ||
-    item.unit ||
-    item.minQuantity != null ||
-    item.cost != null ||
-    item.expiryDate ||
-    item.useRate != null ||
-    item.blockId;
+  useEffect(() => setUnit(item.unit ?? ""), [item.unit]);
+  useEffect(() => {
+    if (item.blockId) setFlashLoc(false);
+  }, [item.blockId]);
+
+  // Standard (placeable) blocks — the only valid locations.
+  const blockOptions = Object.entries(blocks).filter(
+    ([, b]) => b.kind === "standard" || b.kind === undefined,
+  );
+
+  // A real, named row (not the blank "New item" placeholder) shows its metadata.
+  const named = !!item.name && item.name !== "New item";
+  // Still at creation defaults → safe to auto-infer on the first name commit.
+  const atDefaults = item.itemType === "other" && !item.blockId && !item.unit;
 
   const flush = () => {
-    const updated: PurchaseOrderItem = {
-      ...item,
-      name: name || item.name,
-      quantity: Number(qty) || item.quantity,
-    };
-    if (updated.name !== item.name || updated.quantity !== item.quantity) {
-      onUpdate(updated);
+    const nextName = name.trim() || item.name;
+    const nextQty = Number(qty) || item.quantity;
+    const changed = nextName !== item.name || nextQty !== item.quantity;
+    if (atDefaults && nextName && nextName !== "New item") {
+      // First real name → infer type/location/unit (and link) for confirming.
+      onInfer({ ...item, name: nextName, quantity: nextQty });
+    } else if (changed) {
+      onUpdate({ ...item, name: nextName, quantity: nextQty });
     }
   };
 
-  const handleOptionalSave = (fields: Partial<PurchaseOrderItem>) => {
+  // Apply a metadata change, carrying the current (possibly-edited) name/qty.
+  const patch = (fields: Partial<PurchaseOrderItem>) =>
     onUpdate({
       ...item,
-      name,
+      name: name.trim() || item.name,
       quantity: Number(qty) || item.quantity,
       ...fields,
     });
+
+  const handleBuy = () => {
+    if (!item.blockId) {
+      // Buy-time safety net: a row must have a home before it joins inventory.
+      setFlashLoc(true);
+      return;
+    }
+    onBuy(item.id);
   };
 
   const input =
     "w-full px-2 py-1 text-[11px] font-mono border border-transparent rounded focus:outline-none focus:border-slate-300 bg-transparent hover:border-slate-200 transition-colors";
+  const chip =
+    "px-1.5 py-0.5 text-[10px] font-mono rounded border bg-white cursor-pointer focus:outline-none transition-colors";
 
   return (
     <>
       <tr
-        className={`border-b border-slate-100 group transition-colors ${
+        className={`group transition-colors ${named ? "" : "border-b border-slate-100"} ${
           checked ? "bg-emerald-50/40" : "hover:bg-slate-50/50"
         }`}
       >
         {/* "Got it" toggle */}
-        <td className="w-8 pl-3 py-2">
+        <td className="w-8 pl-3 py-2 align-top">
           <button
             onClick={() => onToggleChecked(item.id)}
             className={`w-4 h-4 rounded border-2 transition-all flex items-center justify-center ${
@@ -92,7 +117,7 @@ export function PurchaseOrderRow({
         </td>
 
         {/* Name */}
-        <td className="py-1 pr-1 min-w-[140px]">
+        <td className="py-1 pr-1 min-w-[140px] align-top">
           <input
             className={`${input} ${checked ? "line-through text-slate-400" : ""}`}
             value={name}
@@ -103,7 +128,7 @@ export function PurchaseOrderRow({
         </td>
 
         {/* Qty */}
-        <td className="py-1 pr-1 w-20">
+        <td className="py-1 pr-1 w-20 align-top">
           <input
             type="number"
             className={`${input} ${checked ? "text-slate-400" : ""}`}
@@ -115,24 +140,20 @@ export function PurchaseOrderRow({
         </td>
 
         {/* Actions */}
-        <td className="py-1 pr-2 w-20">
+        <td className="py-1 pr-2 w-20 align-top">
           <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            {/* Optional fields */}
+            {/* More optional fields (cost, min stock, expiry, use-rate…) */}
             <button
               onClick={() => setOptionalOpen(true)}
-              className={`w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold transition-colors ${
-                hasOptional
-                  ? "bg-slate-200 text-slate-700"
-                  : "border border-slate-200 text-slate-400 hover:border-slate-400 hover:text-slate-600"
-              }`}
-              title="Optional details"
+              className="w-5 h-5 rounded border border-slate-200 text-slate-400 hover:border-slate-400 hover:text-slate-600 flex items-center justify-center text-[9px] font-bold transition-colors"
+              title="More details"
             >
               +
             </button>
 
             {/* Quick buy — commit this one row to inventory now */}
             <button
-              onClick={() => onBuy(item.id)}
+              onClick={handleBuy}
               className="w-5 h-5 rounded border border-transparent text-slate-300 hover:border-emerald-200 hover:text-emerald-600 flex items-center justify-center transition-colors"
               title="Buy now — adds to inventory immediately"
             >
@@ -173,11 +194,82 @@ export function PurchaseOrderRow({
         </td>
       </tr>
 
+      {/* Inferred metadata — shown pre-filled and editable in place (no modal,
+          no extra confirm tap). Every named row carries a type + a location. */}
+      {named && (
+        <tr className="border-b border-slate-100">
+          <td />
+          <td colSpan={3} className="pb-2 pr-2">
+            <div className="flex flex-wrap items-center gap-1.5">
+              {/* Type */}
+              <select
+                value={item.itemType}
+                onChange={(e) =>
+                  patch({ itemType: e.target.value as ItemType })
+                }
+                className={`${chip} border-slate-200 text-slate-600 hover:border-slate-300`}
+                title="Item type"
+              >
+                {ITEM_TYPES.map((t) => (
+                  <option key={t} value={t}>
+                    {TYPE_META[t].label}
+                  </option>
+                ))}
+              </select>
+
+              {/* Location — required; flashes if a buy is attempted without one */}
+              <select
+                value={item.blockId ?? ""}
+                onChange={(e) => patch({ blockId: e.target.value || null })}
+                className={`${chip} ${
+                  item.blockId
+                    ? "border-slate-200 text-slate-600 hover:border-slate-300"
+                    : flashLoc
+                      ? "border-red-400 text-red-600 ring-1 ring-red-300"
+                      : "border-amber-300 text-amber-700"
+                }`}
+                title="Location — where it'll be shelved"
+              >
+                <option value="">📍 Set location</option>
+                {blockOptions.map(([id, b]) => (
+                  <option key={id} value={id}>
+                    📍 {b.label || "Unlabelled block"}
+                  </option>
+                ))}
+              </select>
+
+              {/* Unit */}
+              <input
+                value={unit}
+                onChange={(e) => setUnit(e.target.value)}
+                onBlur={() => {
+                  const next = unit.trim() || null;
+                  if (next !== (item.unit ?? null)) patch({ unit: next });
+                }}
+                placeholder="unit"
+                className={`${chip} border-slate-200 text-slate-600 w-16 hover:border-slate-300`}
+                title="Unit (e.g. kg, l, box)"
+              />
+
+              {/* Pack size — display-only "what it comes in" */}
+              {item.packageSize && (
+                <span
+                  className="px-1.5 py-0.5 text-[10px] font-mono rounded border border-slate-100 bg-slate-50 text-slate-500"
+                  title="Pack size"
+                >
+                  📦 {item.packageSize}
+                </span>
+              )}
+            </div>
+          </td>
+        </tr>
+      )}
+
       {optionalOpen && (
         <PurchaseOrderOptionalFields
           item={item}
           blocks={blocks}
-          onSave={handleOptionalSave}
+          onSave={(fields) => onUpdate({ ...item, ...fields })}
           onClose={() => setOptionalOpen(false)}
         />
       )}

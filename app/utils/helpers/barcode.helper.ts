@@ -5,6 +5,8 @@ export type BarcodeInfo = {
   sku: string;
   name?: string;
   unit?: string;
+  /** Free-text pack size from the product DB, e.g. "500 g" (display-only). */
+  packageSize?: string;
   expiry?: Date;
   weightKg?: number;
   category?: "Food";
@@ -38,6 +40,7 @@ export async function resolveBarcode(raw: string): Promise<BarcodeInfo> {
       if (data?.found) {
         if (data.name) info.name = data.name;
         if (data.unit && !info.unit) info.unit = data.unit;
+        if (data.packageSize) info.packageSize = data.packageSize;
         if (data.category) info.category = data.category;
       }
     } catch {

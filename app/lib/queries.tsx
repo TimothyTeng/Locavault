@@ -891,6 +891,8 @@ export async function createPurchaseOrder(data: {
   expiryDate?: Date | null;
   useRate?: number | null;
   useRatePeriod?: "day" | "week" | "month" | null;
+  itemType?: ItemType;
+  packageSize?: string | null;
   createdBy?: string | null;
 }) {
   const [row] = await db.insert(purchaseOrderItems).values(data).returning();
@@ -900,10 +902,7 @@ export async function createPurchaseOrder(data: {
 export async function updatePurchaseOrder(
   id: string,
   data: Partial<
-    Omit<
-      typeof purchaseOrderItems.$inferInsert,
-      "id" | "storeId" | "createdAt" | "itemId"
-    >
+    Omit<typeof purchaseOrderItems.$inferInsert, "id" | "storeId" | "createdAt">
   >,
 ) {
   const [row] = await db
