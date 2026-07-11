@@ -4,6 +4,8 @@ import {
   matchExistingItem,
   inferBlockId,
   inferPOFields,
+  buildTypeConsensus,
+  type TypeVote,
 } from "./poInference.helper";
 import type { Item } from "~/types/storeTypes";
 import type { BlocksMap } from "~/types/storeViewFinderTypes";
@@ -185,5 +187,82 @@ describe("inferPOFields", () => {
     const hints = { water: "supplies" as const };
     const r = inferPOFields("Water", [], blocks, hints);
     expect(r.itemType).toBe("supplies");
+  });
+
+  it("falls to the crowd consensus for a name the lexicon doesn't know", () => {
+    // "Widget 3000" isn't in the lexicon; the crowd has filed it as equipment.
+    const crowd = { "widget 3000": "equipment" as const };
+    const r = inferPOFields("Widget 3000", [], blocks, {}, crowd);
+    expect(r.itemType).toBe("equipment");
+  });
+
+  it("keeps the curated lexicon guess over a conflicting crowd hint", () => {
+    // The lexicon knows "Bananas" is food; a stray crowd vote can't override it.
+    const crowd = { bananas: "supplies" as const };
+    const r = inferPOFields("Bananas", [], blocks, {}, crowd);
+    expect(r.itemType).toBe("food");
+  });
+
+  it("lets the user's own memory win over the crowd", () => {
+    const hints = { "widget 3000": "clothing" as const };
+    const crowd = { "widget 3000": "equipment" as const };
+    const r = inferPOFields("Widget 3000", [], blocks, hints, crowd);
+    expect(r.itemType).toBe("clothing");
+  });
+});
+
+describe("buildTypeConsensus", () => {
+  const vote = (name: string, itemType: TypeVote["itemType"], userId: string) =>
+    ({ name, itemType, userId }) as TypeVote;
+
+  it("agrees when enough distinct users file a name the same way", () => {
+    const rows = ["u1", "u2", "u3", "u4", "u5"].map((u) =>
+      vote("Kombucha", "food", u),
+    );
+    expect(buildTypeConsensus(rows)).toEqual({ kombucha: "food" });
+  });
+
+  it("hides a name below the k-anonymity threshold", () => {
+    // Only 3 distinct users — never surfaces, so a rare/personal name can't leak.
+    const rows = ["u1", "u2", "u3"].map((u) => vote("Escargot", "food", u));
+    expect(buildTypeConsensus(rows)).toEqual({});
+  });
+
+  it("counts distinct users, not rows (one prolific user can't reach quorum)", () => {
+    // u1 has ten "Gadget" rows — still one person, below the threshold.
+    const rows = Array.from({ length: 10 }, () =>
+      vote("Gadget", "equipment", "u1"),
+    );
+    expect(buildTypeConsensus(rows)).toEqual({});
+  });
+
+  it("drops an ambiguous name with no clear majority", () => {
+    const rows = [
+      ...["u1", "u2", "u3"].map((u) => vote("Toy", "equipment", u)),
+      ...["u4", "u5", "u6"].map((u) => vote("Toy", "clothing", u)),
+    ];
+    // 3/6 = 50% for each — below the 60% consensus gate.
+    expect(buildTypeConsensus(rows)).toEqual({});
+  });
+
+  it("ignores 'other' votes entirely", () => {
+    const rows = ["u1", "u2", "u3", "u4", "u5"].map((u) =>
+      vote("Gizmo", "other", u),
+    );
+    expect(buildTypeConsensus(rows)).toEqual({});
+  });
+
+  it("excludes a given user's votes (can drop a name below quorum)", () => {
+    const rows = ["u1", "u2", "u3", "u4", "u5"].map((u) =>
+      vote("Kefir", "food", u),
+    );
+    // Without exclusion it's a consensus; excluding one drops it to 4 → gone.
+    expect(buildTypeConsensus(rows)).toEqual({ kefir: "food" });
+    expect(buildTypeConsensus(rows, { excludeUserId: "u1" })).toEqual({});
+  });
+
+  it("respects custom thresholds", () => {
+    const rows = ["u1", "u2"].map((u) => vote("Yuzu", "food", u));
+    expect(buildTypeConsensus(rows, { minUsers: 2 })).toEqual({ yuzu: "food" });
   });
 });

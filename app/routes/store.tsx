@@ -80,6 +80,7 @@ export default function StorePage() {
     userRecipes,
     scheduledMeals: dbScheduledMeals,
     typeHints,
+    crowdHints,
   } = useLoaderData<typeof loader>();
 
   const { state } = useLocation();
@@ -326,7 +327,7 @@ export default function StorePage() {
       const needs = named && (row.itemType === "other" || !row.blockId);
       if (!needs || backfilledRef.current.has(row.id)) continue;
       backfilledRef.current.add(row.id);
-      const inf = inferPOFields(row.name, items, blocks, typeHints);
+      const inf = inferPOFields(row.name, items, blocks, typeHints, crowdHints);
       const next: PurchaseOrderItem = {
         ...row,
         itemId: row.itemId ?? inf.matchedItemId,
@@ -630,7 +631,7 @@ export default function StorePage() {
   // glance at and adjust. Only runs while the row is still at defaults so it
   // never clobbers edits. See poInference.helper.
   const handleInferPOItem = (row: PurchaseOrderItem) => {
-    const inf = inferPOFields(row.name, items, blocks, typeHints);
+    const inf = inferPOFields(row.name, items, blocks, typeHints, crowdHints);
     // Gap-fill: keep anything the row already has, only fill blanks. Safe to run
     // both on a fresh row (everything blank → all inferred) and as a backfill on
     // an existing row (preserves a location/unit/type the user already set).
@@ -680,7 +681,7 @@ export default function StorePage() {
   const handleAddScannedPOItem = (info: BarcodeInfo) => {
     const optimisticId = crypto.randomUUID();
     const name = info.name || "New item";
-    const inf = inferPOFields(name, items, blocks, typeHints);
+    const inf = inferPOFields(name, items, blocks, typeHints, crowdHints);
     // The scan is a strong "food" signal — prefer it over the name guess.
     const itemType = info.category === "Food" ? "food" : inf.itemType;
     const blockId = inf.blockId;
@@ -939,7 +940,7 @@ export default function StorePage() {
     if (!fresh.length) return;
     const built = fresh.map((name) => {
       const optimisticId = crypto.randomUUID();
-      const inf = inferPOFields(name, items, blocks, typeHints);
+      const inf = inferPOFields(name, items, blocks, typeHints, crowdHints);
       const optimistic: PurchaseOrderItem = {
         id: optimisticId,
         itemId: inf.matchedItemId,
@@ -986,7 +987,7 @@ export default function StorePage() {
   // Where an Upcoming ingredient would be shelved if added now — the block label
   // inference picks for it (so the user sees the destination before tapping +).
   const destinationForName = (name: string): string | null => {
-    const inf = inferPOFields(name, items, blocks, typeHints);
+    const inf = inferPOFields(name, items, blocks, typeHints, crowdHints);
     if (!inf.blockId) return null;
     return blocks[inf.blockId]?.label || null;
   };

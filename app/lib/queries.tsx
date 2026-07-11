@@ -43,6 +43,7 @@ import type { BlockKind } from "~/types/BlockTypes";
 import type { Wall } from "~/types/wallTypes";
 import { parseWalls, serializeWalls } from "~/utils/helpers/wall.helper";
 import type { ItemType } from "~/types/itemTypeTypes";
+import { buildTypeConsensus } from "~/utils/helpers/poInference.helper";
 
 // ─── Helpers ───────────────────────────────────────────────
 
@@ -224,6 +225,54 @@ export async function getUserTypeHints(
     if (best) hints[key] = best[0];
   }
   return hints;
+}
+
+// ─── Crowd type consensus ──────────────────────────────────
+// The k-anonymous name→type map aggregated across ALL users. It moves slowly and
+// scanning every item/PO row is expensive, so cache it process-wide with a TTL
+// (the shopping list polls every 15s — we must not rescan the tables that often).
+let crowdCache: { at: number; map: Record<string, ItemType> } | null = null;
+const CROWD_TTL_MS = 30 * 60 * 1000; // 30 min
+
+/**
+ * Cross-user consensus of name→type, exposing only k-anonymous aggregates (see
+ * `buildTypeConsensus`): a name surfaces only once enough distinct users agree on
+ * a concrete type, so no individual's item names or contents leak. Feeds shopping
+ * -list inference below the user's own memory and the curated lexicon. Cached
+ * process-wide for `CROWD_TTL_MS`; any DB trouble degrades to an empty map rather
+ * than breaking the store load.
+ */
+export async function getCrowdTypeHints(): Promise<Record<string, ItemType>> {
+  const now = Date.now();
+  if (crowdCache && now - crowdCache.at < CROWD_TTL_MS) return crowdCache.map;
+  try {
+    const [itemVotes, poVotes] = await Promise.all([
+      db
+        .select({
+          name: items.name,
+          itemType: items.itemType,
+          userId: stores.userId,
+        })
+        .from(items)
+        .innerJoin(stores, eq(items.storeId, stores.id))
+        .where(ne(items.itemType, "other")),
+      db
+        .select({
+          name: purchaseOrderItems.name,
+          itemType: purchaseOrderItems.itemType,
+          userId: stores.userId,
+        })
+        .from(purchaseOrderItems)
+        .innerJoin(stores, eq(purchaseOrderItems.storeId, stores.id))
+        .where(ne(purchaseOrderItems.itemType, "other")),
+    ]);
+    const map = buildTypeConsensus([...itemVotes, ...poVotes]);
+    crowdCache = { at: now, map };
+    return map;
+  } catch {
+    // Never let the crowd layer take down the store loader — fall back to none.
+    return crowdCache?.map ?? {};
+  }
 }
 
 /** Fetch a single store by ID, including its blocks */

@@ -247,10 +247,22 @@ the client.
   typed/scanned name, `inferPOFields` fills the shopping-row metadata so the plain
   name+quantity flow still yields rich, located items. Priority for the type: a
   fuzzy-matched existing item (also links it for restock) → the user's own remembered
-  types (`getUserTypeHints`, loaded as `typeHints`) → a name lexicon → `other`. It
-  always resolves a location (a type-fitting block, else the first standard block —
-  never null). Runs on manual/scanned/recipe adds, and silently backfills existing
-  rows when the shopping list opens (bulk `updatePOItems`). Quantities are always
-  whole packages — recipe cooking-amounts never become a shopping quantity.
+  types (`getUserTypeHints`, loaded as `typeHints`) → a name lexicon → the **crowd
+  consensus** (`getCrowdTypeHints`, loaded as `crowdHints`) → `other`. It always
+  resolves a location (a type-fitting block, else the first standard block — never
+  null). Runs on manual/scanned/recipe adds, and silently backfills existing rows
+  when the shopping list opens (bulk `updatePOItems`). Quantities are always whole
+  packages — recipe cooking-amounts never become a shopping quantity.
+- **Crowd type consensus** (`buildTypeConsensus` in `poInference.helper.ts`,
+  `getCrowdTypeHints` in `queries.tsx`): the cross-user layer under the lexicon —
+  a name→type map aggregated over everyone's items + PO rows so long-tail names the
+  lexicon misses ("kombucha", "gochujang") still get a type. **Privacy is k-anonymous
+  by construction:** votes are counted as *distinct users* (not rows), and a name
+  only surfaces once ≥5 distinct users agree on a concrete type with ≥60% consensus,
+  so no individual's item names or contents can leak. Only `name → itemType` is ever
+  aggregated (never userId/quantity/store/notes). It sits **below** the curated
+  lexicon (fills gaps, never overrides a curated guess) and is cached process-wide
+  (`CROWD_TTL_MS`, 30 min) so the 15s poll never rescans the tables; any DB trouble
+  degrades to an empty map rather than breaking the store load.
 - The landing page (`components/home/*`) is marketing-only and GSAP-animated;
   it renders for signed-out users. The dashboard renders for signed-in users.

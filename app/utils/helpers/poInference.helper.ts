@@ -547,38 +547,100 @@ export function matchExistingItem(name: string, items: Item[]): Item | null {
 /**
  * Best-guess type for a name, in priority order: the user's own remembered type
  * for that exact name (`typeHints`, learned from what they've typed before) →
- * the name lexicon → null. The remembered type wins because it's an explicit
- * past choice, not a guess.
+ * the curated name lexicon → the crowd consensus (what everyone else files this
+ * name under, `crowdHints`) → null. The user's own choice wins first; the lexicon
+ * is high-precision for common items; the crowd fills the long tail the lexicon
+ * misses without ever overriding a curated guess.
  */
 function guessType(
   name: string,
   typeHints: Record<string, ItemType>,
+  crowdHints: Record<string, ItemType> = {},
 ): ItemType | null {
-  return typeHints[name.trim().toLowerCase()] ?? inferTypeFromName(name);
+  const key = name.trim().toLowerCase();
+  return typeHints[key] ?? inferTypeFromName(name) ?? crowdHints[key] ?? null;
+}
+
+/** A single (name, type, user) vote feeding the crowd consensus. */
+export type TypeVote = { name: string; itemType: ItemType; userId: string };
+
+/**
+ * Aggregate a name→type consensus from item/PO rows across all users. Votes are
+ * counted as DISTINCT USERS (not rows) so no single prolific user can sway a
+ * name, and a name only surfaces once it clears a k-anonymity threshold — a rare
+ * or personal name (used by fewer than `minUsers` people) never appears, so no
+ * individual's naming leaks. The winning type must also hold a clear majority
+ * (`minConsensus`) of that name's distinct users, else the name is dropped as
+ * ambiguous. Only concrete (non-"other") types carry signal.
+ */
+export function buildTypeConsensus(
+  rows: TypeVote[],
+  opts: {
+    minUsers?: number;
+    minConsensus?: number;
+    excludeUserId?: string;
+  } = {},
+): Record<string, ItemType> {
+  const { minUsers = 5, minConsensus = 0.6, excludeUserId } = opts;
+  // name → type → set of distinct users who filed that name under that type.
+  const votes = new Map<string, Map<ItemType, Set<string>>>();
+  for (const r of rows) {
+    if (r.itemType === "other") continue;
+    if (excludeUserId && r.userId === excludeUserId) continue;
+    const key = r.name.trim().toLowerCase();
+    if (!key || !r.userId) continue;
+    let byType = votes.get(key);
+    if (!byType) votes.set(key, (byType = new Map()));
+    let users = byType.get(r.itemType);
+    if (!users) byType.set(r.itemType, (users = new Set()));
+    users.add(r.userId);
+  }
+
+  const out: Record<string, ItemType> = {};
+  for (const [key, byType] of votes) {
+    let winner: ItemType | null = null;
+    let winnerUsers = 0;
+    const allUsers = new Set<string>();
+    for (const [type, users] of byType) {
+      for (const u of users) allUsers.add(u);
+      if (users.size > winnerUsers) {
+        winner = type;
+        winnerUsers = users.size;
+      }
+    }
+    const totalUsers = allUsers.size; // distinct people who use this name at all
+    if (!winner) continue;
+    if (totalUsers < minUsers) continue; // k-anonymity: not enough people
+    if (winnerUsers / totalUsers < minConsensus) continue; // too ambiguous
+    out[key] = winner;
+  }
+  return out;
 }
 
 /**
  * Infer all shopping-row metadata from a name. Prefers inheriting from a matched
  * existing item; otherwise guesses the type from the user's memory / name lexicon
  * and shelves it to a fitting block. Always resolves a location when the store
- * has any standard block. `typeHints` is the user's own name→type memory.
+ * has any standard block. `typeHints` is the user's own name→type memory;
+ * `crowdHints` is the k-anonymous cross-user consensus (see `buildTypeConsensus`).
  */
 export function inferPOFields(
   name: string,
   items: Item[],
   blocks: BlocksMap,
   typeHints: Record<string, ItemType> = {},
+  crowdHints: Record<string, ItemType> = {},
 ): POInference {
   const match = matchExistingItem(name, items);
   if (match) {
     // Prefer the matched item's type — but only if it's a concrete one. Lots of
     // older items predate type capture and sit at "other"; in that case defer to
-    // the user's memory / name lexicon so "Plain Flour" still reads as food.
+    // the user's memory / name lexicon / crowd so "Plain Flour" still reads as food.
     const matchType = match.itemType ?? "other";
     const type =
       matchType !== "other"
         ? matchType
-        : (guessType(name, typeHints) ?? "other");
+        : (guessType(name, typeHints, crowdHints) ?? "other");
     return {
       itemType: type,
       blockId: match.blockId ?? inferBlockId(type, blocks),
@@ -591,7 +653,7 @@ export function inferPOFields(
       cost: match.cost ?? null,
     };
   }
-  const itemType = guessType(name, typeHints) ?? "other";
+  const itemType = guessType(name, typeHints, crowdHints) ?? "other";
   return {
     itemType,
     blockId: inferBlockId(itemType, blocks),

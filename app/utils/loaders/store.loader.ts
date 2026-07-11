@@ -40,6 +40,7 @@ import {
   createScheduledMeal,
   deleteScheduledMeal,
   getUserTypeHints,
+  getCrowdTypeHints,
 } from "~/lib/queries";
 import { estimateUsage } from "~/utils/helpers/usage.helper";
 import { decrementForIngredient } from "~/utils/helpers/recipeCook.helper";
@@ -164,6 +165,7 @@ export const loader = async (args: LoaderFunctionArgs) => {
     collections,
     scheduledMeals,
     typeHints,
+    crowdHints,
   ] = await Promise.all([
     getItemsByStore(params.id!),
     canEdit ? getPurchaseOrders(params.id!) : Promise.resolve([]),
@@ -175,6 +177,9 @@ export const loader = async (args: LoaderFunctionArgs) => {
     canEdit ? getScheduledMeals(params.id!) : Promise.resolve([]),
     canEdit && userId
       ? getUserTypeHints(userId)
+      : Promise.resolve({} as Record<string, ItemType>),
+    canEdit
+      ? getCrowdTypeHints()
       : Promise.resolve({} as Record<string, ItemType>),
   ]);
 
@@ -219,6 +224,7 @@ export const loader = async (args: LoaderFunctionArgs) => {
     userRecipes,
     scheduledMeals,
     typeHints,
+    crowdHints,
   };
 };
 
