@@ -5,6 +5,8 @@ import {
   inferBlockId,
   inferPOFields,
   buildTypeConsensus,
+  canonicalNameKey,
+  matchCrowdType,
   type TypeVote,
 } from "./poInference.helper";
 import type { Item } from "~/types/storeTypes";
@@ -190,24 +192,32 @@ describe("inferPOFields", () => {
   });
 
   it("falls to the crowd consensus for a name the lexicon doesn't know", () => {
-    // "Widget 3000" isn't in the lexicon; the crowd has filed it as equipment.
-    const crowd = { "widget 3000": "equipment" as const };
+    // "Widget 3000" isn't in the lexicon; the crowd has filed "widget" as equipment
+    // (crowd keys are canonical token keys — the "3000" is dropped as non-letter).
+    const crowd = { widget: "equipment" as const };
     const r = inferPOFields("Widget 3000", [], blocks, {}, crowd);
     expect(r.itemType).toBe("equipment");
   });
 
   it("keeps the curated lexicon guess over a conflicting crowd hint", () => {
     // The lexicon knows "Bananas" is food; a stray crowd vote can't override it.
-    const crowd = { bananas: "supplies" as const };
+    const crowd = { banana: "supplies" as const };
     const r = inferPOFields("Bananas", [], blocks, {}, crowd);
     expect(r.itemType).toBe("food");
   });
 
   it("lets the user's own memory win over the crowd", () => {
     const hints = { "widget 3000": "clothing" as const };
-    const crowd = { "widget 3000": "equipment" as const };
+    const crowd = { widget: "equipment" as const };
     const r = inferPOFields("Widget 3000", [], blocks, hints, crowd);
     expect(r.itemType).toBe("clothing");
+  });
+
+  it("generalises a crowd bucket to a more specific typed name", () => {
+    // The crowd knows "chicken" is food; typing "Chicken Thigh" still resolves.
+    const crowd = { chicken: "food" as const };
+    const r = inferPOFields("Chicken Thigh", [], blocks, {}, crowd);
+    expect(r.itemType).toBe("food");
   });
 });
 
@@ -264,5 +274,62 @@ describe("buildTypeConsensus", () => {
   it("respects custom thresholds", () => {
     const rows = ["u1", "u2"].map((u) => vote("Yuzu", "food", u));
     expect(buildTypeConsensus(rows, { minUsers: 2 })).toEqual({ yuzu: "food" });
+  });
+
+  it("merges casing/order/modifier variants into one canonical bucket", () => {
+    // Five different spellings of the same thing — all canonicalise to "milk",
+    // so together they clear the threshold instead of splitting five ways.
+    const rows = [
+      vote("Whole Milk", "food", "u1"),
+      vote("whole milk", "food", "u2"),
+      vote("Organic Milk", "food", "u3"),
+      vote("MILK", "food", "u4"),
+      vote("milk 2%", "food", "u5"),
+    ];
+    expect(buildTypeConsensus(rows)).toEqual({ milk: "food" });
+  });
+});
+
+describe("canonicalNameKey", () => {
+  it("drops modifiers/casing and keys to the significant token", () => {
+    expect(canonicalNameKey("Whole Milk")).toBe("milk");
+    expect(canonicalNameKey("Organic Milk")).toBe("milk");
+    expect(canonicalNameKey("MILK")).toBe("milk");
+    expect(canonicalNameKey("milk 2%")).toBe("milk");
+  });
+
+  it("sorts and dedupes multi-token names (order-independent)", () => {
+    expect(canonicalNameKey("Peanut Butter")).toBe("butter peanut");
+    expect(canonicalNameKey("Butter Peanut")).toBe("butter peanut");
+  });
+
+  it("is empty when nothing significant remains", () => {
+    expect(canonicalNameKey("of the")).toBe("");
+  });
+});
+
+describe("matchCrowdType", () => {
+  it("hits exactly on the canonical key across variants", () => {
+    const crowd = { milk: "food" as const };
+    expect(matchCrowdType("Whole Milk", crowd)).toBe("food");
+    expect(matchCrowdType("milk 2%", crowd)).toBe("food");
+  });
+
+  it("generalises a broad bucket to a more specific name", () => {
+    expect(matchCrowdType("Chicken Thigh", { chicken: "food" })).toBe("food");
+  });
+
+  it("prefers the most specific matching bucket", () => {
+    const crowd = { milk: "food" as const, "butter milk": "supplies" as const };
+    expect(matchCrowdType("Butter Milk Drink", crowd)).toBe("supplies");
+  });
+
+  it("won't let a specific bucket hijack a broader name", () => {
+    // "chicken thigh" bucket must NOT answer a bare "chicken".
+    expect(matchCrowdType("Chicken", { "chicken thigh": "food" })).toBeNull();
+  });
+
+  it("returns null with no token overlap", () => {
+    expect(matchCrowdType("Bleach", { milk: "food" })).toBeNull();
   });
 });

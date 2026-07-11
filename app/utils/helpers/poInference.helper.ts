@@ -558,11 +558,58 @@ function guessType(
   crowdHints: Record<string, ItemType> = {},
 ): ItemType | null {
   const key = name.trim().toLowerCase();
-  return typeHints[key] ?? inferTypeFromName(name) ?? crowdHints[key] ?? null;
+  return (
+    typeHints[key] ??
+    inferTypeFromName(name) ??
+    matchCrowdType(name, crowdHints) ??
+    null
+  );
 }
 
 /** A single (name, type, user) vote feeding the crowd consensus. */
 export type TypeVote = { name: string; itemType: ItemType; userId: string };
+
+/**
+ * Canonical token key for a name: its significant tokens (via `tokenize`, which
+ * lowercases, de-pluralises and drops noise words like "whole"/"organic"/"plain"),
+ * deduped and sorted, space-joined. This collapses casing, word order and
+ * modifier variants so "Whole Milk", "organic milk" and "milk 2%" all key to
+ * "milk" — one crowd bucket instead of three split ones. Empty when the name has
+ * no significant tokens.
+ */
+export function canonicalNameKey(name: string): string {
+  return Array.from(new Set(tokenize(name)))
+    .sort()
+    .join(" ");
+}
+
+/**
+ * Resolve a crowd type for a free-typed name by token overlap against a consensus
+ * map (whose keys are `canonicalNameKey`s). An exact canonical hit wins; failing
+ * that, the most specific bucket whose tokens all appear in the typed name — so a
+ * generic "chicken" bucket still catches "chicken thigh", but a more specific
+ * "chicken thigh" bucket will NOT hijack a bare "chicken". Ties break toward the
+ * bucket with more tokens (the more specific one). Null if nothing fits.
+ */
+export function matchCrowdType(
+  name: string,
+  crowd: Record<string, ItemType>,
+): ItemType | null {
+  const key = canonicalNameKey(name);
+  if (!key) return null;
+  if (crowd[key]) return crowd[key]; // exact canonical match — the tightest
+  const queryTokens = new Set(key.split(" "));
+  let best: { type: ItemType; size: number } | null = null;
+  for (const bucketKey in crowd) {
+    const bucketTokens = bucketKey.split(" ");
+    // Only generalise "downward": every bucket token must be present in the typed
+    // name, so a broad bucket catches a more specific query but never vice-versa.
+    if (!bucketTokens.every((t) => queryTokens.has(t))) continue;
+    if (!best || bucketTokens.length > best.size)
+      best = { type: crowd[bucketKey], size: bucketTokens.length };
+  }
+  return best?.type ?? null;
+}
 
 /**
  * Aggregate a name→type consensus from item/PO rows across all users. Votes are
@@ -587,7 +634,7 @@ export function buildTypeConsensus(
   for (const r of rows) {
     if (r.itemType === "other") continue;
     if (excludeUserId && r.userId === excludeUserId) continue;
-    const key = r.name.trim().toLowerCase();
+    const key = canonicalNameKey(r.name);
     if (!key || !r.userId) continue;
     let byType = votes.get(key);
     if (!byType) votes.set(key, (byType = new Map()));

@@ -263,6 +263,12 @@ the client.
   aggregated (never userId/quantity/store/notes). It sits **below** the curated
   lexicon (fills gaps, never overrides a curated guess) and is cached process-wide
   (`CROWD_TTL_MS`, 30 min) so the 15s poll never rescans the tables; any DB trouble
-  degrades to an empty map rather than breaking the store load.
+  degrades to an empty map rather than breaking the store load. Matching is
+  token-based: buckets are keyed by `canonicalNameKey` (significant tokens, deduped
+  + sorted, so "Whole Milk"/"organic milk"/"milk 2%" collapse to one "milk" bucket),
+  and `matchCrowdType` resolves a typed name by exact canonical hit else the most
+  specific bucket whose tokens are all present (a broad "chicken" bucket catches
+  "chicken thigh", but a specific bucket never hijacks a broader name). The user's
+  own memory (`typeHints`) stays exact-keyed — it's a precise past choice, not a guess.
 - The landing page (`components/home/*`) is marketing-only and GSAP-animated;
   it renders for signed-out users. The dashboard renders for signed-in users.
