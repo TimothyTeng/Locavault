@@ -12,6 +12,7 @@ import {
   getDoseSchedulesByUser,
   getTodayDoseCounts,
   getUserRecipes,
+  getIncomingOfferCount,
   verifyStoreAccess,
   verifyStoreOwner,
 } from "~/lib/queries";
@@ -49,6 +50,7 @@ export async function loader(args: LoaderFunctionArgs) {
       attention: [] as AttentionItem[],
       spentThisMonthCents: 0,
       dosesDue: 0,
+      incomingOffers: 0,
     };
 
   const [ownedStores, memberStores] = await Promise.all([
@@ -129,6 +131,9 @@ export async function loader(args: LoaderFunctionArgs) {
   );
   const spentThisMonthCents = spentCents(monthLogs, costByItem);
 
+  // Trade offers awaiting the user's response (badge on the /trade nav link).
+  const incomingOffers = await getIncomingOfferCount(userId);
+
   // Doses due today across all the user's tracked medications.
   const schedules = await getDoseSchedulesByUser(userId);
   let dosesDue = 0;
@@ -168,6 +173,7 @@ export async function loader(args: LoaderFunctionArgs) {
     attention: attention.slice(0, 40),
     spentThisMonthCents,
     dosesDue,
+    incomingOffers,
   };
 }
 

@@ -13,6 +13,7 @@ import {
   collections,
   collectionItems,
   tradeOffers,
+  tradeMessages,
   customFixtures,
   recipes,
   scheduledMeals,
@@ -33,6 +34,7 @@ import type {
   TradeListing,
   TradeOffer,
   TradeOfferStatus,
+  TradeMessage,
 } from "~/types/tradeTypes";
 import type { StoreWithDetails } from "~/types/dashboardTypes";
 import type { TemplateWithBlocks } from "~/types/templateTypes";
@@ -1540,14 +1542,38 @@ export async function createTradeOffer(data: {
 export async function getTradeOffersForUser(
   userId: string,
 ): Promise<TradeOffer[]> {
-  const rows = await db
-    .select()
-    .from(tradeOffers)
-    .where(
-      sql`${tradeOffers.fromUserId} = ${userId} OR ${tradeOffers.toUserId} = ${userId}`,
-    )
-    .orderBy(desc(tradeOffers.createdAt));
-  return rows as TradeOffer[];
+  try {
+    const rows = await db
+      .select()
+      .from(tradeOffers)
+      .where(
+        sql`${tradeOffers.fromUserId} = ${userId} OR ${tradeOffers.toUserId} = ${userId}`,
+      )
+      .orderBy(desc(tradeOffers.createdAt));
+    return rows as TradeOffer[];
+  } catch {
+    // completed_at column may not exist pre-migration — degrade to no offers
+    // rather than breaking the whole /trade + dashboard load.
+    return [];
+  }
+}
+
+/** Count of pending offers awaiting the user's response (incoming only). */
+export async function getIncomingOfferCount(userId: string): Promise<number> {
+  try {
+    const [row] = await db
+      .select({ n: sql<number>`count(*)` })
+      .from(tradeOffers)
+      .where(
+        and(
+          eq(tradeOffers.toUserId, userId),
+          eq(tradeOffers.status, "pending"),
+        ),
+      );
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  }
 }
 
 export async function getTradeOfferById(id: string) {
@@ -1591,6 +1617,47 @@ export async function acceptTradeOffer(id: string) {
       );
   }
   return offer;
+}
+
+/**
+ * Mark an accepted offer as physically completed. Either participant can do it;
+ * the caller is responsible for authorising that they're a party. No-op (returns
+ * null) unless the offer is currently `accepted`.
+ */
+export async function completeTradeOffer(id: string) {
+  const offer = await getTradeOfferById(id);
+  if (!offer || offer.status !== "accepted") return null;
+  await db
+    .update(tradeOffers)
+    .set({ status: "completed", completedAt: new Date() })
+    .where(eq(tradeOffers.id, id));
+  return offer;
+}
+
+/** All messages in an offer's thread, oldest first. Resilient to a missing table. */
+export async function getTradeMessages(
+  offerId: string,
+): Promise<TradeMessage[]> {
+  try {
+    const rows = await db
+      .select()
+      .from(tradeMessages)
+      .where(eq(tradeMessages.offerId, offerId))
+      .orderBy(tradeMessages.createdAt);
+    return rows as TradeMessage[];
+  } catch {
+    return [];
+  }
+}
+
+/** Post a message to an offer's thread. Authorisation is the caller's job. */
+export async function createTradeMessage(data: {
+  offerId: string;
+  fromUserId: string;
+  body: string;
+}) {
+  const [row] = await db.insert(tradeMessages).values(data).returning();
+  return row as TradeMessage;
 }
 
 // ─── CUSTOM FIXTURES ───────────────────────────────────────

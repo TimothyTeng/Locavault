@@ -12,9 +12,12 @@ import {
   getTradeOfferById,
   setTradeOfferStatus,
   acceptTradeOffer,
+  completeTradeOffer,
+  getTradeMessages,
+  createTradeMessage,
 } from "~/lib/queries";
-import type { TradeOfferStatus } from "~/types/tradeTypes";
-import { optText } from "~/utils/helpers/validate.helper";
+import type { TradeMessage, TradeOfferStatus } from "~/types/tradeTypes";
+import { optText, requireText } from "~/utils/helpers/validate.helper";
 import { toActionResult } from "~/utils/loaders/actionResult";
 
 // ── Loader ─────────────────────────────────────────────────
@@ -43,12 +46,26 @@ export const loader = async (args: LoaderFunctionArgs) => {
     tradeNote: i.tradeNote ?? null,
   }));
 
+  // Contact threads live only for offers past the "accepted" gate — load them
+  // all up front (a household has few live swaps) keyed by offer id.
+  const threadOffers = offers.filter(
+    (o) => o.status === "accepted" || o.status === "completed",
+  );
+  const threads = await Promise.all(
+    threadOffers.map((o) => getTradeMessages(o.id)),
+  );
+  const messagesByOffer: Record<string, TradeMessage[]> = {};
+  threadOffers.forEach((o, i) => {
+    messagesByOffer[o.id] = threads[i];
+  });
+
   return {
     userId,
     bazaar: listings.filter((l) => l.ownerUserId !== userId),
     myListings: listings.filter((l) => l.ownerUserId === userId),
     offers,
     myItems,
+    messagesByOffer,
   };
 };
 
@@ -123,6 +140,29 @@ const runTradeAction = async (args: ActionFunctionArgs) => {
 
     if (status === "accepted") await acceptTradeOffer(data.id);
     else await setTradeOfferStatus(data.id, status);
+    return { ok: true };
+  }
+
+  // Post a message to an offer's contact thread (accepted offers only).
+  if (data._action === "sendMessage") {
+    const offer = await getTradeOfferById(data.id);
+    if (!offer) throw new Response("Offer not found", { status: 404 });
+    if (offer.fromUserId !== userId && offer.toUserId !== userId)
+      throw new Response("Forbidden", { status: 403 });
+    if (offer.status !== "accepted" && offer.status !== "completed")
+      throw new Response("Offer not open for messages", { status: 409 });
+    const body = requireText(data.body, "message", 1000);
+    await createTradeMessage({ offerId: offer.id, fromUserId: userId, body });
+    return { ok: true };
+  }
+
+  // Either party marks an accepted swap as physically done.
+  if (data._action === "completeOffer") {
+    const offer = await getTradeOfferById(data.id);
+    if (!offer) throw new Response("Offer not found", { status: 404 });
+    if (offer.fromUserId !== userId && offer.toUserId !== userId)
+      throw new Response("Forbidden", { status: 403 });
+    await completeTradeOffer(offer.id);
     return { ok: true };
   }
 

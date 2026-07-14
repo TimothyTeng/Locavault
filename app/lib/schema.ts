@@ -513,16 +513,18 @@ export const tradeOffers = sqliteTable("trade_offers", {
   toUserId: text("to_user_id").notNull(), // listing owner
   message: text("message"),
   status: text("status", {
-    enum: ["pending", "accepted", "declined", "cancelled"],
+    enum: ["pending", "accepted", "declined", "cancelled", "completed"],
   })
     .notNull()
     .default("pending"),
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
     () => new Date(),
   ),
+  // Set when either party marks an accepted swap as physically done.
+  completedAt: integer("completed_at", { mode: "timestamp" }),
 });
 
-export const tradeOffersRelations = relations(tradeOffers, ({ one }) => ({
+export const tradeOffersRelations = relations(tradeOffers, ({ one, many }) => ({
   listingItem: one(items, {
     fields: [tradeOffers.listingItemId],
     references: [items.id],
@@ -530,6 +532,33 @@ export const tradeOffersRelations = relations(tradeOffers, ({ one }) => ({
   listingStore: one(stores, {
     fields: [tradeOffers.listingStoreId],
     references: [stores.id],
+  }),
+  messages: many(tradeMessages),
+}));
+
+// ─── TRADE MESSAGES ────────────────────────────────────────
+// A per-offer contact thread. The swap itself is physical/offline — this is how
+// the two parties arrange the handoff once an offer is accepted. Only the two
+// participants of an accepted offer may read/post (authorised in the action).
+
+export const tradeMessages = sqliteTable("trade_messages", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  offerId: text("offer_id")
+    .notNull()
+    .references(() => tradeOffers.id, { onDelete: "cascade" }),
+  fromUserId: text("from_user_id").notNull(),
+  body: text("body").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
+    () => new Date(),
+  ),
+});
+
+export const tradeMessagesRelations = relations(tradeMessages, ({ one }) => ({
+  offer: one(tradeOffers, {
+    fields: [tradeMessages.offerId],
+    references: [tradeOffers.id],
   }),
 }));
 

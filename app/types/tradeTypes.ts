@@ -4,7 +4,8 @@ export type TradeOfferStatus =
   | "pending"
   | "accepted"
   | "declined"
-  | "cancelled";
+  | "cancelled"
+  | "completed";
 
 /** An item put up on the global Bazaar, with just enough of its store context. */
 export type TradeListing = {
@@ -32,5 +33,15 @@ export type TradeOffer = {
   toUserId: string;
   message: string | null;
   status: TradeOfferStatus;
+  createdAt: Date | null;
+  completedAt: Date | null;
+};
+
+/** A single message in a per-offer contact thread. */
+export type TradeMessage = {
+  id: string;
+  offerId: string;
+  fromUserId: string;
+  body: string;
   createdAt: Date | null;
 };

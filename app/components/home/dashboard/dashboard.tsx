@@ -23,6 +23,7 @@ type Props = {
   attention: AttentionItem[];
   spentThisMonthCents?: number;
   dosesDue?: number;
+  incomingOffers?: number;
 };
 
 export default function Dashboard({
@@ -30,6 +31,7 @@ export default function Dashboard({
   attention: initialAttention,
   spentThisMonthCents = 0,
   dosesDue = 0,
+  incomingOffers = 0,
 }: Props) {
   const { user } = useUser();
   const navigate = useNavigate();
@@ -207,16 +209,31 @@ export default function Dashboard({
         </Button>
       </div>
 
-      {/* ── Doses due (blue action chip → /reminders) ── */}
-      {dosesDue > 0 && (
-        <button
-          onClick={() => navigate("/reminders")}
-          className="lv-dash-attn mb-4 flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
-        >
-          <span className="h-2 w-2 rounded-full bg-blue-500" />
-          {dosesDue} dose{dosesDue !== 1 ? "s" : ""} due
-          <span className="text-blue-400">→</span>
-        </button>
+      {/* ── Action chips (doses / trade offers) ── */}
+      {(dosesDue > 0 || incomingOffers > 0) && (
+        <div className="lv-dash-attn mb-4 flex flex-wrap gap-2">
+          {dosesDue > 0 && (
+            <button
+              onClick={() => navigate("/reminders")}
+              className="flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
+            >
+              <span className="h-2 w-2 rounded-full bg-blue-500" />
+              {dosesDue} dose{dosesDue !== 1 ? "s" : ""} due
+              <span className="text-blue-400">→</span>
+            </button>
+          )}
+          {incomingOffers > 0 && (
+            <button
+              onClick={() => navigate("/trade")}
+              className="flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors"
+            >
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              {incomingOffers} trade offer{incomingOffers !== 1 ? "s" : ""} to
+              review
+              <span className="text-emerald-400">→</span>
+            </button>
+          )}
+        </div>
       )}
 
       {/* ── Foresight digest ── */}

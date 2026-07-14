@@ -37,7 +37,7 @@ export function meta({}: Route.MetaArgs) {
 export default function Home() {
   const { isSignedIn, isLoaded } = useAuth();
   const { revalidate } = useRevalidator();
-  const { stores, attention, spentThisMonthCents, dosesDue } =
+  const { stores, attention, spentThisMonthCents, dosesDue, incomingOffers } =
     useLoaderData<typeof loader>();
 
   // Only revalidate on actual sign-in/sign-out transitions, not on initial mount
@@ -151,7 +151,7 @@ export default function Home() {
 
   return (
     <div className="page-bg">
-      <Navbar />
+      <Navbar tradeBadge={isSignedIn ? (incomingOffers ?? 0) : 0} />
       <Show when="signed-out">
         <Hero />
         <DashboardPreview />
@@ -168,6 +168,7 @@ export default function Home() {
           attention={attention ?? []}
           spentThisMonthCents={spentThisMonthCents ?? 0}
           dosesDue={dosesDue ?? 0}
+          incomingOffers={incomingOffers ?? 0}
         />
       </Show>
     </div>
