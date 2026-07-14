@@ -88,6 +88,31 @@ describe("matchRecipes", () => {
     expect(matchRecipes([item("Quinoa")])).toHaveLength(0);
   });
 
+  it("requires modifiers to match, not just the head noun", () => {
+    const curry: Recipe = {
+      id: "ur_curry",
+      name: "Coconut Curry",
+      blurb: "",
+      ingredients: [{ name: "coconut milk" }, { name: "rice" }],
+      tags: [],
+      minutes: 20,
+      serves: 2,
+      custom: true,
+    };
+    // Plain milk must NOT satisfy "coconut milk".
+    const withPlainMilk = matchRecipes([item("Milk"), item("Rice")], [curry]);
+    const m1 = withPlainMilk.find((m) => m.recipe.id === "ur_curry")!;
+    expect(m1.missing).toContain("coconut milk");
+    expect(m1.cookable).toBe(false);
+    // Coconut milk on the shelf does.
+    const withCoconut = matchRecipes(
+      [item("Coconut Milk"), item("Rice")],
+      [curry],
+    );
+    const m2 = withCoconut.find((m) => m.recipe.id === "ur_curry")!;
+    expect(m2.cookable).toBe(true);
+  });
+
   it("sorts use-it-up and cookable recipes ahead", () => {
     const soon = new Date(Date.now() + 2 * 86_400_000);
     const matches = matchRecipes([

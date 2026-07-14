@@ -28,7 +28,9 @@ export function GlobalSearch({
 }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
   const ref = useRef<HTMLDivElement>(null);
+  const listboxId = "global-search-listbox";
 
   useEffect(() => {
     if (!open) return;
@@ -45,10 +47,20 @@ export function GlobalSearch({
     ? items.filter((i) => i.name.toLowerCase().includes(q)).slice(0, 8)
     : [];
 
+  // Keep the active option in range as results change.
+  useEffect(() => {
+    setActive((a) => Math.min(a, Math.max(0, results.length - 1)));
+  }, [results.length]);
+
+  const listOpen = open && !!q;
+  const activeId =
+    listOpen && results[active] ? `gs-opt-${results[active].id}` : undefined;
+
   const choose = (item: Item) => {
     onJump(item);
     setQuery("");
     setOpen(false);
+    setActive(0);
   };
 
   return (
@@ -60,17 +72,31 @@ export function GlobalSearch({
         />
         <input
           value={query}
+          role="combobox"
+          aria-expanded={listOpen}
+          aria-controls={listboxId}
+          aria-autocomplete="list"
+          aria-activedescendant={activeId}
           onChange={(e) => {
             setQuery(e.target.value);
             setOpen(true);
+            setActive(0);
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={(e) => {
             if (e.key === "Escape") {
               setQuery("");
               setOpen(false);
-            } else if (e.key === "Enter" && results[0]) {
-              choose(results[0]);
+            } else if (e.key === "ArrowDown") {
+              e.preventDefault();
+              setOpen(true);
+              setActive((a) => Math.min(results.length - 1, a + 1));
+            } else if (e.key === "ArrowUp") {
+              e.preventDefault();
+              setActive((a) => Math.max(0, a - 1));
+            } else if (e.key === "Enter" && results[active]) {
+              e.preventDefault();
+              choose(results[active]);
             }
           }}
           placeholder="Search all items…"
@@ -78,22 +104,33 @@ export function GlobalSearch({
         />
       </div>
 
-      {open && q && (
-        <div className="absolute top-full left-0 right-0 mt-1 z-50 max-h-72 overflow-auto rounded-md border border-slate-200 bg-white shadow-xl py-1">
+      {listOpen && (
+        <div
+          id={listboxId}
+          role="listbox"
+          aria-label="Item search results"
+          className="absolute top-full left-0 right-0 mt-1 z-50 max-h-72 overflow-auto rounded-md border border-slate-200 bg-white shadow-xl py-1"
+        >
           {results.length === 0 ? (
             <div className="px-3 py-3 text-[11px] font-mono text-slate-300 text-center">
               No items match "{query}"
             </div>
           ) : (
-            results.map((item) => {
+            results.map((item, idx) => {
               const zone = item.blockId
                 ? (blocks[item.blockId]?.label ?? "Unlabelled zone")
                 : "Unassigned";
               return (
                 <button
                   key={item.id}
+                  id={`gs-opt-${item.id}`}
+                  role="option"
+                  aria-selected={idx === active}
+                  onMouseEnter={() => setActive(idx)}
                   onClick={() => choose(item)}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:bg-slate-50 transition-colors"
+                  className={`flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors ${
+                    idx === active ? "bg-slate-100" : "hover:bg-slate-50"
+                  }`}
                 >
                   <TypeIcon
                     type={item.itemType}

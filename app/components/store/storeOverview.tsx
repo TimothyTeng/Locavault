@@ -30,13 +30,15 @@ export function StoreOverview({
   let out = 0;
   let low = 0;
   let expiring = 0;
+  let confirm = 0;
   for (const i of items) {
+    if (i.runoutConfirm) confirm += 1;
     const s = getItemStatus(i);
     if (s === "out") out += 1;
     else if (s === "low") low += 1;
     else if (s === "expiring") expiring += 1;
   }
-  const allOk = out + low + expiring === 0;
+  const allOk = out + low + expiring + confirm === 0;
 
   return (
     <div className="px-3 py-2 border-b border-slate-100 bg-white shrink-0 flex items-center gap-2 flex-wrap">
@@ -78,6 +80,9 @@ export function StoreOverview({
                 onSelectStatus ? () => onSelectStatus("expiring") : undefined
               }
             />
+          )}
+          {confirm > 0 && (
+            <Chip tone="attention" label="to confirm" count={confirm} />
           )}
         </>
       )}

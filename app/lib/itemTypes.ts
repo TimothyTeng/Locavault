@@ -49,6 +49,24 @@ export function hasTrait(type: ItemType, trait: Trait): boolean {
 }
 
 /**
+ * How many days of projected stock counts as "running low" for each type — the
+ * lead time you'd want before it's gone. Medication needs the longest runway (a
+ * refill/prescription can't be same-day); documents rarely deplete so their
+ * threshold is generous; food/supplies are short-cycle. Consumed by
+ * `getItemStatus`. (A future blue "action" tier for dose reminders lands with
+ * Reminders in Phase 6.)
+ */
+export const TYPE_RUNOUT_THRESHOLD_DAYS: Record<ItemType, number> = {
+  food: 7,
+  medication: 14,
+  supplies: 10,
+  equipment: 7,
+  clothing: 7,
+  document: 30,
+  other: 7,
+};
+
+/**
  * Which of the form's currently-supported fields apply to a type. (Trait-driven:
  * `edible`→unit, `perishable`→expiry, `depletes`→use-rate + min qty.) The
  * dedicated fields for `dosed`/`durable`/`sized` arrive in a later slice.

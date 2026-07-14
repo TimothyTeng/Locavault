@@ -32,6 +32,8 @@ export type AttentionItem = {
   zoneLabel: string | null;
   status: import("./storeTypes").ItemStatus;
   runoutDays: number | null;
+  /** Human run-out phrase ("Likely this week"), null if no usable estimate. */
+  runoutPhrase: string | null;
   expiryDays: number | null;
   /** Already on a shopping list. */
   onList: boolean;

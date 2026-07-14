@@ -14,14 +14,20 @@ import { EmptyState } from "./emptystate";
 import { AttentionDigest } from "./attentionDigest";
 import { Button } from "~/components/common/Button";
 import { CountUp } from "#components/common/countUp";
+import { formatMoney } from "#utils/helpers/money.helper";
 
 // ── Main Dashboard ─────────────────────────────────────────
 
-type Props = { stores: StoreWithDetails[]; attention: AttentionItem[] };
+type Props = {
+  stores: StoreWithDetails[];
+  attention: AttentionItem[];
+  spentThisMonthCents?: number;
+};
 
 export default function Dashboard({
   stores: initialStores,
   attention: initialAttention,
+  spentThisMonthCents = 0,
 }: Props) {
   const { user } = useUser();
   const navigate = useNavigate();
@@ -180,6 +186,12 @@ export default function Dashboard({
             <CountUp value={stores.length} />{" "}
             {stores.length === 1 ? "location" : "locations"}
             {pinnedCount > 0 && ` · ${pinnedCount} pinned`}
+            {spentThisMonthCents > 0 && (
+              <span title="Estimated from items restocked this month × their price">
+                {" · ~"}
+                {formatMoney(spentThisMonthCents)} spent this month
+              </span>
+            )}
           </p>
         </div>
         <Button

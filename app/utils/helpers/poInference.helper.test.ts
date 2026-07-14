@@ -4,6 +4,7 @@ import {
   matchExistingItem,
   inferBlockId,
   inferPOFields,
+  inferItemFields,
   buildTypeConsensus,
   computeConsensus,
   canonicalNameKey,
@@ -108,6 +109,25 @@ describe("matchExistingItem", () => {
   it("returns null with no overlap", () => {
     expect(matchExistingItem("bleach", items)).toBeNull();
   });
+
+  it("forgives a single typo on longer tokens", () => {
+    const pantry = [
+      mkItem({ id: "yog", name: "Greek Yoghurt" }),
+      mkItem({ id: "tom", name: "Tinned Tomatoes" }),
+    ];
+    expect(matchExistingItem("yogurt", pantry)?.id).toBe("yog"); // yoghurt↔yogurt
+    expect(matchExistingItem("tomatoe", pantry)?.id).toBe("tom");
+  });
+
+  it("does not collapse distinct short words via typo tolerance", () => {
+    const pantry = [mkItem({ id: "tea", name: "Green Tea" })];
+    expect(matchExistingItem("pea", pantry)).toBeNull();
+  });
+
+  it("keeps alphanumeric grades as tokens (B12 vitamins)", () => {
+    const pantry = [mkItem({ id: "b12", name: "Vitamin B12" })];
+    expect(matchExistingItem("b12", pantry)?.id).toBe("b12");
+  });
 });
 
 describe("inferBlockId", () => {
@@ -176,6 +196,32 @@ describe("inferPOFields", () => {
     const r = inferPOFields("Widget 3000", [], blocks);
     expect(r.itemType).toBe("other");
     expect(r.blockId).toBe("pantry");
+  });
+
+  it("inferItemFields mirrors the PO chain for item capture (no packageSize)", () => {
+    const items = [
+      mkItem({ id: "milk", name: "Whole Milk", itemType: "food", unit: "l" }),
+    ];
+    // Fuzzy-matches the existing item → links it for restock + inherits type.
+    const restock = inferItemFields("milk", items, blocks);
+    expect(restock.matchedItemId).toBe("milk");
+    expect(restock.itemType).toBe("food");
+    expect("packageSize" in restock).toBe(false);
+    // A fresh name still resolves a type + a real shelf.
+    const fresh = inferItemFields("Bananas", [], blocks);
+    expect(fresh.itemType).toBe("food");
+    expect(fresh.blockId).not.toBeNull();
+    expect(fresh.matchedItemId).toBeNull();
+  });
+
+  it("resolves a location for recipe/gap-sourced names with no matching item", () => {
+    // Rows added from a recipe's missing ingredients, the calendar's Upcoming
+    // tab, or a collection's gaps all flow through inferPOFields, so they must
+    // land on a real shelf (never blockId: null) even with nothing in stock.
+    for (const name of ["Onion", "Garlic", "Chicken Stock", "Paprika"]) {
+      const r = inferPOFields(name, [], blocks);
+      expect(r.blockId).not.toBeNull();
+    }
   });
 
   it("uses the user's remembered type for an otherwise-unknown name", () => {

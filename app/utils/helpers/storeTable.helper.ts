@@ -1,5 +1,6 @@
 import type { Item, ItemStatus } from "~/types/storeTypes";
 import { expiryDateRemainingDays, remainingDays } from "./store.helper";
+import { TYPE_RUNOUT_THRESHOLD_DAYS } from "~/lib/itemTypes";
 
 export function formatCost(cents: number | null) {
   if (cents == null) return "—";
@@ -59,9 +60,10 @@ export function getItemStatus(item: Item): ItemStatus {
     item.usage == null
       ? item.useRate != null && item.useRatePeriod != null
       : item.usage.source === "history" || item.usage.source === "manual";
+  const runoutThreshold = TYPE_RUNOUT_THRESHOLD_DAYS[item.itemType];
   if (
     (item.minQuantity != null && item.quantity <= item.minQuantity) ||
-    (evidenceBased && runoutDaysVal != null && runoutDaysVal <= 7)
+    (evidenceBased && runoutDaysVal != null && runoutDaysVal <= runoutThreshold)
   ) {
     return "low";
   }

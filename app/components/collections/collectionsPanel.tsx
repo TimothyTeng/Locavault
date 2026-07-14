@@ -15,7 +15,7 @@ import type { Item } from "~/types/storeTypes";
 import { EmptyState } from "~/components/common/EmptyState";
 import type { BlocksMap } from "~/types/storeViewFinderTypes";
 import type { Collection, CollectionKind } from "~/types/collectionTypes";
-import { useDialog } from "~/components/common/useDialog";
+import { SidePanel } from "~/components/common/SidePanel";
 
 const KIND_LABEL: Record<CollectionKind, string> = {
   packing: "Packing",
@@ -76,13 +76,10 @@ export function CollectionsPanel({
 }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState("");
-  const dialogRef = useDialog(isOpen, onClose);
 
   const open = openId
     ? (collections.find((c) => c.id === openId) ?? null)
     : null;
-
-  if (!isOpen) return null;
 
   const createAndOpen = () => {
     const name = draftName.trim() || "New collection";
@@ -93,16 +90,14 @@ export function CollectionsPanel({
   };
 
   return (
-    <>
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-label="Collections"
-        tabIndex={-1}
-        className={`absolute inset-y-0 z-30 flex w-full flex-col border-l border-slate-200 bg-white shadow-2xl font-mono outline-none ${
-          isMobile ? "right-0" : "right-11 max-w-md"
-        }`}
-      >
+    <SidePanel
+      isOpen={isOpen}
+      onClose={onClose}
+      isMobile={isMobile}
+      ariaLabel="Collections"
+      chromeless
+    >
+      <>
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
@@ -222,8 +217,8 @@ export function CollectionsPanel({
             )}
           </div>
         )}
-      </div>
-    </>
+      </>
+    </SidePanel>
   );
 }
 

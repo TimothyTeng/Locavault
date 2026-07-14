@@ -6,6 +6,7 @@ import {
   addDays,
   dayParts,
 } from "~/utils/helpers/calendar.helper";
+import { canonicalNameKey } from "~/utils/helpers/poInference.helper";
 import { EmptyState } from "~/components/common/EmptyState";
 
 const RANGES = [
@@ -43,21 +44,35 @@ export function PurchaseOrderUpcoming({
   const todayKey = dateKey(today);
   const endKey = dateKey(addDays(today, days - 1));
 
-  // ingredient name → soonest day in range it's needed
-  const earliest = new Map<string, string>();
+  // Aggregate missing ingredients by canonical name across every meal in range,
+  // so "Onions" and "onion" collapse to one row that counts how many meals want
+  // it and the soonest day it's needed.
+  type Agg = { display: string; dk: string; meals: number };
+  const byCanon = new Map<string, Agg>();
   for (const need of mealNeeds) {
     if (need.dateKey < todayKey || need.dateKey > endKey) continue;
+    const seenThisMeal = new Set<string>();
     for (const name of need.names) {
-      const prev = earliest.get(name);
-      if (!prev || need.dateKey < prev) earliest.set(name, need.dateKey);
+      const key = canonicalNameKey(name) || name.toLowerCase();
+      if (seenThisMeal.has(key)) continue; // one meal counts once per ingredient
+      seenThisMeal.add(key);
+      const prev = byCanon.get(key);
+      if (!prev) {
+        byCanon.set(key, { display: name, dk: need.dateKey, meals: 1 });
+      } else {
+        prev.meals += 1;
+        if (need.dateKey < prev.dk) prev.dk = need.dateKey;
+        if (name.length < prev.display.length) prev.display = name;
+      }
     }
   }
 
-  const rows = [...earliest.entries()]
-    .map(([name, dk]) => ({
-      name,
-      dk,
-      added: existingNames.has(name.toLowerCase()),
+  const rows = [...byCanon.values()]
+    .map((a) => ({
+      name: a.display,
+      dk: a.dk,
+      meals: a.meals,
+      added: existingNames.has(a.display.toLowerCase()),
     }))
     .sort((a, b) =>
       a.dk === b.dk ? a.name.localeCompare(b.name) : a.dk.localeCompare(b.dk),
@@ -133,6 +148,7 @@ export function PurchaseOrderUpcoming({
                       {r.name}
                     </span>
                     <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">
+                      {r.meals > 1 ? `${r.meals} meals · ` : ""}
                       {dayChip(r.dk)}
                     </span>
                   </span>

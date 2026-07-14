@@ -12,12 +12,18 @@ import {
   verifyStoreAccess,
   verifyStoreOwner,
 } from "~/lib/queries";
-import { estimateUsage } from "~/utils/helpers/usage.helper";
+import {
+  estimateUsage,
+  describeRunout,
+  suggestRestockQty,
+  PERIOD_DAYS,
+} from "~/utils/helpers/usage.helper";
 import {
   getItemStatus,
   itemRunoutDays,
 } from "~/utils/helpers/storeTable.helper";
 import { expiryDateRemainingDays } from "~/utils/helpers/store.helper";
+import { spentCents } from "~/utils/helpers/money.helper";
 import type { Item, ItemStatus, UsageLog } from "~/types/storeTypes";
 import type { AttentionItem } from "~/types/dashboardTypes";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
@@ -32,7 +38,12 @@ const SEVERITY: Record<ItemStatus, number> = {
 
 export async function loader(args: LoaderFunctionArgs) {
   const { userId } = await getAuth(args);
-  if (!userId) return { stores: [], attention: [] as AttentionItem[] };
+  if (!userId)
+    return {
+      stores: [],
+      attention: [] as AttentionItem[],
+      spentThisMonthCents: 0,
+    };
 
   const [ownedStores, memberStores] = await Promise.all([
     getStoresByUserWithDetails(userId),
@@ -87,6 +98,7 @@ export async function loader(args: LoaderFunctionArgs) {
       zoneLabel: zone,
       status,
       runoutDays: itemRunoutDays(item),
+      runoutPhrase: usage.runoutDays != null ? describeRunout(usage) : null,
       expiryDays: expiryDateRemainingDays(raw.expiryDate),
       onList: listedSet.has(raw.id),
       canAdd: st?.role === "owner" || st?.role === "editor",
@@ -101,35 +113,37 @@ export async function loader(args: LoaderFunctionArgs) {
     return av - bv;
   });
 
-  return { stores, attention: attention.slice(0, 40) };
+  // ── Approximate spend this month: restock logs × item unit cost ──
+  const costByItem = new Map<string, number | null>(
+    rawItems.map((i) => [i.id, i.cost]),
+  );
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthLogs = logs.filter(
+    (l) => l.loggedAt != null && l.loggedAt >= monthStart,
+  );
+  const spentThisMonthCents = spentCents(monthLogs, costByItem);
+
+  return { stores, attention: attention.slice(0, 40), spentThisMonthCents };
 }
 
 // ── Action ─────────────────────────────────────────────────
 
-/** Suggested restock quantity: ~30d of a known rate, else refill to ~2× min. */
+/**
+ * Suggested restock quantity for a dashboard add-to-list — the shared
+ * `suggestRestockQty` math, fed the item's manual use-rate as the daily rate
+ * (this path has no loaded usage estimate).
+ */
 function suggestQty(item: {
   quantity: number;
   minQuantity: number | null;
   useRate: number | null;
   useRatePeriod: "day" | "week" | "month" | null;
 }): number {
-  const perDay =
+  const dailyRate =
     item.useRate && item.useRatePeriod
-      ? item.useRate /
-        (item.useRatePeriod === "day"
-          ? 1
-          : item.useRatePeriod === "week"
-            ? 7
-            : 30)
-      : 0;
-  if (perDay > 0) {
-    const horizon = Math.ceil(perDay * 30) - item.quantity;
-    const minNeed =
-      item.minQuantity != null ? item.minQuantity - item.quantity : 0;
-    return Math.max(horizon, minNeed, 1);
-  }
-  const target = item.minQuantity != null ? item.minQuantity * 2 : 1;
-  return Math.max(target - item.quantity, 1);
+      ? item.useRate / PERIOD_DAYS[item.useRatePeriod]
+      : null;
+  return suggestRestockQty(item, { dailyRate });
 }
 
 export async function action(args: ActionFunctionArgs) {

@@ -31,7 +31,7 @@ import {
   monthGrid,
   monthLabel,
 } from "~/utils/helpers/calendar.helper";
-import { useDialog } from "~/components/common/useDialog";
+import { SidePanel } from "~/components/common/SidePanel";
 import { EmptyState } from "~/components/common/EmptyState";
 
 /** Subtle per-meal-type accent. */
@@ -83,7 +83,6 @@ export function CalendarPanel({
   /** Open a scheduled recipe's detail (in the recipes panel). */
   onOpenRecipe?: (recipeRef: string) => void;
 }) {
-  const dialogRef = useDialog(isOpen, onClose);
   const today = useMemo(() => new Date(), []);
   const [view, setView] = useState<"week" | "month">("week");
   // Anchor date — the week (via startOfWeek) or month (via startOfMonth) shown.
@@ -178,8 +177,6 @@ export function CalendarPanel({
     setPicking(key);
   };
 
-  if (!isOpen) return null;
-
   const shownLibrary = (() => {
     const q = query.trim().toLowerCase();
     const list = q
@@ -189,14 +186,12 @@ export function CalendarPanel({
   })();
 
   return (
-    <div
-      ref={dialogRef}
-      role="dialog"
-      aria-label="Calendar"
-      tabIndex={-1}
-      className={`absolute inset-y-0 z-30 flex w-full flex-col border-l border-slate-200 bg-white font-mono shadow-2xl outline-none ${
-        isMobile ? "right-0" : "right-11 max-w-md"
-      }`}
+    <SidePanel
+      isOpen={isOpen}
+      onClose={onClose}
+      isMobile={isMobile}
+      ariaLabel="Calendar"
+      chromeless
     >
       {picking ? (
         /* ── Recipe picker for a day ── */
@@ -534,7 +529,7 @@ export function CalendarPanel({
           )}
         </>
       )}
-    </div>
+    </SidePanel>
   );
 }
 

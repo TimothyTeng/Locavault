@@ -20,7 +20,7 @@ import {
  */
 
 type BarcodeResult =
-  | { found: false }
+  | { found: false; error?: "rate_limited" | "unauthenticated" }
   | {
       found: true;
       name: string;
@@ -53,16 +53,18 @@ export async function loader(args: LoaderFunctionArgs) {
   // closes the open-proxy abuse vector.
   const { userId } = await getAuth(args);
   if (!userId) {
-    return Response.json({ found: false } satisfies BarcodeResult, {
-      status: 401,
-    });
+    return Response.json(
+      { found: false, error: "unauthenticated" } satisfies BarcodeResult,
+      { status: 401 },
+    );
   }
 
   // Per-user rate limit.
   if (!limiter.take(userId)) {
-    return Response.json({ found: false } satisfies BarcodeResult, {
-      status: 429,
-    });
+    return Response.json(
+      { found: false, error: "rate_limited" } satisfies BarcodeResult,
+      { status: 429 },
+    );
   }
 
   const url = new URL(request.url);

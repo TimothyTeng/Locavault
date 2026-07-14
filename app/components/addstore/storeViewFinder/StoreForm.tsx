@@ -188,7 +188,7 @@ export function StoreForm({
         type="submit"
         className="rounded-md border border-slate-300 bg-white px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-600 shadow-sm transition-all duration-150 hover:bg-slate-800 hover:text-white hover:border-slate-800"
       >
-        Save
+        {submitLabel}
       </button>
     </form>
   );

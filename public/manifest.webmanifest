@@ -1,0 +1,18 @@
+{
+  "name": "Locavault",
+  "short_name": "Locavault",
+  "description": "Know what you're running out of before you do. Home inventory, mapped.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#059669",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "type": "image/svg+xml",
+      "sizes": "any",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -391,9 +391,12 @@ Reads items with the `edible` trait. Three jobs:
 >   on the add-item form), so e.g. "50 ml vanilla essence" decrements correctly.
 > - **Schedule from a recipe:** an "Add to calendar" block (pick date + meal slot)
 >   sits beside "Cooked", so planning isn't confined to the calendar tab.
-> ⬜ *Remaining:* shopping-list rows added from a recipe land with no location
-> block (`blockId: null`) — could inherit a same-name item's block or suggest one
-> by type (parked, needs UX); a paid recipe-discovery API for breadth.
+> ✅ *Done:* shopping-list rows added from a recipe (missing ingredients),
+> the calendar's Upcoming tab, and a collection's gaps all flow through
+> `inferPOFields` (via `handleAddMissingToList`), so they resolve a real shelf
+> (type-fitting block, else the first standard block — never `blockId: null`),
+> matching the manual/scanned add paths.
+> ⬜ *Remaining:* a paid recipe-discovery API for breadth.
 
 Design rules learned from the critique:
 - **Volume comes from a seeded library and/or a recipe API** + user saves — *never*
@@ -830,14 +833,30 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
          tabular, 10px) + faint gutter bands so the A1/B3 guides read against the
          map background; positions were already cell-aligned (`GridRuler`).
          *(pending your visual confirm via HMR)*
-   - [~] **#3 Panel presentation** — chose the **tab rail** pattern. Built a
+   - [x] **#3 Panel presentation** — chose the **tab rail** pattern. Built a
          right-edge `PanelRail` (Shopping / Recipes / Collections / Members) and
-         made the panels **non-blocking**: dropped the `bg-black/40` scrim on
-         Recipes & Collections so the map stays live, offset all panels by the
-         rail, removed the duplicated desktop-toolbar buttons. *(pending your HMR
-         check.)* Follow-ups: a proper shared `SidePanel` extraction + focus
-         semantics (aria-modal/trap) for non-blocking; secondary-button
-         standardisation.
+         made the panels **non-blocking**: dropped the `bg-black/40` scrim so the
+         map stays live, offset all panels by the rail, removed the duplicated
+         desktop-toolbar buttons. **✅ Shared `SidePanel` extracted** — a single
+         `components/common/SidePanel.tsx` now backs all six panels (Shopping,
+         Recipes, Calendar, Collections, Members, Add Item) with a `chromeless`
+         mode for panels that bring their own headers and `mobileVariant` /
+         `desktopVariant` for the sheet + overlay cases. Focus semantics are now
+         genuinely **non-blocking**: a new `useSidePanel` hook does Escape-close +
+         focus-on-open + focus-restore **without** a Tab trap or `aria-modal`
+         (the old `useDialog` trap was the blocking bit; it stays only on the true
+         modals — item detail, quick-add, make-offer). Follow-up: secondary-button
+         standardisation (see #P1.2).
+   - [~] **Secondary-button / tab standardisation (P1.2)** — built two shared
+         primitives: `SegmentedTabs` (accessible `role="tablist"`/`role="tab"` +
+         `aria-selected`, in `segmented` + `underline` looks) and `PillButton`
+         (the signature `uppercase tracking-widest` mono pill, tones dark /
+         outline / subtle). Migrated the real tab groups (Members editor/viewer,
+         Shopping-list List/Upcoming) and a representative `PillButton` (Recipes
+         Add). Remaining ~10 scattered pills are cosmetic/height-coupled or carry
+         a bespoke success state (e.g. the copy-invite "Copied!" buttons) — left
+         as deferred polish to avoid layout regressions; migrate opportunistically
+         onto `PillButton`.
    - [ ] **#4 Recipes** — add-your-own + public-recipe API / scraping.
 
 ---

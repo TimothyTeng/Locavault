@@ -50,20 +50,29 @@ const STOPWORDS = new Set([
   "sauce",
 ]);
 
-/** Lowercase, de-pluralise, drop noise words → significant tokens. */
+/**
+ * Lowercase, de-pluralise, drop noise words → significant tokens. Keeps
+ * alphanumeric tokens whole so grades/strengths survive ("2%" → "milk" only,
+ * but "B12" stays "b12" and "omega3" stays intact) instead of being shredded.
+ */
 export function tokenize(text: string): string[] {
   return text
     .toLowerCase()
-    .replace(/[^a-z\s]/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
     .map((w) => w.replace(/(ies)$/, "y").replace(/(es|s)$/, ""))
     .filter((w) => w.length > 2 && !STOPWORDS.has(w));
 }
 
-/** An ingredient is satisfied if any of its tokens is in the pantry token set. */
+/**
+ * An ingredient is satisfied only when *all* of its significant tokens are in the
+ * pantry — so "coconut milk" needs coconut, not just any milk. A bare "milk"
+ * (single token) still matches a "Milk" item; it's the modifiers that must line
+ * up, which stops a qualified variant from being satisfied by the head noun alone.
+ */
 function ingredientInPantry(ingredient: string, pantry: Set<string>): boolean {
   const toks = tokenize(ingredient);
-  return toks.length > 0 && toks.some((t) => pantry.has(t));
+  return toks.length > 0 && toks.every((t) => pantry.has(t));
 }
 
 /** Per-ingredient match detail — drives the detail view, map link, decrement. */

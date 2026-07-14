@@ -413,6 +413,9 @@ export async function createStoreWithBlocks(data: CreateStoreInput) {
     if (data.blocks?.length) {
       await tx.insert(blocks).values(
         data.blocks.map((b) => ({
+          // Preserve the client-supplied id so items added to a just-created
+          // block (referenced by the nav-state block id) resolve without a race.
+          block_id: b.block_id,
           storeId: id,
           background: b.background ?? "#000000",
           border: b.border ?? "#000000",
@@ -828,6 +831,7 @@ export async function getUsageLogsByStore(storeId: string, since?: Date) {
       itemId: itemLogs.itemId,
       delta: itemLogs.delta,
       loggedAt: itemLogs.loggedAt,
+      note: itemLogs.note,
     })
     .from(itemLogs)
     .where(and(...conds))
@@ -844,49 +848,11 @@ export async function getUsageLogsByStores(storeIds: string[], since?: Date) {
       itemId: itemLogs.itemId,
       delta: itemLogs.delta,
       loggedAt: itemLogs.loggedAt,
+      note: itemLogs.note,
     })
     .from(itemLogs)
     .where(and(...conds))
     .orderBy(sql`${itemLogs.loggedAt} asc`);
-}
-
-/**
- * Predict days until an item runs out.
- * Uses log history if available, falls back to useRate/useRatePeriod fields.
- * Returns null if there's not enough data to make a prediction.
- */
-export async function predictRunoutDays(
-  itemId: string,
-): Promise<number | null> {
-  const item = await getItemById(itemId);
-  if (!item || item.quantity <= 0) return null;
-
-  // ── Log-based prediction (preferred) ──
-  const logs = await db
-    .select()
-    .from(itemLogs)
-    .where(and(eq(itemLogs.itemId, itemId), sql`${itemLogs.delta} < 0`))
-    .orderBy(sql`${itemLogs.loggedAt} asc`);
-
-  if (logs.length >= 2) {
-    const totalConsumed = logs.reduce((sum, l) => sum + Math.abs(l.delta), 0);
-    const first = logs[0].loggedAt!.getTime();
-    const last = logs[logs.length - 1].loggedAt!.getTime();
-    const days = (last - first) / (1000 * 60 * 60 * 24);
-    if (days > 0) {
-      const dailyRate = totalConsumed / days;
-      return Math.floor(item.quantity / dailyRate);
-    }
-  }
-
-  // ── Fallback: manual useRate fields ──
-  if (item.useRate && item.useRatePeriod) {
-    const periodDays = { day: 1, week: 7, month: 30 }[item.useRatePeriod];
-    const dailyRate = item.useRate / periodDays;
-    return Math.floor(item.quantity / dailyRate);
-  }
-
-  return null;
 }
 
 // ─── MEMBERS ───────────────────────────────────────────────

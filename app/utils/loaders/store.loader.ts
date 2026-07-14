@@ -19,6 +19,7 @@ import {
   getPurchaseOrderById,
   getPurchaseOrders,
   removeMember,
+  updateMemberRole,
   updateItem,
   updateItemVisibility,
   updatePurchaseOrder,
@@ -42,8 +43,13 @@ import {
   getUserTypeHints,
   getCrowdTypeHints,
 } from "~/lib/queries";
-import { estimateUsage } from "~/utils/helpers/usage.helper";
+import {
+  estimateUsage,
+  needsRunoutConfirm,
+  suggestRestockQty,
+} from "~/utils/helpers/usage.helper";
 import { decrementForIngredient } from "~/utils/helpers/recipeCook.helper";
+import { resolveUserProfiles } from "~/lib/clerkUsers";
 import {
   requireText,
   optText,
@@ -183,6 +189,19 @@ export const loader = async (args: LoaderFunctionArgs) => {
       : Promise.resolve({} as Record<string, ItemType>),
   ]);
 
+  // Resolve member userIds → names/avatars (owner-only panel; degrades to raw ids).
+  const memberProfiles = members.length
+    ? await resolveUserProfiles(
+        args,
+        members.map((m) => m.userId),
+      )
+    : {};
+  const membersWithNames = members.map((m) => ({
+    ...m,
+    displayName: memberProfiles[m.userId]?.displayName,
+    imageUrl: memberProfiles[m.userId]?.imageUrl ?? null,
+  }));
+
   // Group usage logs by item so usage can be estimated in one pass.
   const logsByItem = new Map<string, UsageLog[]>();
   for (const log of usageLogs) {
@@ -197,10 +216,15 @@ export const loader = async (args: LoaderFunctionArgs) => {
       : allItems;
 
   const now = new Date();
-  const items = visibleItems.map((item) => ({
-    ...item,
-    usage: estimateUsage(item, logsByItem.get(item.id) ?? [], now),
-  }));
+  const items = visibleItems.map((item) => {
+    const logs = logsByItem.get(item.id) ?? [];
+    const usage = estimateUsage(item, logs, now);
+    return {
+      ...item,
+      usage,
+      runoutConfirm: needsRunoutConfirm(item, usage, logs, now),
+    };
+  });
 
   // Resolve any custom fixtures placed on this store's blocks (by id, so a
   // shared/public store still renders the owner's custom fixtures).
@@ -216,7 +240,7 @@ export const loader = async (args: LoaderFunctionArgs) => {
     accessLevel,
     store,
     items,
-    members,
+    members: membersWithNames,
     userId,
     purchaseOrders,
     collections,
@@ -357,8 +381,10 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
     }
     const existing = await getPurchaseOrders(params.id!);
     if (!existing.some((p) => p.itemId === item.id)) {
-      const fallback =
-        item.minQuantity != null ? Math.max(item.minQuantity * 2, 1) : 1;
+      // Estimate a sensible restock from history for the auto-queued row.
+      const logs = await getUsageLogsByStore(item.storeId);
+      const usage = estimateUsage(item, logs);
+      const fallback = suggestRestockQty(item, usage);
       await createPurchaseOrder({
         itemId: item.id,
         storeId: item.storeId,
@@ -376,6 +402,16 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
         createdBy: userId ?? null,
       });
     }
+    return { ok: true };
+  }
+
+  // Confirm-loop answer "still have it": the predicted run-out passed but stock
+  // remains. Log a zero-delta "confirmed" censor point — the estimator reads it
+  // as survival-past-prediction and lengthens the next estimate — and silence the
+  // question for this cycle. No quantity change.
+  if (data._action === "stillHave") {
+    const item = await ensureItemInStore(data.id);
+    await createItemLog(item.id, item.storeId, 0, userId, "confirmed");
     return { ok: true };
   }
 
@@ -443,6 +479,17 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
   if (data._action === "removeMember") {
     if (!isOwner) throw new Response("Forbidden", { status: 403 });
     await removeMember(params.id!, data.userId);
+    return { ok: true };
+  }
+
+  if (data._action === "updateMemberRole") {
+    if (!isOwner) throw new Response("Forbidden", { status: 403 });
+    // Owners can toggle a member between editor/viewer, but never touch the
+    // owner role or demote themselves out of ownership.
+    const role = data.role === "viewer" ? "viewer" : "editor";
+    if (data.userId === userId)
+      throw new Response("Forbidden", { status: 403 });
+    await updateMemberRole(params.id!, String(data.userId), role);
     return { ok: true };
   }
 

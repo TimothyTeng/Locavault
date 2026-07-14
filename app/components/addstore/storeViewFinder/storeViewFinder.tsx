@@ -147,6 +147,7 @@ export default function StoreViewFinder({
   const handles = handlesForMode(mode);
   const isDrawMode = mode === "draw";
   const isSelectMode = mode === "select";
+  const isSizeMode = mode === "size";
 
   // ── Zoom-to-fit (once on mount) ───────────────────────────
   // GridCanvas sets rowHeight = containerWidth / cols, so at zoom z:
@@ -525,6 +526,17 @@ export default function StoreViewFinder({
               onWallKindChange={setDrawWallKind}
               customFixtures={customFixtures}
             />
+          )}
+
+          {/* Size mode — hint bar (previously had no on-screen affordance) */}
+          {isSizeMode && (
+            <div className="px-4 py-1.5 bg-slate-800 shrink-0 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+              <span className="text-[10px] font-mono text-slate-300">
+                Drag a block&apos;s corner handle to resize · drag its body to
+                move
+              </span>
+            </div>
           )}
 
           {/* Select mode — hint bar */}

@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { useFetcher } from "react-router";
 import { CloseButton } from "~/components/common/CloseButton";
 import type { Item } from "~/types/storeTypes";
 import {
@@ -16,6 +17,14 @@ import {
 } from "~/utils/helpers/storeTable.helper";
 import { describeUsage } from "~/utils/helpers/usage.helper";
 import { useDialog } from "~/components/common/useDialog";
+import { useBlockOptions } from "./blockOptions";
+import { RunoutPhrase, RunoutConfirm } from "./runoutChip";
+import {
+  describeLogNote,
+  describeDelta,
+  relativeDay,
+  type ItemHistoryEntry,
+} from "~/utils/helpers/itemHistory.helper";
 
 export function ItemDetailPopup({
   item,
@@ -23,6 +32,7 @@ export function ItemDetailPopup({
   onSave,
   onDelete,
   onMarkOut,
+  onStillHave,
   onAddToList,
 }: {
   item: Item;
@@ -30,16 +40,28 @@ export function ItemDetailPopup({
   onSave: (updated: Item) => void;
   onDelete: (itemId: string) => void;
   onMarkOut?: (item: Item) => void;
+  onStillHave?: (item: Item) => void;
   onAddToList?: (item: Item) => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const dialogRef = useDialog(true, onClose);
+  const { options: blockOptions, labelOf } = useBlockOptions();
+
+  // Load the change history once the popup opens (owner/editor only; the route
+  // 403s otherwise and we simply show nothing).
+  const historyFetcher = useFetcher<{ entries?: ItemHistoryEntry[] }>();
+  useEffect(() => {
+    historyFetcher.load(`/api/item-history?itemId=${item.id}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id]);
+  const history = historyFetcher.data?.entries ?? [];
 
   // Editable fields
   const [name, setName] = useState(item.name);
   const [itemType, setItemType] = useState<ItemType>(item.itemType);
   const [quantity, setQuantity] = useState(item.quantity);
+  const [blockId, setBlockId] = useState<string | null>(item.blockId);
   const [description, setDescription] = useState(item.description ?? "");
   const [sku, setSku] = useState(item.sku ?? "");
   const [unit, setUnit] = useState(item.unit ?? "");
@@ -78,6 +100,7 @@ export function ItemDetailPopup({
       name: name.trim() || item.name,
       itemType,
       quantity: Number(quantity) || 0,
+      blockId,
       description: description || null,
       sku: sku || null,
       unit: unit || null,
@@ -94,6 +117,7 @@ export function ItemDetailPopup({
     setName(item.name);
     setItemType(item.itemType);
     setQuantity(item.quantity);
+    setBlockId(item.blockId);
     setDescription(item.description ?? "");
     setSku(item.sku ?? "");
     setUnit(item.unit ?? "");
@@ -214,7 +238,32 @@ export function ItemDetailPopup({
               />
             }
           />
-          <DetailRow label="Location" value={item.blockId ?? "—"} />
+          <DetailRow
+            label="Location"
+            value={labelOf(item.blockId) ?? "Unassigned"}
+            editContent={
+              <select
+                className={inputClass}
+                value={blockId ?? ""}
+                onChange={(e) => setBlockId(e.target.value || null)}
+              >
+                <option value="">Unassigned</option>
+                {blockOptions.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.label}
+                  </option>
+                ))}
+                {/* Keep the current block selectable even if it isn't a
+                    labelled standard shelf (so editing never silently moves it). */}
+                {item.blockId &&
+                  !blockOptions.some((b) => b.id === item.blockId) && (
+                    <option value={item.blockId}>
+                      {labelOf(item.blockId) ?? "Current location"}
+                    </option>
+                  )}
+              </select>
+            }
+          />
           <DetailRow
             label="In Store"
             value={item.quantity > 0 ? "Yes" : "No"}
@@ -344,7 +393,9 @@ export function ItemDetailPopup({
           <DetailRow
             label="Runs Out"
             value={
-              runoutDaysVal != null ? (
+              item.usage && item.usage.runoutDays != null ? (
+                <RunoutPhrase item={item} />
+              ) : runoutDaysVal != null ? (
                 <span
                   className={
                     Number(runoutDaysVal) <= 7
@@ -399,6 +450,48 @@ export function ItemDetailPopup({
           )}
         </div>
 
+        {/* History timeline — who changed what, when */}
+        {!isEditing && history.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
+              History
+            </span>
+            <ul className="flex flex-col divide-y divide-slate-50 max-h-40 overflow-y-auto">
+              {history.map((h, idx) => {
+                const at = h.loggedAt ? new Date(h.loggedAt) : null;
+                const delta = describeDelta(h.delta);
+                return (
+                  <li
+                    key={idx}
+                    className="flex items-center justify-between gap-2 py-1.5"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {delta && (
+                        <span
+                          className={`font-mono text-[10px] font-bold tabular-nums ${
+                            h.delta > 0 ? "text-emerald-600" : "text-slate-400"
+                          }`}
+                        >
+                          {delta}
+                        </span>
+                      )}
+                      <span className="text-[11px] text-slate-600 truncate">
+                        {describeLogNote(h.note, h.delta)}
+                        {h.by && (
+                          <span className="text-slate-400"> · {h.by}</span>
+                        )}
+                      </span>
+                    </div>
+                    <span className="shrink-0 font-mono text-[10px] text-slate-300">
+                      {relativeDay(at)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
         {/* Actions */}
         {isEditing ? (
           <div className="flex gap-2 mt-1">
@@ -429,6 +522,20 @@ export function ItemDetailPopup({
             >
               Close
             </button>
+          </div>
+        )}
+
+        {/* Confirm loop — predicted run-out passed but stock remains. */}
+        {!isEditing && item.runoutConfirm && onMarkOut && onStillHave && (
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 flex flex-col gap-2">
+            <p className="text-[10px] text-slate-500">
+              Predicted to be running out by now — is it gone?
+            </p>
+            <RunoutConfirm
+              item={item}
+              onMarkOut={onMarkOut}
+              onStillHave={onStillHave}
+            />
           </div>
         )}
 

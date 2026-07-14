@@ -9,6 +9,7 @@ import {
 import { PurchaseOrderRow } from "./purchaseOrderRow";
 import { PurchaseOrderSuggestions } from "./purchaseOrderSuggestions";
 import { BarcodeScanner } from "../addItem/BarcodeScanner";
+import { basketTotal, formatMoney } from "~/utils/helpers/money.helper";
 
 type Props = {
   items: PurchaseOrderItem[];
@@ -25,6 +26,7 @@ type Props = {
   onInfer: (item: PurchaseOrderItem) => void;
   onDelete: (id: string) => void;
   onBuy: (id: string) => void;
+  onStartShopping?: () => void;
 };
 
 export function PurchaseOrderList({
@@ -42,6 +44,7 @@ export function PurchaseOrderList({
   onInfer,
   onDelete,
   onBuy,
+  onStartShopping,
 }: Props) {
   const [scanOpen, setScanOpen] = useState(false);
   const [looking, setLooking] = useState(false);
@@ -63,6 +66,8 @@ export function PurchaseOrderList({
   const checkedRows = items.filter((i) => checkedIds.has(i.id));
   const locatedCount = checkedRows.filter((i) => i.blockId).length;
   const unlocatedCount = checkedRows.length - locatedCount;
+  // Running basket estimate — priced rows only, so it never over/undercounts silently.
+  const basket = basketTotal(items);
 
   return (
     <div className="flex flex-col h-full">
@@ -135,6 +140,47 @@ export function PurchaseOrderList({
 
       {/* Footer: Add item + commit bar */}
       <div className="shrink-0 px-4 py-3 border-t border-slate-100 flex flex-col gap-2">
+        {onStartShopping && items.length > 0 && (
+          <button
+            onClick={onStartShopping}
+            className="w-full py-2 rounded-md bg-slate-800 text-white text-[10px] font-bold uppercase tracking-widest hover:bg-slate-700 transition-colors flex items-center justify-center gap-2"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+              <path
+                d="M3 3h2l2.4 12.3a2 2 0 002 1.7h7.7a2 2 0 002-1.6L22 8H6"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+              <circle cx="10" cy="20" r="1" fill="currentColor" />
+              <circle cx="18" cy="20" r="1" fill="currentColor" />
+            </svg>
+            Start shopping
+          </button>
+        )}
+        {basket.priced > 0 && (
+          <div className="flex items-baseline justify-between">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
+              Basket est.
+            </span>
+            <span
+              className="font-mono text-[12px] font-bold text-slate-700 tabular-nums"
+              title={
+                basket.unpriced > 0
+                  ? `${basket.unpriced} item${basket.unpriced > 1 ? "s" : ""} without a price aren't counted`
+                  : "Sum of price × quantity"
+              }
+            >
+              ~{formatMoney(basket.cents)}
+              {basket.unpriced > 0 && (
+                <span className="ml-1 text-[9px] font-normal text-slate-400">
+                  +{basket.unpriced} unpriced
+                </span>
+              )}
+            </span>
+          </div>
+        )}
         {unlocatedCount > 0 && (
           <p className="text-[10px] font-mono text-amber-600 text-center">
             📍 {unlocatedCount} item{unlocatedCount > 1 ? "s" : ""} need

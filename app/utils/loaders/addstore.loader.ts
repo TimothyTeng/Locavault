@@ -1,7 +1,8 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { requireAuth } from "~/lib/auth";
 import { createStoreWithBlocks, getCustomFixturesByUser } from "~/lib/queries";
-import { requireText, toQty } from "~/utils/helpers/validate.helper";
+import { requireText } from "~/utils/helpers/validate.helper";
+import { clampGridDim } from "~/lib/gridLimits";
 
 export const loader = async (args: LoaderFunctionArgs) => {
   const userId = await requireAuth(args);
@@ -23,8 +24,8 @@ export const action = async (args: ActionFunctionArgs) => {
     ...data,
     userId,
     name: requireText(data.name, "Store name", 120),
-    rows: toQty(data.rows, 10, { min: 1, max: 200 }),
-    cols: toQty(data.cols, 10, { min: 1, max: 200 }),
+    rows: clampGridDim(data.rows),
+    cols: clampGridDim(data.cols),
     blocks,
     walls,
   });

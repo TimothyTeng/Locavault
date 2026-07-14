@@ -3,6 +3,7 @@ import type { Route } from "./+types/home";
 import { Show } from "@clerk/react-router";
 import Navbar from "~/components/home/navbar";
 import StoreViewFinder from "~/components/addstore/storeViewFinder/storeViewFinder";
+import { SignedOutNotice } from "~/components/common/signedOutNotice";
 import type { loader } from "#utils/loaders/editstore.loader";
 
 export { loader, action } from "#utils/loaders/editstore.loader";
@@ -24,9 +25,7 @@ export default function EditStore() {
     <Show
       when="signed-in"
       fallback={
-        <div className="flex items-center justify-center h-screen text-xs font-mono text-slate-400">
-          You must be signed in to edit a store.
-        </div>
+        <SignedOutNotice message="You must be signed in to edit a store." />
       }
     >
       <div className="flex flex-col h-dvh overflow-hidden bg-white md:pt-16">

@@ -5,7 +5,7 @@ import {
   itemRunoutDays,
 } from "~/utils/helpers/storeTable.helper";
 import { expiryDateRemainingDays } from "~/utils/helpers/store.helper";
-import { describeUsage } from "~/utils/helpers/usage.helper";
+import { RunoutPhrase, RunoutConfirm } from "./runoutChip";
 import { ItemDetailPopup } from "./ItemDetailPopup";
 import { TypeIcon } from "./typeIcon";
 import { useProductImage } from "~/utils/useProductImage";
@@ -28,6 +28,7 @@ type Props = {
   onSave: (updated: Item) => void;
   onDelete: (itemId: string) => void;
   onMarkOut?: (item: Item) => void;
+  onStillHave?: (item: Item) => void;
   onAddToList?: (item: Item) => void;
   isOwner: boolean;
   storeIsPublic: boolean;
@@ -40,6 +41,7 @@ export function ItemCard({
   onSave,
   onDelete,
   onMarkOut,
+  onStillHave,
   onAddToList,
 }: Props) {
   const [showDetail, setShowDetail] = useState(false);
@@ -48,20 +50,13 @@ export function ItemCard({
   const status = getItemStatus(item);
   const expiryDays = expiryDateRemainingDays(item.expiryDate);
   const runout = itemRunoutDays(item);
-  const isPrior = item.usage?.source === "prior";
   const photo = useProductImage(item);
+  const confirmRunout = !!item.runoutConfirm && !!onMarkOut && !!onStillHave;
 
   const expiryColor =
     expiryDays != null && expiryDays <= 0
       ? "text-red-500"
       : expiryDays != null && expiryDays <= 30
-        ? "text-amber-600"
-        : "text-slate-400";
-  const runoutColor = isPrior
-    ? "text-slate-300"
-    : runout != null && runout <= 7
-      ? "text-red-500"
-      : runout != null && runout <= 30
         ? "text-amber-600"
         : "text-slate-400";
 
@@ -87,6 +82,7 @@ export function ItemCard({
                 }
               : undefined
           }
+          onStillHave={onStillHave}
           onAddToList={
             onAddToList
               ? (i) => {
@@ -170,27 +166,29 @@ export function ItemCard({
                 {expiryDays <= 0 ? "expired" : `${expiryDays}d`}
               </span>
             )}
-            {runout != null && (
-              <span
-                className={runoutColor}
-                title={item.usage ? describeUsage(item.usage) : "Est. run-out"}
-              >
-                {isPrior ? `~${runout}d` : `${runout}d`} left
-              </span>
-            )}
+            <RunoutPhrase item={item} />
           </div>
         )}
 
-        {onMarkOut && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onMarkOut(item);
-            }}
-            className="self-start rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-amber-700 opacity-0 group-hover:opacity-100 hover:bg-amber-100 transition-all"
-          >
-            We're out
-          </button>
+        {confirmRunout ? (
+          <RunoutConfirm
+            item={item}
+            onMarkOut={onMarkOut!}
+            onStillHave={onStillHave!}
+            className="self-start"
+          />
+        ) : (
+          onMarkOut && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onMarkOut(item);
+              }}
+              className="self-start rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-widest text-amber-700 opacity-0 group-hover:opacity-100 hover:bg-amber-100 transition-all"
+            >
+              We're out
+            </button>
+          )
         )}
       </div>
     </>

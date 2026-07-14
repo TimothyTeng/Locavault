@@ -1,25 +1,16 @@
 import { useState } from "react";
+import {
+  GRID_MIN as MIN,
+  GRID_MAX as MAX,
+  GRID_PRESETS as PRESETS,
+  clampGridDim as clamp,
+} from "~/lib/gridLimits";
 
 interface GridControlsProps {
   cols: number;
   rows: number;
   onColsChange: (n: number) => void;
   onRowsChange: (n: number) => void;
-}
-
-const PRESETS: { label: string; cols: number; rows: number }[] = [
-  { label: "10×10", cols: 10, rows: 10 },
-  { label: "15×15", cols: 15, rows: 15 },
-  { label: "20×20", cols: 20, rows: 20 },
-  { label: "30×30", cols: 30, rows: 30 },
-  { label: "40×60", cols: 40, rows: 60 },
-];
-
-const MIN = 2;
-const MAX = 80;
-
-function clamp(v: number) {
-  return Math.max(MIN, Math.min(MAX, v));
 }
 
 function Stepper({

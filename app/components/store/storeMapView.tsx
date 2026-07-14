@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router";
 import gsap from "gsap";
 import { Plus, Minus, X } from "lucide-react";
 import type { Item, ItemStatus } from "~/types/storeTypes";
@@ -67,6 +68,7 @@ type Props = {
   onSaveItem: (updated: Item) => void;
   onDeleteItem: (itemId: string) => void;
   onMarkOut?: (item: Item) => void;
+  onStillHave?: (item: Item) => void;
   onAddToList?: (item: Item) => void;
   onToggleVisibility: (itemId: string, isPublic: boolean) => void;
   /** Open the add-item panel pre-targeted to a zone (null = no zone). */
@@ -103,6 +105,7 @@ export function StoreMapView({
   onSaveItem,
   onDeleteItem,
   onMarkOut,
+  onStillHave,
   onAddToList,
   onAddItemToZone,
   isMobile = false,
@@ -307,6 +310,34 @@ export function StoreMapView({
             "radial-gradient(110% 90% at 50% 40%, #000 55%, transparent 100%)",
         }}
       />
+
+      {/* Empty floor plan — nudge the owner/editor into the builder rather than
+          leaving them staring at a blank board. */}
+      {Object.keys(blocks).length === 0 && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
+          <div className="pointer-events-auto flex max-w-xs flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 px-6 py-7 text-center shadow-xl backdrop-blur">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+              <Plus size={20} strokeWidth={2} />
+            </div>
+            <p className="text-[13px] font-bold text-slate-800">
+              Draw your floor plan
+            </p>
+            <p className="text-[11px] leading-relaxed text-slate-400">
+              {canEdit
+                ? "Sketch the shelves, zones and rooms that mirror your home — then place items on them."
+                : "This store doesn't have a floor plan yet."}
+            </p>
+            {canEdit && (
+              <Link
+                to="edit"
+                className="mt-1 rounded-md border border-slate-800 bg-slate-800 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white transition-colors hover:bg-slate-700"
+              >
+                Draw your first shelf
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Scrollable board */}
       <div ref={ref} className="absolute inset-0 overflow-auto">
@@ -641,6 +672,7 @@ export function StoreMapView({
                 }
               : undefined
           }
+          onStillHave={onStillHave}
           onAddToList={
             onAddToList
               ? (i) => {

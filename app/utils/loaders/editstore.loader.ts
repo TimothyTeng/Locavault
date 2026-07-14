@@ -7,6 +7,7 @@ import {
 } from "~/lib/queries";
 import type { BlockDetails, BlocksMap } from "~/types/storeViewFinderTypes";
 import type { Wall } from "~/types/wallTypes";
+import { clampGridDim } from "~/lib/gridLimits";
 
 // ── Loader ─────────────────────────────────────────────────
 
@@ -77,8 +78,8 @@ export const action = async (args: ActionFunctionArgs) => {
     name: data.name,
     tags: data.tags,
     description: data.description,
-    rows: data.rows,
-    cols: data.cols,
+    rows: clampGridDim(data.rows),
+    cols: clampGridDim(data.cols),
     blocks: data.blocks as BlockDetails[],
     walls: Array.isArray(data.walls)
       ? (data.walls.slice(0, 5000) as Wall[])

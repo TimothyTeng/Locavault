@@ -530,18 +530,63 @@ export function inferBlockId(
 export function matchExistingItem(name: string, items: Item[]): Item | null {
   const wanted = new Set(tokenize(name));
   if (!wanted.size) return null;
+  const wantedArr = Array.from(wanted);
   let best: { item: Item; score: number } | null = null;
   for (const it of items) {
     const itToks = tokenize(it.name);
     if (!itToks.length) continue;
-    const overlap = itToks.filter((t) => wanted.has(t)).length;
-    if (!overlap) continue;
-    // Reward shared tokens; lightly penalise size mismatch so a tight match
-    // ("Milk" → "Milk") beats a loose one ("Milk" → "Milk Chocolate").
-    const score = overlap * 100 - Math.abs(itToks.length - wanted.size);
+    // Exact shared tokens first; then forgive a single typo on longer tokens
+    // ("yoghurt" ↔ "yogurt", "tomatoe" ↔ "tomato") so a slip still restocks the
+    // right item rather than spawning a near-duplicate.
+    let exact = 0;
+    let fuzzy = 0;
+    for (const t of itToks) {
+      if (wanted.has(t)) exact++;
+      else if (wantedArr.some((w) => nearMatch(w, t))) fuzzy++;
+    }
+    if (!exact && !fuzzy) continue;
+    // Reward shared tokens (exact worth more than fuzzy); lightly penalise size
+    // mismatch so a tight match ("Milk" → "Milk") beats a loose one.
+    const score =
+      exact * 100 + fuzzy * 60 - Math.abs(itToks.length - wanted.size);
     if (!best || score > best.score) best = { item: it, score };
   }
   return best?.item ?? null;
+}
+
+/** Two tokens match within a single edit (insert/delete/substitute), guarded to
+ *  tokens ≥5 chars so short words ("tea"/"pea") don't collapse together. */
+function nearMatch(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (a.length < 5 || b.length < 5) return false;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  return editDistanceWithin1(a, b);
+}
+
+/** True when Levenshtein(a, b) ≤ 1. Short-circuits — never builds a full matrix. */
+function editDistanceWithin1(a: string, b: string): boolean {
+  if (a === b) return true;
+  const [s, l] = a.length <= b.length ? [a, b] : [b, a];
+  if (l.length - s.length > 1) return false;
+  let i = 0;
+  let j = 0;
+  let edits = 0;
+  while (i < s.length && j < l.length) {
+    if (s[i] === l[j]) {
+      i++;
+      j++;
+    } else {
+      if (++edits > 1) return false;
+      if (s.length === l.length) {
+        i++;
+        j++;
+      } else {
+        j++; // skip a char in the longer string (insertion)
+      }
+    }
+  }
+  // Any unmatched tail in the longer string is one more edit.
+  return edits + (l.length - j) <= 1;
 }
 
 /**
@@ -752,4 +797,33 @@ export function inferPOFields(
     useRatePeriod: null,
     cost: null,
   };
+}
+
+/** The subset of {@link POInference} relevant when capturing an inventory item
+ *  directly (no `packageSize`, which is a shopping-row-only chip). */
+export type ItemInference = Omit<POInference, "packageSize">;
+
+/**
+ * Infer an inventory item's metadata from a typed/scanned name — the same
+ * fuzzy-match → user-memory → lexicon → crowd → fitting-block chain that powers
+ * the shopping list, so the low-friction "name is enough" capture works on the
+ * add-item form too (Phase 2). `matchedItemId` lets the caller offer
+ * "restock the one you already have" instead of creating a duplicate.
+ */
+export function inferItemFields(
+  name: string,
+  items: Item[],
+  blocks: BlocksMap,
+  typeHints: Record<string, ItemType> = {},
+  crowdHints: Record<string, ItemType> = {},
+): ItemInference {
+  const { packageSize: _packageSize, ...rest } = inferPOFields(
+    name,
+    items,
+    blocks,
+    typeHints,
+    crowdHints,
+  );
+  void _packageSize;
+  return rest;
 }

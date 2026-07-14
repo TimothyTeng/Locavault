@@ -7,6 +7,7 @@ export function ItemCardGrid({
   onSave,
   onDelete,
   onMarkOut,
+  onStillHave,
   onAddToList,
   isOwner,
   storeIsPublic,
@@ -18,6 +19,7 @@ export function ItemCardGrid({
   onSave: (updated: Item) => void;
   onDelete: (itemId: string) => void;
   onMarkOut?: (item: Item) => void;
+  onStillHave?: (item: Item) => void;
   onAddToList?: (item: Item) => void;
   isOwner: boolean;
   storeIsPublic: boolean;
@@ -40,6 +42,7 @@ export function ItemCardGrid({
               onSave={onSave}
               onDelete={onDelete}
               onMarkOut={onMarkOut}
+              onStillHave={onStillHave}
               onAddToList={onAddToList}
               isOwner={isOwner}
               storeIsPublic={storeIsPublic}

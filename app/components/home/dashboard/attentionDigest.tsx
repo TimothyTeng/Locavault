@@ -21,8 +21,9 @@ function hint(it: AttentionItem): string | null {
   if (it.status === "expiring" && it.expiryDays != null) {
     return it.expiryDays <= 0 ? "expired" : `expires in ${it.expiryDays}d`;
   }
-  if (it.runoutDays != null) return `~${it.runoutDays}d left`;
   if (it.status === "out") return "out of stock";
+  if (it.runoutPhrase) return it.runoutPhrase;
+  if (it.runoutDays != null) return `~${it.runoutDays}d left`;
   return null;
 }
 

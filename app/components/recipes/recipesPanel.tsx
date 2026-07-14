@@ -30,7 +30,8 @@ import {
   parseDateKey,
   dayParts,
 } from "~/utils/helpers/calendar.helper";
-import { useDialog } from "~/components/common/useDialog";
+import { SidePanel } from "~/components/common/SidePanel";
+import { PillButton } from "~/components/common/PillButton";
 import { EmptyState } from "~/components/common/EmptyState";
 import { RecipeEditor } from "./RecipeEditor";
 
@@ -120,7 +121,6 @@ export function RecipesPanel({
   const [detailId, setDetailId] = useState<string | null>(null);
   const [editing, setEditing] = useState<Recipe | null>(null);
   const [creating, setCreating] = useState(false);
-  const dialogRef = useDialog(isOpen, onClose);
 
   // Parent requested a specific recipe (a calendar meal was clicked) — open its
   // detail and let the parent clear the request so it can re-fire next time.
@@ -149,6 +149,17 @@ export function RecipesPanel({
     [userRecipes, matchById],
   );
 
+  // The full browsable library (user saves + seeds), deduped — used as a
+  // fallback so an empty/new store with nothing in stock can still explore
+  // recipe ideas instead of staring at an empty panel.
+  const browseAll = useMemo(() => {
+    const map = new Map<string, RecipeMatch>();
+    for (const r of [...userRecipes, ...RECIPES]) {
+      if (!map.has(r.id)) map.set(r.id, matchById.get(r.id) ?? emptyMatch(r));
+    }
+    return [...map.values()];
+  }, [userRecipes, matchById]);
+
   const counts = useMemo(
     () => ({
       all: matches.length,
@@ -162,16 +173,18 @@ export function RecipesPanel({
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const base = filter === "mine" ? allMine : matches;
+    // "All" falls back to the whole library when nothing in the pantry is
+    // relevant, so the panel is never a dead end. Cook/Almost stay pantry-scoped
+    // (you genuinely can't cook anything with an empty store).
+    const base =
+      filter === "mine" ? allMine : matches.length > 0 ? matches : browseAll;
     return base.filter((m) => {
       if (q && !m.recipe.name.toLowerCase().includes(q)) return false;
       if (filter === "cook") return m.cookable;
       if (filter === "almost") return !m.cookable && m.missing.length <= 2;
       return true;
     });
-  }, [matches, allMine, filter, query]);
-
-  if (!isOpen) return null;
+  }, [matches, allMine, browseAll, filter, query]);
 
   // Resolve the detail match; fall back to a zero-match stand-in so a recipe
   // opened by id (e.g. a seeded recipe with nothing in stock, dropped by the
@@ -186,14 +199,12 @@ export function RecipesPanel({
 
   return (
     <>
-      <div
-        ref={dialogRef}
-        role="dialog"
-        aria-label="Recipes"
-        tabIndex={-1}
-        className={`absolute inset-y-0 z-30 flex w-full flex-col border-l border-slate-200 bg-white font-mono shadow-2xl outline-none ${
-          isMobile ? "right-0" : "right-11 max-w-md"
-        }`}
+      <SidePanel
+        isOpen={isOpen}
+        onClose={onClose}
+        isMobile={isMobile}
+        ariaLabel="Recipes"
+        chromeless
       >
         {detail ? (
           <RecipeDetail
@@ -226,12 +237,9 @@ export function RecipesPanel({
               </div>
               <div className="flex items-center gap-1">
                 {canAddRecipe && (
-                  <button
-                    onClick={() => setCreating(true)}
-                    className="flex items-center gap-1 rounded-lg bg-slate-900 px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-widest text-white transition-colors hover:bg-slate-700"
-                  >
+                  <PillButton onClick={() => setCreating(true)}>
                     <Plus size={12} strokeWidth={2.5} /> Add
-                  </button>
+                  </PillButton>
                 )}
                 <button
                   onClick={onClose}
@@ -350,7 +358,7 @@ export function RecipesPanel({
             </div>
           </>
         )}
-      </div>
+      </SidePanel>
 
       {(creating || editing) && (
         <RecipeEditor

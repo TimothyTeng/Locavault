@@ -35,7 +35,7 @@ import { RECIPES, type Recipe } from "~/lib/recipes";
 import { matchRecipes, prettyIngredient } from "#utils/helpers/recipes.helper";
 import { dateKey } from "#utils/helpers/calendar.helper";
 import type { ScheduledMeal, MealType, MealNeed } from "~/types/recipeTypes";
-import { useFetcherFailureToast } from "~/components/common/toast";
+import { useFetcherFailureToast, useToast } from "~/components/common/toast";
 import { CollectionsPanel } from "~/components/collections/collectionsPanel";
 import type { Collection, CollectionKind } from "~/types/collectionTypes";
 import { MembersPanel } from "~/components/store/membersPanel";
@@ -43,9 +43,12 @@ import { MiniMap } from "~/components/store/minimap";
 import { StoreOverview } from "~/components/store/storeOverview";
 import { StoreMapView } from "~/components/store/storeMapView";
 import { CustomFixtureProvider } from "~/lib/fixtures";
+import { BlockOptionsProvider } from "~/components/store/blockOptions";
 import { ItemCardGrid } from "~/components/store/itemCardGrid";
 import { GlobalSearch } from "~/components/store/globalSearch";
 import { blocksToBlocksMap } from "#utils/helpers/store.helper";
+import { suggestRestockQty } from "#utils/helpers/usage.helper";
+import { ShoppingMode } from "~/components/purchases/shoppingMode";
 import { decrementForIngredient } from "#utils/helpers/recipeCook.helper";
 import { getItemStatus } from "#utils/helpers/storeTable.helper";
 import { useIsMobile } from "~/utils/useIsMobile";
@@ -108,6 +111,7 @@ export default function StorePage() {
   );
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [highlightedCell, setHighlightedCell] = useState<string | null>(null);
+  const [shoppingModeOpen, setShoppingModeOpen] = useState(false);
   // The zone whose contents the right pane is scoped to (canvas-primary). Null =
   // show the whole store (overview + all items).
   const [focusedZoneId, setFocusedZoneId] = useState<string | null>(null);
@@ -177,6 +181,7 @@ export default function StorePage() {
   useFetcherFailureToast(fetcher);
   useFetcherFailureToast(createFetcher);
   useFetcherFailureToast(collectionFetcher);
+  const toast = useToast();
 
   // ── Polling ──
   useEffect(() => {
@@ -209,7 +214,11 @@ export default function StorePage() {
   }, [dbStore]);
 
   useEffect(() => {
-    if (!dbItems || createFetcher.state !== "idle") return;
+    // Skip a poll-driven re-sync while any item mutation is mid-flight — a
+    // create (createFetcher) or an edit/mark-out (fetcher) — so a 15s
+    // revalidation can't clobber the optimistic item state.
+    if (!dbItems || createFetcher.state !== "idle" || fetcher.state !== "idle")
+      return;
     setItems(
       (dbItems as Item[]).map((i) => ({ ...i, isPublic: i.isPublic ?? true })),
     );
@@ -301,6 +310,12 @@ export default function StorePage() {
         (b.kind === "standard" || b.kind === undefined) && b.label.trim(),
     )
     .map(([id, b]) => ({ id, label: b.label }));
+
+  // id → label for every block, so the item-detail popup can render a real
+  // location instead of a raw block id.
+  const blockLabels = Object.fromEntries(
+    Object.entries(blocks).map(([id, b]) => [id, b.label]),
+  );
 
   useEffect(() => {
     // Re-sync the shopping list from the server, but not while a mutation is
@@ -439,13 +454,84 @@ export default function StorePage() {
     );
   };
 
+  // Restock an existing item instead of creating a duplicate (the Add-item
+  // "you already have this" nudge). Reuses updateItem, which logs the +delta so
+  // the restock cadence feeds the usage estimate.
+  const handleRestockItem = (itemId: string, addQty: number) => {
+    const it = items.find((i) => i.id === itemId);
+    if (!it) return;
+    const newQty = it.quantity + Math.max(1, addQty);
+    setItems((prev) =>
+      prev.map((i) => (i.id === itemId ? { ...i, quantity: newQty } : i)),
+    );
+    setAddItemOpen(false);
+    handleSelectItem(it);
+    fetcher.submit(
+      {
+        _action: "updateItem",
+        id: it.id,
+        name: it.name,
+        storeId: it.storeId,
+        description: it.description,
+        quantity: newQty,
+        blockId: it.blockId,
+        itemType: it.itemType,
+        sku: it.sku ?? null,
+        unit: it.unit ?? null,
+        minQuantity: it.minQuantity ?? null,
+        cost: it.cost ?? null,
+        expiryDate: it.expiryDate
+          ? new Date(it.expiryDate).toISOString()
+          : null,
+        useRate: it.useRate ?? null,
+        useRatePeriod: it.useRatePeriod ?? null,
+      },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
+  // Recreate a just-deleted item (Undo). Reuses the createItem path, so the
+  // restored item comes back with all its fields (a fresh id — its change log
+  // doesn't survive, which is an acceptable trade for one-tap undo).
+  const recreateItem = (item: Item) => {
+    const optimisticId = crypto.randomUUID();
+    setItems((prev) => [...prev, { ...item, id: optimisticId }]);
+    createFetcher.submit(
+      {
+        _action: "createItem",
+        name: item.name,
+        description: item.description ?? "",
+        quantity: item.quantity,
+        blockId: item.blockId ?? null,
+        itemType: item.itemType,
+        optimisticId,
+        sku: item.sku ?? null,
+        unit: item.unit ?? null,
+        minQuantity: item.minQuantity ?? null,
+        cost: item.cost ?? null,
+        expiryDate: item.expiryDate
+          ? new Date(item.expiryDate).toISOString()
+          : null,
+        useRate: item.useRate ?? null,
+        useRatePeriod: item.useRatePeriod ?? null,
+      },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
   const handleDeleteItem = (itemId: string) => {
+    const removed = items.find((i) => i.id === itemId);
     setItems((prev) => prev.filter((i) => i.id !== itemId));
     if (selectedItemId === itemId) setSelectedItemId(null);
     fetcher.submit(
       { _action: "deleteItem", id: itemId },
       { method: "POST", encType: "application/json" },
     );
+    if (removed) {
+      toast(`Deleted “${removed.name}”`, {
+        action: { label: "Undo", onClick: () => recreateItem(removed) },
+      });
+    }
   };
 
   // One-tap "we're out": zero the quantity locally, queue a restock, and let the
@@ -465,12 +551,24 @@ export default function StorePage() {
     );
   };
 
+  // Confirm-loop answer "still have it": the predicted run-out passed but stock
+  // remains. Clear the prompt locally and log a censor point so the estimate
+  // lengthens; no quantity change.
+  const handleStillHave = (item: Item) => {
+    setItems((prev) =>
+      prev.map((i) => (i.id === item.id ? { ...i, runoutConfirm: false } : i)),
+    );
+    fetcher.submit(
+      { _action: "stillHave", id: item.id },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
   const handleAddItem = (data: {
     name: string;
     description: string;
     quantity: number;
     selectedBlockId?: string | null;
-    inStore: boolean;
     itemType: ItemType;
     sku?: string | null;
     unit?: string | null;
@@ -567,6 +665,19 @@ export default function StorePage() {
     setMembers((prev) => prev.filter((m) => m.userId !== memberId));
     fetcher.submit(
       { _action: "removeMember", userId: memberId },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
+  const handleChangeMemberRole = (
+    memberId: string,
+    role: "editor" | "viewer",
+  ) => {
+    setMembers((prev) =>
+      prev.map((m) => (m.userId === memberId ? { ...m, role } : m)),
+    );
+    fetcher.submit(
+      { _action: "updateMemberRole", userId: memberId, role },
       { method: "POST", encType: "application/json" },
     );
   };
@@ -851,22 +962,18 @@ export default function StorePage() {
     );
   };
 
-  // Suggested restock quantity.
-  // If we've learned a usage rate, buy enough to cover the next ~30 days (while
-  // staying above min stock). Otherwise fall back to refilling to ~2× min.
-  const RESTOCK_HORIZON_DAYS = 30;
-  const suggestedQty = (item: Item) => {
-    const rate = item.usage?.dailyRate ?? null;
-    if (rate && rate > 0) {
-      const horizonNeed =
-        Math.ceil(rate * RESTOCK_HORIZON_DAYS) - item.quantity;
-      const minNeed =
-        item.minQuantity != null ? item.minQuantity - item.quantity : 0;
-      return Math.max(horizonNeed, minNeed, 1);
-    }
-    const target = item.minQuantity != null ? item.minQuantity * 2 : 1;
-    return Math.max(target - item.quantity, 1);
+  // Shopping mode "show on map" (unpack sheet): jump to the zone and pulse it.
+  const handleShowOnMap = (blockId: string) => {
+    setShoppingModeOpen(false);
+    setStatusFilter(null);
+    setFocusedZoneId(blockId);
+    setHighlightedCell(blockId);
+    setPageView("map");
   };
+
+  // Suggested restock quantity — shared definition (rate-driven ~30d cover, else
+  // refill to ~2× min). See suggestRestockQty in usage.helper.
+  const suggestedQty = (item: Item) => suggestRestockQty(item, item.usage);
 
   // Build an optimistic PO row + its server payload from an inventory item
   const buildPOFromItem = (item: Item) => {
@@ -1295,391 +1402,430 @@ export default function StorePage() {
   // ── Render ──
   return (
     <CustomFixtureProvider fixtures={customFixtures}>
-      <div>
-        <Navbar />
-        <div className="flex flex-col h-dvh overflow-hidden bg-white md:pt-16 font-mono">
-          <StoreToolbar
-            storeId={id!}
-            onAddItem={() => setAddItemOpen(true)}
-            onQuickAdd={() => {
-              setAddItemOpen(false);
-              setQuickAddOpen(true);
-            }}
-            onRecipes={() =>
-              openPanel(activePanel === "recipes" ? null : "recipes")
-            }
-            onCalendar={() =>
-              openPanel(activePanel === "calendar" ? null : "calendar")
-            }
-            onCollections={() =>
-              openPanel(activePanel === "collections" ? null : "collections")
-            }
-            onMembersToggle={() =>
-              openPanel(activePanel === "members" ? null : "members")
-            }
-            accessLevel={accessLevel}
-            store={store}
-            onToggleVisibility={handleToggleStoreVisibility}
-            isMobile={isMobile}
-            restockCount={restockCount}
-            onPurchaseOrder={() =>
-              openPanel(activePanel === "shopping" ? null : "shopping")
-            }
-          />
-
-          {/* Global item search — always available, jumps to an item's zone */}
-          <div className="flex items-center gap-3 px-4 md:px-6 h-11 border-b border-slate-200 bg-white shrink-0">
-            <GlobalSearch
-              items={items}
-              blocks={blocks}
-              onJump={handleJumpToItem}
+      <BlockOptionsProvider options={categories} labels={blockLabels}>
+        <div>
+          <Navbar />
+          <div className="flex flex-col h-dvh overflow-hidden bg-white md:pt-16 font-mono">
+            <StoreToolbar
+              storeId={id!}
+              onAddItem={() => setAddItemOpen(true)}
+              onQuickAdd={() => {
+                setAddItemOpen(false);
+                setQuickAddOpen(true);
+              }}
+              onRecipes={() =>
+                openPanel(activePanel === "recipes" ? null : "recipes")
+              }
+              onCalendar={() =>
+                openPanel(activePanel === "calendar" ? null : "calendar")
+              }
+              onCollections={() =>
+                openPanel(activePanel === "collections" ? null : "collections")
+              }
+              onMembersToggle={() =>
+                openPanel(activePanel === "members" ? null : "members")
+              }
+              accessLevel={accessLevel}
+              store={store}
+              onToggleVisibility={handleToggleStoreVisibility}
+              isMobile={isMobile}
+              restockCount={restockCount}
+              onPurchaseOrder={() =>
+                openPanel(activePanel === "shopping" ? null : "shopping")
+              }
             />
-            <div className="flex-1" />
-            {showCanvas && (
-              <div className="flex items-center rounded-md border border-slate-200 overflow-hidden shrink-0">
-                <SurfaceBtn
-                  active={pageView === "map"}
-                  onClick={() => setPageView("map")}
-                  label="Map"
-                  icon={<MapIcon size={13} />}
-                />
-                <SurfaceBtn
-                  active={pageView === "inventory"}
-                  onClick={() => setPageView("inventory")}
-                  label="Inventory"
-                  icon={<ListIcon size={13} />}
-                />
-              </div>
-            )}
-          </div>
 
-          <div className="flex flex-1 min-h-0 overflow-hidden relative">
-            {effectiveView === "map" && store ? (
-              /* ── Map-first surface: the floor plan IS the app ── */
-              <StoreMapView
-                blocks={blocks}
-                cols={store.cols}
-                rows={store.rows}
+            {/* Global item search — always available, jumps to an item's zone */}
+            <div className="flex items-center gap-3 px-4 md:px-6 h-11 border-b border-slate-200 bg-white shrink-0">
+              <GlobalSearch
                 items={items}
-                canEdit={canEdit}
-                isOwner={isOwner}
-                walls={store?.walls ?? []}
-                storeIsPublic={store?.isPublic ?? false}
-                isMobile={isMobile}
-                pulseZoneId={highlightedCell}
-                pulseItemId={selectedItemId}
-                onSaveItem={handleSaveItem}
-                onDeleteItem={handleDeleteItem}
-                onMarkOut={canEdit ? handleMarkItemOut : undefined}
-                onAddToList={
-                  canEdit ? handleAddPOItemFromSuggestion : undefined
-                }
-                onToggleVisibility={handleToggleItemVisibility}
-                onAddItemToZone={handleAddItemToZone}
+                blocks={blocks}
+                onJump={handleJumpToItem}
               />
-            ) : (
-              <>
-                {/* ── Desktop canvas (left pane) ── */}
-                {!isMobile && (
+              <div className="flex-1" />
+              {showCanvas && (
+                <div className="flex items-center rounded-md border border-slate-200 overflow-hidden shrink-0">
+                  <SurfaceBtn
+                    active={pageView === "map"}
+                    onClick={() => setPageView("map")}
+                    label="Map"
+                    icon={<MapIcon size={13} />}
+                  />
+                  <SurfaceBtn
+                    active={pageView === "inventory"}
+                    onClick={() => setPageView("inventory")}
+                    label="Inventory"
+                    icon={<ListIcon size={13} />}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* `overflow-clip` (not `-hidden`): the side panels slide off-screen
+                right via `translate-x-full`, extending the layout box. `hidden`
+                still forms a scroll container the browser can auto-scroll into
+                (focus restore did, shifting the whole split-pane left); `clip`
+                forms none, so it can never scroll. */}
+            <div className="flex flex-1 min-h-0 overflow-clip relative">
+              {effectiveView === "map" && store ? (
+                /* ── Map-first surface: the floor plan IS the app ── */
+                <StoreMapView
+                  blocks={blocks}
+                  cols={store.cols}
+                  rows={store.rows}
+                  items={items}
+                  canEdit={canEdit}
+                  isOwner={isOwner}
+                  walls={store?.walls ?? []}
+                  storeIsPublic={store?.isPublic ?? false}
+                  isMobile={isMobile}
+                  pulseZoneId={highlightedCell}
+                  pulseItemId={selectedItemId}
+                  onSaveItem={handleSaveItem}
+                  onDeleteItem={handleDeleteItem}
+                  onMarkOut={canEdit ? handleMarkItemOut : undefined}
+                  onStillHave={canEdit ? handleStillHave : undefined}
+                  onAddToList={
+                    canEdit ? handleAddPOItemFromSuggestion : undefined
+                  }
+                  onToggleVisibility={handleToggleItemVisibility}
+                  onAddItemToZone={handleAddItemToZone}
+                />
+              ) : (
+                <>
+                  {/* ── Desktop canvas (left pane) ── */}
+                  {!isMobile && (
+                    <div
+                      className={`flex flex-col border-r border-slate-200 overflow-hidden ${
+                        showCanvas ? "w-1/2" : "hidden"
+                      }`}
+                    >
+                      <div className="px-4 h-10 flex items-center border-b border-slate-100 shrink-0 bg-white">
+                        <span className="text-[9px] font-bold uppercase tracking-widest text-slate-300">
+                          Floor Plan
+                        </span>
+                      </div>
+                      <div className="flex-1 overflow-auto p-4">
+                        {store && (
+                          <StoreHeader
+                            store={store}
+                            id={id}
+                            zoom={zoom}
+                            onZoomIn={onZoomIn}
+                            onZoomOut={onZoomOut}
+                          />
+                        )}
+                        <div
+                          className="mt-4"
+                          style={{ width: `${zoom * 100}%` }}
+                        >
+                          <GridCanvas
+                            cols={store!.cols}
+                            rows={store!.rows}
+                            blocks={blocks}
+                            handles={handles}
+                            selectedId={highlightedCell}
+                            onClick={(_, blockId) => handleZoneClick(blockId)}
+                            readOnly={true}
+                            nonClickableKinds={["divider", "stairs"]}
+                            blockBadges={blockBadges}
+                            walls={store?.walls ?? []}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Inventory (full width on mobile, half on desktop) ── */}
                   <div
-                    className={`flex flex-col border-r border-slate-200 overflow-hidden ${
-                      showCanvas ? "w-1/2" : "hidden"
+                    ref={tableRef}
+                    className={`flex flex-col overflow-hidden ${
+                      !isMobile && showCanvas ? "w-1/2" : "w-full"
                     }`}
                   >
-                    <div className="px-4 h-10 flex items-center border-b border-slate-100 shrink-0 bg-white">
-                      <span className="text-[9px] font-bold uppercase tracking-widest text-slate-300">
-                        Floor Plan
-                      </span>
-                    </div>
-                    <div className="flex-1 overflow-auto p-4">
-                      {store && (
-                        <StoreHeader
-                          store={store}
-                          id={id}
-                          zoom={zoom}
-                          onZoomIn={onZoomIn}
-                          onZoomOut={onZoomOut}
-                        />
-                      )}
-                      <div className="mt-4" style={{ width: `${zoom * 100}%` }}>
-                        <GridCanvas
-                          cols={store!.cols}
-                          rows={store!.rows}
-                          blocks={blocks}
-                          handles={handles}
-                          selectedId={highlightedCell}
-                          onClick={(_, blockId) => handleZoneClick(blockId)}
-                          readOnly={true}
-                          nonClickableKinds={["divider", "stairs"]}
-                          blockBadges={blockBadges}
-                          walls={store?.walls ?? []}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* ── Inventory (full width on mobile, half on desktop) ── */}
-                <div
-                  ref={tableRef}
-                  className={`flex flex-col overflow-hidden ${
-                    !isMobile && showCanvas ? "w-1/2" : "w-full"
-                  }`}
-                >
-                  {focusedZoneId ? (
-                    // ── Zone-scoped contents: type-aware cards ──
-                    <>
-                      <div className="px-3 py-2 border-b border-slate-100 bg-white shrink-0 flex items-center gap-2">
-                        <button
-                          onClick={() => setFocusedZoneId(null)}
-                          className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-700 transition-colors"
-                        >
-                          <svg
-                            width="9"
-                            height="9"
-                            viewBox="0 0 10 10"
-                            fill="none"
+                    {focusedZoneId ? (
+                      // ── Zone-scoped contents: type-aware cards ──
+                      <>
+                        <div className="px-3 py-2 border-b border-slate-100 bg-white shrink-0 flex items-center gap-2">
+                          <button
+                            onClick={() => setFocusedZoneId(null)}
+                            className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-700 transition-colors"
                           >
-                            <path
-                              d="M6 1L2 5l4 4"
-                              stroke="currentColor"
-                              strokeWidth="1.6"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                            />
-                          </svg>
-                          All items
-                        </button>
-                        <span className="text-slate-200">/</span>
-                        <span className="text-[11px] font-mono font-semibold text-slate-700 truncate">
-                          {zoneLabel || "Zone"}
-                        </span>
-                        <span className="text-[9px] font-mono text-slate-300">
-                          {visibleItems.length} item
-                          {visibleItems.length !== 1 ? "s" : ""}
-                        </span>
-                      </div>
-                      <ItemCardGrid
-                        items={visibleItems}
-                        onSave={handleSaveItem}
-                        onDelete={handleDeleteItem}
-                        onMarkOut={canEdit ? handleMarkItemOut : undefined}
-                        onAddToList={
-                          canEdit ? handleAddPOItemFromSuggestion : undefined
-                        }
-                        isOwner={isOwner}
-                        storeIsPublic={store?.isPublic ?? false}
-                        onToggleVisibility={handleToggleItemVisibility}
-                        emptyLabel="Nothing in this zone yet"
-                        bottomPad={isMobile && minimapExpanded}
-                      />
-                    </>
-                  ) : (
-                    // ── Whole-store: overview action queue + cards / table ──
-                    <>
-                      <StoreOverview
-                        items={items}
-                        restockCandidates={restockCandidates}
-                        onAddAll={canEdit ? handleAddAllSuggestions : undefined}
-                        activeStatus={statusFilter}
-                        onSelectStatus={(s) =>
-                          setStatusFilter((prev) => (prev === s ? null : s))
-                        }
-                        viewMode={viewMode}
-                        onViewModeChange={setViewMode}
-                      />
-                      {viewMode === "cards" ? (
+                            <svg
+                              width="9"
+                              height="9"
+                              viewBox="0 0 10 10"
+                              fill="none"
+                            >
+                              <path
+                                d="M6 1L2 5l4 4"
+                                stroke="currentColor"
+                                strokeWidth="1.6"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                            All items
+                          </button>
+                          <span className="text-slate-200">/</span>
+                          <span className="text-[11px] font-mono font-semibold text-slate-700 truncate">
+                            {zoneLabel || "Zone"}
+                          </span>
+                          <span className="text-[9px] font-mono text-slate-300">
+                            {visibleItems.length} item
+                            {visibleItems.length !== 1 ? "s" : ""}
+                          </span>
+                        </div>
                         <ItemCardGrid
-                          items={
-                            statusFilter
-                              ? items.filter(
-                                  (i) => getItemStatus(i) === statusFilter,
-                                )
-                              : items
-                          }
+                          items={visibleItems}
                           onSave={handleSaveItem}
                           onDelete={handleDeleteItem}
                           onMarkOut={canEdit ? handleMarkItemOut : undefined}
+                          onStillHave={canEdit ? handleStillHave : undefined}
                           onAddToList={
                             canEdit ? handleAddPOItemFromSuggestion : undefined
                           }
                           isOwner={isOwner}
                           storeIsPublic={store?.isPublic ?? false}
                           onToggleVisibility={handleToggleItemVisibility}
-                          emptyLabel="No items yet"
+                          emptyLabel="Nothing in this zone yet"
                           bottomPad={isMobile && minimapExpanded}
                         />
-                      ) : (
-                        <StoreTable
-                          items={
-                            statusFilter
-                              ? items.filter(
-                                  (i) => getItemStatus(i) === statusFilter,
-                                )
-                              : items
+                      </>
+                    ) : (
+                      // ── Whole-store: overview action queue + cards / table ──
+                      <>
+                        <StoreOverview
+                          items={items}
+                          restockCandidates={restockCandidates}
+                          onAddAll={
+                            canEdit ? handleAddAllSuggestions : undefined
                           }
-                          selectedItemId={selectedItemId}
-                          onSelect={handleSelectItem}
-                          onSave={handleSaveItem}
-                          onDelete={handleDeleteItem}
-                          onMarkOut={canEdit ? handleMarkItemOut : undefined}
-                          onAddToList={
-                            canEdit ? handleAddPOItemFromSuggestion : undefined
+                          activeStatus={statusFilter}
+                          onSelectStatus={(s) =>
+                            setStatusFilter((prev) => (prev === s ? null : s))
                           }
-                          accessLevel={accessLevel}
-                          storeIsPublic={store?.isPublic ?? false}
-                          onToggleItemVisibility={handleToggleItemVisibility}
-                          isMobile={isMobile}
-                          minimapExpanded={minimapExpanded}
+                          viewMode={viewMode}
+                          onViewModeChange={setViewMode}
                         />
-                      )}
-                    </>
-                  )}
-                </div>
-              </>
-            )}
+                        {viewMode === "cards" ? (
+                          <ItemCardGrid
+                            items={
+                              statusFilter
+                                ? items.filter(
+                                    (i) => getItemStatus(i) === statusFilter,
+                                  )
+                                : items
+                            }
+                            onSave={handleSaveItem}
+                            onDelete={handleDeleteItem}
+                            onMarkOut={canEdit ? handleMarkItemOut : undefined}
+                            onStillHave={canEdit ? handleStillHave : undefined}
+                            onAddToList={
+                              canEdit
+                                ? handleAddPOItemFromSuggestion
+                                : undefined
+                            }
+                            isOwner={isOwner}
+                            storeIsPublic={store?.isPublic ?? false}
+                            onToggleVisibility={handleToggleItemVisibility}
+                            emptyLabel="No items yet"
+                            bottomPad={isMobile && minimapExpanded}
+                          />
+                        ) : (
+                          <StoreTable
+                            items={
+                              statusFilter
+                                ? items.filter(
+                                    (i) => getItemStatus(i) === statusFilter,
+                                  )
+                                : items
+                            }
+                            selectedItemId={selectedItemId}
+                            onSelect={handleSelectItem}
+                            onSave={handleSaveItem}
+                            onDelete={handleDeleteItem}
+                            onMarkOut={canEdit ? handleMarkItemOut : undefined}
+                            onStillHave={canEdit ? handleStillHave : undefined}
+                            onAddToList={
+                              canEdit
+                                ? handleAddPOItemFromSuggestion
+                                : undefined
+                            }
+                            accessLevel={accessLevel}
+                            storeIsPublic={store?.isPublic ?? false}
+                            onToggleItemVisibility={handleToggleItemVisibility}
+                            isMobile={isMobile}
+                            minimapExpanded={minimapExpanded}
+                          />
+                        )}
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
 
-            {/* Members panel */}
-            {isOwner && (
-              <MembersPanel
-                isOpen={membersPanelOpen}
-                members={members}
-                onRemoveMember={handleRemoveMember}
-                onClose={() => setMembersPanelOpen(false)}
-                isMobile={isMobile}
-              />
-            )}
+              {/* Members panel */}
+              {isOwner && (
+                <MembersPanel
+                  isOpen={membersPanelOpen}
+                  members={members}
+                  onRemoveMember={handleRemoveMember}
+                  onChangeRole={handleChangeMemberRole}
+                  onClose={() => setMembersPanelOpen(false)}
+                  isMobile={isMobile}
+                />
+              )}
 
-            {/* Right-edge tab rail (desktop) — toggles the side panels */}
-            {!isMobile && (
-              <PanelRail
-                active={activePanel}
-                onSelect={(p) => openPanel(activePanel === p ? null : p)}
-                canEdit={canEdit}
-                isOwner={isOwner}
-                restockCount={restockCount}
-              />
-            )}
+              {/* Right-edge tab rail (desktop) — toggles the side panels */}
+              {!isMobile && (
+                <PanelRail
+                  active={activePanel}
+                  onSelect={(p) => openPanel(activePanel === p ? null : p)}
+                  canEdit={canEdit}
+                  isOwner={isOwner}
+                  restockCount={restockCount}
+                />
+              )}
 
-            {/* Side panels — docked beside the rail, sharing its top/bottom */}
-            <RecipesPanel
-              isOpen={recipesOpen}
-              onClose={() => setRecipesOpen(false)}
-              items={items}
-              blocks={blocks}
-              onAddMissing={canEdit ? handleAddMissingToList : undefined}
-              onAddHaveToList={canEdit ? handleAddHaveToList : undefined}
-              onCooked={canEdit ? handleCookedRecipe : undefined}
-              onSchedule={canEdit ? handleScheduleMeal : undefined}
-              onShowOnMap={handleShowIngredientOnMap}
-              openRecipeId={openRecipeId}
-              onRecipeOpened={() => setOpenRecipeId(null)}
-              listedNames={listedNames}
-              listedItemIds={listedItemIds}
-              isMobile={isMobile}
-              userRecipes={userRecipes}
-              canAddRecipe={!!userId}
-            />
-            <CalendarPanel
-              isOpen={calendarOpen}
-              onClose={() => setCalendarOpen(false)}
-              isMobile={isMobile}
-              meals={scheduledMeals}
-              items={items}
-              userRecipes={userRecipes}
-              onSchedule={handleScheduleMeal}
-              onUnschedule={handleUnscheduleMeal}
-              onAddMissing={canEdit ? handleAddMissingToList : undefined}
-              onOpenRecipe={handleOpenRecipeFromCalendar}
-            />
-            <CollectionsPanel
-              isOpen={collectionsOpen}
-              onClose={() => setCollectionsOpen(false)}
-              collections={collections}
-              items={items}
-              blocks={blocks}
-              canEdit={canEdit}
-              onCreate={handleCreateCollection}
-              onRename={handleRenameCollection}
-              onSetKind={handleSetCollectionKind}
-              onDelete={handleDeleteCollection}
-              onAddItem={handleAddCollectionItem}
-              onTogglePacked={handleToggleCollectionPacked}
-              onRemoveItem={handleRemoveCollectionItem}
-              onCheckout={handleCheckoutCollection}
-              onAddGapsToList={canEdit ? handleAddMissingToList : undefined}
-              onLocate={handleJumpToItem}
-              isMobile={isMobile}
-            />
-            {canEdit && (
-              <PurchaseOrderPanel
-                isOpen={purchaseOrderOpen}
-                onClose={() => setPurchaseOrderOpen(false)}
-                items={purchaseOrder}
+              {/* Side panels — docked beside the rail, sharing its top/bottom */}
+              <RecipesPanel
+                isOpen={recipesOpen}
+                onClose={() => setRecipesOpen(false)}
+                items={items}
                 blocks={blocks}
-                storeItems={items}
-                checkedIds={checkedPOIds}
-                onToggleChecked={handleTogglePOChecked}
-                onCommitChecked={handleCommitCheckedPO}
-                onAdd={handleAddPOItem}
-                onAddScanned={handleAddScannedPOItem}
-                onAddFromSuggestion={handleAddPOItemFromSuggestion}
-                onAddAll={handleAddAllSuggestions}
-                onUpdate={handleUpdatePOItem}
-                onInfer={handleInferPOItem}
-                onDelete={handleDeletePOItem}
-                onBuy={handleBuyPOItem}
-                mealNeeds={mealNeeds}
-                onAddNames={handleAddMissingToList}
-                destinationFor={destinationForName}
+                onAddMissing={canEdit ? handleAddMissingToList : undefined}
+                onAddHaveToList={canEdit ? handleAddHaveToList : undefined}
+                onCooked={canEdit ? handleCookedRecipe : undefined}
+                onSchedule={canEdit ? handleScheduleMeal : undefined}
+                onShowOnMap={handleShowIngredientOnMap}
+                openRecipeId={openRecipeId}
+                onRecipeOpened={() => setOpenRecipeId(null)}
+                listedNames={listedNames}
+                listedItemIds={listedItemIds}
+                isMobile={isMobile}
+                userRecipes={userRecipes}
+                canAddRecipe={!!userId}
+              />
+              <CalendarPanel
+                isOpen={calendarOpen}
+                onClose={() => setCalendarOpen(false)}
+                isMobile={isMobile}
+                meals={scheduledMeals}
+                items={items}
+                userRecipes={userRecipes}
+                onSchedule={handleScheduleMeal}
+                onUnschedule={handleUnscheduleMeal}
+                onAddMissing={canEdit ? handleAddMissingToList : undefined}
+                onOpenRecipe={handleOpenRecipeFromCalendar}
+              />
+              <CollectionsPanel
+                isOpen={collectionsOpen}
+                onClose={() => setCollectionsOpen(false)}
+                collections={collections}
+                items={items}
+                blocks={blocks}
+                canEdit={canEdit}
+                onCreate={handleCreateCollection}
+                onRename={handleRenameCollection}
+                onSetKind={handleSetCollectionKind}
+                onDelete={handleDeleteCollection}
+                onAddItem={handleAddCollectionItem}
+                onTogglePacked={handleToggleCollectionPacked}
+                onRemoveItem={handleRemoveCollectionItem}
+                onCheckout={handleCheckoutCollection}
+                onAddGapsToList={canEdit ? handleAddMissingToList : undefined}
+                onLocate={handleJumpToItem}
                 isMobile={isMobile}
               />
-            )}
+              {canEdit && (
+                <PurchaseOrderPanel
+                  isOpen={purchaseOrderOpen}
+                  onClose={() => setPurchaseOrderOpen(false)}
+                  items={purchaseOrder}
+                  blocks={blocks}
+                  storeItems={items}
+                  checkedIds={checkedPOIds}
+                  onToggleChecked={handleTogglePOChecked}
+                  onCommitChecked={handleCommitCheckedPO}
+                  onAdd={handleAddPOItem}
+                  onAddScanned={handleAddScannedPOItem}
+                  onAddFromSuggestion={handleAddPOItemFromSuggestion}
+                  onAddAll={handleAddAllSuggestions}
+                  onUpdate={handleUpdatePOItem}
+                  onInfer={handleInferPOItem}
+                  onDelete={handleDeletePOItem}
+                  onBuy={handleBuyPOItem}
+                  onStartShopping={() => setShoppingModeOpen(true)}
+                  mealNeeds={mealNeeds}
+                  onAddNames={handleAddMissingToList}
+                  destinationFor={destinationForName}
+                  isMobile={isMobile}
+                />
+              )}
+            </div>
           </div>
+
+          {/* ── Mobile minimap (floating bottom-left) — only in the list view ── */}
+          {isMobile && showCanvas && store && effectiveView === "inventory" && (
+            <MiniMap
+              blocks={blocks}
+              cols={store.cols}
+              rows={store.rows}
+              handles={handles}
+              selectedId={highlightedCell}
+              onClick={(_, blockId) => setHighlightedCell(blockId)}
+              // Force expand when AddItem panel is open so map fills bottom half
+              forceExpanded={addItemOpen}
+              expanded={minimapExpanded}
+              onToggleExpanded={setMinimapExpanded}
+              zoom={zoom}
+              onZoomIn={onZoomIn}
+              onZoomOut={onZoomOut}
+              blockBadges={blockBadges}
+            />
+          )}
+
+          {/* ── Add Item panel ── */}
+          {canEdit && (
+            <AddItemPanel
+              isOpen={addItemOpen}
+              onClose={() => setAddItemOpen(false)}
+              onSubmit={handleAddItem}
+              onRestock={handleRestockItem}
+              categories={categories}
+              selectedBlockId={highlightedCell}
+              selectedBlockLabel={blocks[highlightedCell ?? ""]?.label ?? ""}
+              items={items}
+              blocks={blocks}
+              typeHints={typeHints}
+              crowdHints={crowdHints}
+              isMobile={isMobile}
+            />
+          )}
+          {canEdit && (
+            <QuickAddPanel
+              isOpen={quickAddOpen}
+              onClose={() => setQuickAddOpen(false)}
+              onSubmit={handleQuickAdd}
+              categories={categories}
+              defaultBlockId={highlightedCell}
+            />
+          )}
+          {canEdit && (
+            <ShoppingMode
+              isOpen={shoppingModeOpen}
+              items={purchaseOrder}
+              checkedIds={checkedPOIds}
+              onToggleChecked={handleTogglePOChecked}
+              onUpdate={handleUpdatePOItem}
+              onFinish={handleCommitCheckedPO}
+              onClose={() => setShoppingModeOpen(false)}
+              onShowOnMap={handleShowOnMap}
+            />
+          )}
         </div>
-
-        {/* ── Mobile minimap (floating bottom-left) — only in the list view ── */}
-        {isMobile && showCanvas && store && effectiveView === "inventory" && (
-          <MiniMap
-            blocks={blocks}
-            cols={store.cols}
-            rows={store.rows}
-            handles={handles}
-            selectedId={highlightedCell}
-            onClick={(_, blockId) => setHighlightedCell(blockId)}
-            // Force expand when AddItem panel is open so map fills bottom half
-            forceExpanded={addItemOpen}
-            expanded={minimapExpanded}
-            onToggleExpanded={setMinimapExpanded}
-            zoom={zoom}
-            onZoomIn={onZoomIn}
-            onZoomOut={onZoomOut}
-            blockBadges={blockBadges}
-          />
-        )}
-
-        {/* ── Add Item panel ── */}
-        {canEdit && (
-          <AddItemPanel
-            isOpen={addItemOpen}
-            onClose={() => setAddItemOpen(false)}
-            onSubmit={handleAddItem}
-            categories={categories}
-            selectedBlockId={highlightedCell}
-            selectedBlockLabel={blocks[highlightedCell ?? ""]?.label ?? ""}
-            isMobile={isMobile}
-          />
-        )}
-        {canEdit && (
-          <QuickAddPanel
-            isOpen={quickAddOpen}
-            onClose={() => setQuickAddOpen(false)}
-            onSubmit={handleQuickAdd}
-            categories={categories}
-            defaultBlockId={highlightedCell}
-          />
-        )}
-      </div>
+      </BlockOptionsProvider>
     </CustomFixtureProvider>
   );
 }
