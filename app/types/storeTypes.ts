@@ -23,6 +23,9 @@ export type Item = {
   // Trade: listed on the global Bazaar + optional "looking for…" note.
   forTrade?: boolean;
   tradeNote?: string | null;
+  // Snooze/dismiss for this item's alerts — while in the future, getItemStatus
+  // stays quiet (DESIGN.md §6).
+  alertSnoozedUntil?: Date | null;
   // Derived (server-computed) — usage prediction. Absent on optimistic rows.
   usage?: UsageEstimate;
   // Derived — the predicted run-out has passed but stock remains: show the

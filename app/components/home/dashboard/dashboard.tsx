@@ -22,12 +22,14 @@ type Props = {
   stores: StoreWithDetails[];
   attention: AttentionItem[];
   spentThisMonthCents?: number;
+  dosesDue?: number;
 };
 
 export default function Dashboard({
   stores: initialStores,
   attention: initialAttention,
   spentThisMonthCents = 0,
+  dosesDue = 0,
 }: Props) {
   const { user } = useUser();
   const navigate = useNavigate();
@@ -204,6 +206,18 @@ export default function Dashboard({
           New store
         </Button>
       </div>
+
+      {/* ── Doses due (blue action chip → /reminders) ── */}
+      {dosesDue > 0 && (
+        <button
+          onClick={() => navigate("/reminders")}
+          className="lv-dash-attn mb-4 flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
+        >
+          <span className="h-2 w-2 rounded-full bg-blue-500" />
+          {dosesDue} dose{dosesDue !== 1 ? "s" : ""} due
+          <span className="text-blue-400">→</span>
+        </button>
+      )}
 
       {/* ── Foresight digest ── */}
       <AttentionDigest items={attention} onAdd={handleAddToList} />

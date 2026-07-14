@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { getItemStatus } from "./storeTable.helper";
+import { getItemStatus, itemNeedsDetails } from "./storeTable.helper";
 import type { Item, UsageEstimate } from "~/types/storeTypes";
 import type { ItemType } from "~/types/itemTypeTypes";
 
@@ -59,5 +59,47 @@ describe("getItemStatus — per-type run-out thresholds", () => {
     expect(
       getItemStatus(makeItem("food", 40, { quantity: 1, minQuantity: 2 })),
     ).toBe("low");
+  });
+
+  it("suppresses low/expiring while snoozed, but never hides 'out'", () => {
+    const future = new Date(Date.now() + 3 * 86_400_000);
+    const past = new Date(Date.now() - 86_400_000);
+    // A would-be 'low' medication goes quiet while snoozed…
+    expect(
+      getItemStatus(makeItem("medication", 5, { alertSnoozedUntil: future })),
+    ).toBe("ok");
+    // …but a passed snooze re-alerts, and 'out' ignores the snooze entirely.
+    expect(
+      getItemStatus(makeItem("medication", 5, { alertSnoozedUntil: past })),
+    ).toBe("low");
+    expect(
+      getItemStatus(
+        makeItem("food", 5, { quantity: 0, alertSnoozedUntil: future }),
+      ),
+    ).toBe("out");
+  });
+});
+
+describe("itemNeedsDetails", () => {
+  it("flags a perishable item with no expiry", () => {
+    expect(itemNeedsDetails(makeItem("food", 5, { expiryDate: null }))).toBe(
+      true,
+    );
+    expect(
+      itemNeedsDetails(
+        makeItem("food", 5, { expiryDate: new Date(), minQuantity: 1 }),
+      ),
+    ).toBe(false);
+  });
+  it("flags a depleting item with no min-stock", () => {
+    expect(
+      itemNeedsDetails(
+        makeItem("supplies", 5, { minQuantity: null, expiryDate: new Date() }),
+      ),
+    ).toBe(true);
+  });
+  it("ignores non-perishable/non-depleting types and out-of-stock items", () => {
+    expect(itemNeedsDetails(makeItem("equipment", 5))).toBe(false);
+    expect(itemNeedsDetails(makeItem("food", 0, { quantity: 0 }))).toBe(false);
   });
 });

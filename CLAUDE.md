@@ -147,7 +147,10 @@ export { loader, action } from "#utils/loaders/store.loader";
 | `/templates` | `templates.tsx` | Signed-in gallery of layout templates (public + your own private). Action handles `useTemplate` (→ new store), `createFromStore`, `setVisibility`, `deleteTemplate`. |
 | `/templates/new` | `templates.new.tsx` | From-scratch template builder; reuses `StoreViewFinder` via its `onSave` prop. Creates a **private** template (toggle public in the gallery). |
 | `/trade` | `trade.tsx` | Signed-in **global Bazaar** (DESIGN.md §7): browse all `forTrade` listings, list/unlist your own, and make/accept/decline/cancel trade offers. Action authorizes per-offer (owner vs requester). |
+| `/reminders` | `reminders.tsx` | Signed-in cross-store reminders (DESIGN §4/§6): doses due today (one-tap Take/Snooze), medications running low, and expiring meds. Loader aggregates over all the user's stores (reuses the home-loader pattern + `dose.helper`). Nav link + dashboard "N doses due" chip. |
 | `/api/barcode` | `api.barcode.ts` | Resource route (no UI). `GET ?code=` → Open Food Facts product lookup for barcode scanning. |
+| `/api/item-history` | `api.item-history.ts` | Resource route. `GET ?itemId=` → an item's `itemLogs` with `loggedBy` resolved to Clerk names (owner/editor only). Powers the ItemDetailPopup history timeline. |
+| `/api/doses` | `api.doses.ts` | Resource route. `GET ?itemId=` → the user's dose schedule for an item; `POST` `setSchedule`/`removeSchedule`/`takeDose`/`snooze` (each authorises the item's store). |
 
 ## Data model (`app/lib/schema.ts`)
 
@@ -183,12 +186,28 @@ All ids are `text` UUIDs (`crypto.randomUUID()`). Timestamps are `integer` epoch
   `steps` (`{text, imageUrl?}[]`) and `tags` are JSON-string columns; plus
   `blurb`, `imageUrl`, `sourceUrl`, `minutes`, `serves`. CRUD via `/api/recipes`;
   import via `/api/recipe-search` (TheMealDB) + `/api/recipe-import` (JSON-LD).
+  **Sharing** (DESIGN §7, templates pattern): `isPublic` (default false) makes a
+  recipe visible + copyable in the Recipes panel's **Community** tab; `usageCount`
+  bumps on each copy. `copyRecipeToUser` clones a public recipe into a fresh `ur_*`
+  (never your own); only name/photo/steps/ingredients are shared — never inventory.
+  The dashboard shows a "N to cook tonight" chip per store card (cookable count
+  from `matchRecipes`, computed in `home.loader`).
 - **scheduledMeals** — a recipe scheduled on a day, **per-store** (FK → store,
   cascade). `recipeRef` is a recipe id (a `ur_*` save or a seeded id) — intentionally
   **not an FK** (seeds aren't rows); `recipeName` is denormalised so the entry reads
   after a recipe is deleted. `dateKey` is local "YYYY-MM-DD" (date-only, no tz drift);
   `mealType` ∈ `{breakfast, lunch, dinner, snack}`. Powers the calendar panel + the
   shopping list's Upcoming tab.
+- **doseSchedules** — opt-in "take N times a day" schedule for a medication item
+  (reminders v1, DESIGN §4/§6). `userId` (whoever tracks it) + FK → item (cascade);
+  `timesPerDay` 1–4, `startDate`, `endDate` nullable (= ongoing), `active`. Taking a
+  dose is **not** stored here — it's an `itemLogs` row (delta −1, note `"dose"`), so
+  adherence + refill prediction reuse the usage estimator. Slot math + due-count is
+  pure in `dose.helper` (even slots across 08:00–22:00 local). Also
+  **`items.alertSnoozedUntil`** (nullable) — while future, `getItemStatus` stays
+  quiet (suppresses low/expiring, never `out`). All dose mutations go through the
+  `/api/doses` resource route (authorises the item's store per call, since the
+  reminders surface is cross-store).
 - **templates** — a reusable, shareable store **layout** (blocks only, no items):
   name, description, tags, `rows`/`cols`, `userId` (creator), `isPublic`,
   `usageCount`. Any signed-in user can create templates; public ones are visible

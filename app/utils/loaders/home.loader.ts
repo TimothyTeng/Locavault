@@ -9,9 +9,14 @@ import {
   getStoresByUserWithDetails,
   getStoresMemberOf,
   getUsageLogsByStores,
+  getDoseSchedulesByUser,
+  getTodayDoseCounts,
+  getUserRecipes,
   verifyStoreAccess,
   verifyStoreOwner,
 } from "~/lib/queries";
+import { dosesDueNow } from "~/utils/helpers/dose.helper";
+import { matchRecipes } from "~/utils/helpers/recipes.helper";
 import {
   estimateUsage,
   describeRunout,
@@ -43,6 +48,7 @@ export async function loader(args: LoaderFunctionArgs) {
       stores: [],
       attention: [] as AttentionItem[],
       spentThisMonthCents: 0,
+      dosesDue: 0,
     };
 
   const [ownedStores, memberStores] = await Promise.all([
@@ -123,7 +129,46 @@ export async function loader(args: LoaderFunctionArgs) {
   );
   const spentThisMonthCents = spentCents(monthLogs, costByItem);
 
-  return { stores, attention: attention.slice(0, 40), spentThisMonthCents };
+  // Doses due today across all the user's tracked medications.
+  const schedules = await getDoseSchedulesByUser(userId);
+  let dosesDue = 0;
+  if (schedules.length) {
+    const todayStart = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
+    const taken = await getTodayDoseCounts(
+      schedules.map((s) => s.itemId),
+      todayStart,
+    );
+    for (const s of schedules) {
+      if (dosesDueNow(s, taken.get(s.itemId) ?? 0, now) > 0) dosesDue += 1;
+    }
+  }
+
+  // ── "What can I cook tonight?" — cookable recipe count per store ──
+  const userRecipes = await getUserRecipes(userId);
+  const itemsByStore = new Map<string, Item[]>();
+  for (const it of rawItems) {
+    const arr = itemsByStore.get(it.storeId) ?? [];
+    arr.push(it as Item);
+    itemsByStore.set(it.storeId, arr);
+  }
+  const storesWithCookable = stores.map((s) => ({
+    ...s,
+    cookableCount: matchRecipes(
+      itemsByStore.get(s.id) ?? [],
+      userRecipes,
+    ).filter((m) => m.cookable).length,
+  }));
+
+  return {
+    stores: storesWithCookable,
+    attention: attention.slice(0, 40),
+    spentThisMonthCents,
+    dosesDue,
+  };
 }
 
 // ── Action ─────────────────────────────────────────────────

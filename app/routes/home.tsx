@@ -37,7 +37,7 @@ export function meta({}: Route.MetaArgs) {
 export default function Home() {
   const { isSignedIn, isLoaded } = useAuth();
   const { revalidate } = useRevalidator();
-  const { stores, attention, spentThisMonthCents } =
+  const { stores, attention, spentThisMonthCents, dosesDue } =
     useLoaderData<typeof loader>();
 
   // Only revalidate on actual sign-in/sign-out transitions, not on initial mount
@@ -167,6 +167,7 @@ export default function Home() {
           stores={stores}
           attention={attention ?? []}
           spentThisMonthCents={spentThisMonthCents ?? 0}
+          dosesDue={dosesDue ?? 0}
         />
       </Show>
     </div>

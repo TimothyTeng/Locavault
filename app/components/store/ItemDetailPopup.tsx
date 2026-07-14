@@ -5,6 +5,7 @@ import { CloseButton } from "~/components/common/CloseButton";
 import type { Item } from "~/types/storeTypes";
 import {
   fieldsForType,
+  hasTrait,
   ITEM_TYPES,
   TYPE_META,
   type ItemType,
@@ -16,6 +17,7 @@ import {
   itemRunoutDays,
 } from "~/utils/helpers/storeTable.helper";
 import { describeUsage } from "~/utils/helpers/usage.helper";
+import { describeSchedule } from "~/utils/helpers/dose.helper";
 import { useDialog } from "~/components/common/useDialog";
 import { useBlockOptions } from "./blockOptions";
 import { RunoutPhrase, RunoutConfirm } from "./runoutChip";
@@ -525,6 +527,11 @@ export function ItemDetailPopup({
           </div>
         )}
 
+        {/* Dose tracking — opt-in reminder schedule for medications. */}
+        {!isEditing && hasTrait(item.itemType, "dosed") && (
+          <DoseControls item={item} />
+        )}
+
         {/* Confirm loop — predicted run-out passed but stock remains. */}
         {!isEditing && item.runoutConfirm && onMarkOut && onStillHave && (
           <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 flex flex-col gap-2">
@@ -596,5 +603,144 @@ export function ItemDetailPopup({
       </div>
     </div>,
     document.body,
+  );
+}
+
+type LoadedSchedule = {
+  id: string;
+  timesPerDay: number;
+  endDate: string | null;
+  active: boolean;
+} | null;
+
+/**
+ * Opt-in dose tracking for a medication item (DESIGN.md §4/§6 — the `dosed`
+ * trait). Loads the current schedule, lets the owner start one (times/day +
+ * duration), take a dose now, or stop. Posts to /api/doses; the reminders page
+ * and dashboard chip read the same schedules.
+ */
+function DoseControls({ item }: { item: Item }) {
+  const loadFetcher = useFetcher<{ schedule: LoadedSchedule }>();
+  const actionFetcher = useFetcher();
+  const [adding, setAdding] = useState(false);
+  const [times, setTimes] = useState(1);
+  const [days, setDays] = useState(""); // blank = ongoing
+
+  useEffect(() => {
+    loadFetcher.load(`/api/doses?itemId=${item.id}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id]);
+  // Reload the schedule after any mutation settles.
+  useEffect(() => {
+    if (actionFetcher.state === "idle" && actionFetcher.data) {
+      loadFetcher.load(`/api/doses?itemId=${item.id}`);
+      setAdding(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionFetcher.state, actionFetcher.data]);
+
+  const schedule = loadFetcher.data?.schedule ?? null;
+  const busy = actionFetcher.state !== "idle";
+  const post = (body: Record<string, string | number>) =>
+    actionFetcher.submit(body, {
+      method: "POST",
+      action: "/api/doses",
+      encType: "application/json",
+    });
+
+  const btn =
+    "rounded-md px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest transition-colors";
+
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 flex flex-col gap-2">
+      <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
+        Dose tracking
+      </span>
+
+      {schedule ? (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] text-slate-600">
+            {describeSchedule({
+              timesPerDay: schedule.timesPerDay,
+              endDate: schedule.endDate ? new Date(schedule.endDate) : null,
+            })}
+          </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => post({ _action: "takeDose", itemId: item.id })}
+              disabled={busy || item.quantity <= 0}
+              className={`${btn} bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40`}
+            >
+              Take dose
+            </button>
+            <button
+              onClick={() =>
+                post({ _action: "removeSchedule", itemId: item.id })
+              }
+              disabled={busy}
+              className={`${btn} border border-slate-200 text-slate-500 hover:bg-white`}
+            >
+              Stop
+            </button>
+          </div>
+        </div>
+      ) : adding ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="text-[10px] text-slate-500 flex items-center gap-1">
+            <select
+              value={times}
+              onChange={(e) => setTimes(Number(e.target.value))}
+              className="bg-white border border-slate-200 rounded px-1.5 py-1 text-[11px] font-mono focus:outline-none"
+            >
+              {[1, 2, 3, 4].map((n) => (
+                <option key={n} value={n}>
+                  {n}×
+                </option>
+              ))}
+            </select>
+            daily
+          </label>
+          <label className="text-[10px] text-slate-500 flex items-center gap-1">
+            for
+            <input
+              type="number"
+              min={1}
+              value={days}
+              onChange={(e) => setDays(e.target.value)}
+              placeholder="ongoing"
+              className="w-20 bg-white border border-slate-200 rounded px-1.5 py-1 text-[11px] font-mono focus:outline-none"
+            />
+            days
+          </label>
+          <button
+            onClick={() =>
+              post({
+                _action: "setSchedule",
+                itemId: item.id,
+                timesPerDay: times,
+                days: days ? Number(days) : 0,
+              })
+            }
+            disabled={busy}
+            className={`${btn} bg-slate-800 text-white hover:bg-slate-700`}
+          >
+            Start
+          </button>
+          <button
+            onClick={() => setAdding(false)}
+            className={`${btn} border border-slate-200 text-slate-500 hover:bg-white`}
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setAdding(true)}
+          className={`${btn} self-start border border-slate-300 text-slate-600 hover:bg-white`}
+        >
+          Track doses
+        </button>
+      )}
+    </div>
   );
 }

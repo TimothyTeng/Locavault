@@ -15,6 +15,8 @@ export type StoreWithDetails = {
   itemCount: number;
   pinned?: boolean;
   role?: "owner" | "editor" | "viewer"; // undefined = owned (legacy), set for member stores
+  /** Recipes cookable right now from this store's stock ("cook tonight?"). */
+  cookableCount?: number;
 };
 
 export type SortOption = "name" | "created";

@@ -35,6 +35,12 @@ export type Recipe = {
   serves: number;
   /** True for user-saved recipes (vs the seeded library) — drives edit/delete. */
   custom?: boolean;
+  /** Shared to the community (public recipes only). */
+  isPublic?: boolean;
+  /** Times copied by others (public recipes). */
+  usageCount?: number;
+  /** Owner's Clerk id (public recipes) — to hide "Save a copy" on your own. */
+  authorId?: string;
 };
 
 /**

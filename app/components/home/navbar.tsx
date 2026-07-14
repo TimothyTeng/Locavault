@@ -39,6 +39,7 @@ export default function Navbar() {
   const appLinks = [
     { href: "/", label: "My stores" },
     { href: "/templates", label: "Templates" },
+    { href: "/reminders", label: "Reminders" },
     { href: "/trade", label: "Trade" },
   ];
 

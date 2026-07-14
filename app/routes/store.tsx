@@ -50,7 +50,10 @@ import { blocksToBlocksMap } from "#utils/helpers/store.helper";
 import { suggestRestockQty } from "#utils/helpers/usage.helper";
 import { ShoppingMode } from "~/components/purchases/shoppingMode";
 import { decrementForIngredient } from "#utils/helpers/recipeCook.helper";
-import { getItemStatus } from "#utils/helpers/storeTable.helper";
+import {
+  getItemStatus,
+  itemNeedsDetails,
+} from "#utils/helpers/storeTable.helper";
 import { useIsMobile } from "~/utils/useIsMobile";
 import type { loader } from "#utils/loaders/store.loader";
 import { PurchaseOrderPanel } from "~/components/purchases/purchaseOrderPanel";
@@ -117,6 +120,9 @@ export default function StorePage() {
   const [focusedZoneId, setFocusedZoneId] = useState<string | null>(null);
   // Optional status filter driven by the overview chips (all-items view).
   const [statusFilter, setStatusFilter] = useState<ItemStatus | null>(null);
+  // Enrich-later "Needs details" queue: a filter toggle + a session dismiss.
+  const [detailsFilter, setDetailsFilter] = useState(false);
+  const [detailsDismissed, setDetailsDismissed] = useState(false);
   // All-items view: cards (visual, default) or table (sort/filter power).
   const [viewMode, setViewMode] = useState<"cards" | "table">("cards");
   // Top-level surface: the map IS the app (default), or the flat inventory list.
@@ -268,6 +274,15 @@ export default function StorePage() {
 
   // How many inventory items currently need restocking (low / out / expiring)
   const restockCount = items.filter((i) => getItemStatus(i) !== "ok").length;
+
+  // Enrich-later queue count + the list the overview shows (details filter wins,
+  // else the status filter, else everything).
+  const needsDetailsCount = items.filter(itemNeedsDetails).length;
+  const overviewItems = detailsFilter
+    ? items.filter(itemNeedsDetails)
+    : statusFilter
+      ? items.filter((i) => getItemStatus(i) === statusFilter)
+      : items;
 
   // Per-zone status badges for the canvas: worst severity + count of items
   // needing attention, so the floor plan reads as a triage dashboard.
@@ -598,7 +613,8 @@ export default function StorePage() {
       useRatePeriod: data.useRatePeriod ?? null,
     };
     setItems((prev) => [...prev, newItem]);
-    setAddItemOpen(false);
+    // Keep the panel open for rapid entry (the form refocuses its name field and
+    // builds an "Added ✓" ticker); close via the panel's X / Escape.
     createFetcher.submit(
       {
         _action: "createItem",
@@ -1602,21 +1618,32 @@ export default function StorePage() {
                             canEdit ? handleAddAllSuggestions : undefined
                           }
                           activeStatus={statusFilter}
-                          onSelectStatus={(s) =>
-                            setStatusFilter((prev) => (prev === s ? null : s))
+                          onSelectStatus={(s) => {
+                            setStatusFilter((prev) => (prev === s ? null : s));
+                            setDetailsFilter(false);
+                          }}
+                          needsDetailsCount={
+                            detailsDismissed ? 0 : needsDetailsCount
                           }
+                          detailsActive={detailsFilter}
+                          onToggleDetails={
+                            canEdit
+                              ? () => {
+                                  setDetailsFilter((v) => !v);
+                                  setStatusFilter(null);
+                                }
+                              : undefined
+                          }
+                          onDismissDetails={() => {
+                            setDetailsFilter(false);
+                            setDetailsDismissed(true);
+                          }}
                           viewMode={viewMode}
                           onViewModeChange={setViewMode}
                         />
                         {viewMode === "cards" ? (
                           <ItemCardGrid
-                            items={
-                              statusFilter
-                                ? items.filter(
-                                    (i) => getItemStatus(i) === statusFilter,
-                                  )
-                                : items
-                            }
+                            items={overviewItems}
                             onSave={handleSaveItem}
                             onDelete={handleDeleteItem}
                             onMarkOut={canEdit ? handleMarkItemOut : undefined}
@@ -1634,13 +1661,7 @@ export default function StorePage() {
                           />
                         ) : (
                           <StoreTable
-                            items={
-                              statusFilter
-                                ? items.filter(
-                                    (i) => getItemStatus(i) === statusFilter,
-                                  )
-                                : items
-                            }
+                            items={overviewItems}
                             selectedItemId={selectedItemId}
                             onSelect={handleSelectItem}
                             onSave={handleSaveItem}

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { FieldLabel } from "../addstore/storeViewFinder/StoreForm";
 import { runOutDays } from "~/utils/helpers/store.helper";
 import { UNIT_OPTIONS } from "~/utils/helpers/units";
@@ -96,9 +96,15 @@ export function AddItemForm({
     "week",
   );
   const [showExtra, setShowExtra] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
   const [looking, setLooking] = useState(false);
   const [lookupNote, setLookupNote] = useState<string | null>(null);
+
+  // Rapid-entry loop: the panel stays open after each add, the name refocuses,
+  // and a small ticker of what was just added builds up (Enter-add-Enter-add).
+  const nameRef = useRef<HTMLInputElement>(null);
+  const [addedTicker, setAddedTicker] = useState<string[]>([]);
 
   // Handle a scanned/typed barcode: parse GS1 fields locally, then look up
   // the product name/category for plain retail codes.
@@ -220,6 +226,32 @@ export function AddItemForm({
         )
       : null;
 
+  // Expiry quick-set: a few relative chips beat typing a date. The per-type
+  // default (fridge food → +1w, meds → +1m) is highlighted, never auto-filled.
+  const EXPIRY_CHIPS = [
+    { days: 3, label: "+3d" },
+    { days: 7, label: "+1w" },
+    { days: 14, label: "+2w" },
+    { days: 30, label: "+1m" },
+  ];
+  const suggestedExpiryDays =
+    itemType === "food" ? 7 : itemType === "medication" ? 30 : null;
+  const setExpiryInDays = (days: number) => {
+    const d = new Date();
+    d.setDate(d.getDate() + days);
+    setExpiryDate(toDateInput(d));
+    setShowDatePicker(false);
+  };
+  const activeExpiryChip = (() => {
+    if (!expiryDate) return null;
+    for (const c of EXPIRY_CHIPS) {
+      const d = new Date();
+      d.setDate(d.getDate() + c.days);
+      if (toDateInput(d) === expiryDate) return c.days;
+    }
+    return null;
+  })();
+
   const resetForm = () => {
     setName("");
     setDescription("");
@@ -239,6 +271,7 @@ export function AddItemForm({
     setUseRate("");
     setUseRatePeriod("week");
     setShowExtra(false);
+    setShowDatePicker(false);
     setLookupNote(null);
   };
 
@@ -246,13 +279,60 @@ export function AddItemForm({
 
   const expiryField = (
     <div className="flex flex-col gap-2">
-      <FieldLabel>Expiry Date</FieldLabel>
-      <input
-        type="date"
-        value={expiryDate}
-        onChange={(e) => setExpiryDate(e.target.value)}
-        className={inputClass}
-      />
+      <FieldLabel>Expiry</FieldLabel>
+      <div className="flex flex-wrap gap-1.5">
+        {EXPIRY_CHIPS.map((c) => {
+          const active = activeExpiryChip === c.days;
+          const suggested = !expiryDate && suggestedExpiryDays === c.days;
+          return (
+            <button
+              type="button"
+              key={c.days}
+              onClick={() => setExpiryInDays(c.days)}
+              className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest transition-colors ${
+                active
+                  ? "bg-slate-800 text-white border border-slate-800"
+                  : suggested
+                    ? "border border-emerald-300 bg-emerald-50 text-emerald-700"
+                    : "border border-slate-200 bg-white text-slate-500 hover:border-slate-400"
+              }`}
+            >
+              {c.label}
+            </button>
+          );
+        })}
+        <button
+          type="button"
+          onClick={() => setShowDatePicker((v) => !v)}
+          className={`rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest transition-colors ${
+            showDatePicker || (expiryDate && activeExpiryChip == null)
+              ? "bg-slate-800 text-white border border-slate-800"
+              : "border border-slate-200 bg-white text-slate-500 hover:border-slate-400"
+          }`}
+        >
+          Date…
+        </button>
+        {expiryDate && (
+          <button
+            type="button"
+            onClick={() => {
+              setExpiryDate("");
+              setShowDatePicker(false);
+            }}
+            className="rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-400 hover:text-slate-600"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      {showDatePicker && (
+        <input
+          type="date"
+          value={expiryDate}
+          onChange={(e) => setExpiryDate(e.target.value)}
+          className={inputClass}
+        />
+      )}
       {freshDays != null && (
         <p className="text-[10px] font-mono text-slate-400">
           {freshDays >= 0
@@ -328,6 +408,9 @@ export function AddItemForm({
           useRatePeriod: useRate !== "" ? useRatePeriod : null,
         });
         resetForm();
+        // Rapid entry: keep the panel open, remember what was added, refocus.
+        setAddedTicker((prev) => [finalName, ...prev].slice(0, 6));
+        setTimeout(() => nameRef.current?.focus(), 0);
       }}
       className="flex flex-col gap-6"
     >
@@ -364,6 +447,7 @@ export function AddItemForm({
       <div className="flex flex-col gap-2">
         <FieldLabel>Item Name</FieldLabel>
         <input
+          ref={nameRef}
           type="text"
           value={name}
           maxLength={60}
@@ -609,6 +693,32 @@ export function AddItemForm({
       >
         Add Item
       </button>
+
+      {/* Rapid-entry ticker — what you've added this session, newest first */}
+      {addedTicker.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-500">
+            Added
+          </span>
+          {addedTicker.map((n, i) => (
+            <span
+              key={`${n}-${i}`}
+              className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-mono text-emerald-700"
+            >
+              <svg width="8" height="8" viewBox="0 0 12 12" fill="none">
+                <path
+                  d="M2 6l3 3 5-5"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              {n}
+            </span>
+          ))}
+        </div>
+      )}
 
       {scanOpen && (
         <BarcodeScanner

@@ -1,9 +1,12 @@
-import type { ActionFunctionArgs } from "react-router";
+import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 import { getAuth } from "@clerk/react-router/server";
 import {
   createUserRecipe,
   updateUserRecipe,
   deleteUserRecipe,
+  getPublicRecipes,
+  setRecipeVisibility,
+  copyRecipeToUser,
 } from "~/lib/queries";
 import type { RecipeIngredient, RecipeStep } from "~/types/recipeTypes";
 import { normalizeUnit } from "~/utils/helpers/units";
@@ -86,12 +89,42 @@ function optInt(v: unknown): number | null {
   return isFinite(n) && n > 0 ? Math.round(n) : null;
 }
 
+/** GET ?public=1&q= → community (public) recipes for the Community tab. */
+export async function loader(args: LoaderFunctionArgs) {
+  const { userId } = await getAuth(args);
+  if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
+  const url = new URL(args.request.url);
+  if (url.searchParams.get("public") !== "1")
+    return Response.json({ recipes: [] });
+  const recipes = await getPublicRecipes(
+    url.searchParams.get("q") ?? undefined,
+  );
+  return Response.json({ recipes });
+}
+
 export async function action(args: ActionFunctionArgs) {
   const { userId } = await getAuth(args);
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
 
   const body = (await args.request.json()) as Record<string, unknown>;
   const act = body._action;
+
+  // Toggle a recipe public/private (owner-guarded in the query).
+  if (act === "setVisibility") {
+    const id = String(body.id ?? "");
+    if (!id) return Response.json({ error: "invalid" }, { status: 400 });
+    await setRecipeVisibility(id, userId, body.isPublic === true);
+    return Response.json({ ok: true });
+  }
+
+  // Save a copy of a public recipe into the user's library.
+  if (act === "copy") {
+    const id = String(body.id ?? "");
+    const recipe = await copyRecipeToUser(id, userId);
+    if (!recipe)
+      return Response.json({ error: "not_copyable" }, { status: 400 });
+    return Response.json({ recipe });
+  }
 
   if (act === "create" || act === "update") {
     const name = str(body.name, 120);

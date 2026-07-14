@@ -1,4 +1,4 @@
-import { eq, sql, inArray, and, isNull, gt, desc, ne } from "drizzle-orm";
+import { eq, sql, inArray, and, isNull, gt, gte, desc, ne } from "drizzle-orm";
 import { db } from "./db";
 import {
   stores,
@@ -16,6 +16,7 @@ import {
   customFixtures,
   recipes,
   scheduledMeals,
+  doseSchedules,
   nameTypeConsensus,
 } from "./schema";
 import type {
@@ -1721,6 +1722,9 @@ function parseUserRecipe(row: typeof recipes.$inferSelect): Recipe {
     minutes: row.minutes ?? 0,
     serves: row.serves ?? 1,
     custom: true,
+    isPublic: row.isPublic,
+    usageCount: row.usageCount,
+    authorId: row.userId,
   };
 }
 
@@ -1736,14 +1740,20 @@ type RecipeInput = {
   serves?: number | null;
 };
 
-/** All recipes saved by a user (newest first), as runtime `Recipe`s. */
+/** All recipes saved by a user (newest first), as runtime `Recipe`s. Degrades to
+ *  [] on DB trouble (e.g. before the recipe-sharing migration adds its columns) so
+ *  the store/dashboard loaders never break. */
 export async function getUserRecipes(userId: string): Promise<Recipe[]> {
-  const rows = await db
-    .select()
-    .from(recipes)
-    .where(eq(recipes.userId, userId))
-    .orderBy(desc(recipes.createdAt));
-  return rows.map(parseUserRecipe);
+  try {
+    const rows = await db
+      .select()
+      .from(recipes)
+      .where(eq(recipes.userId, userId))
+      .orderBy(desc(recipes.createdAt));
+    return rows.map(parseUserRecipe);
+  } catch {
+    return [];
+  }
 }
 
 export async function createUserRecipe(
@@ -1799,6 +1809,84 @@ export async function deleteUserRecipe(
   await db
     .delete(recipes)
     .where(and(eq(recipes.id, id), eq(recipes.userId, userId)));
+}
+
+// ─── RECIPE SHARING (community / "template recipes") ───────
+
+/**
+ * Public recipes for the community tab, most-copied first. Optional case-insensitive
+ * name search. Degrades to [] on DB trouble (e.g. before the sharing migration).
+ */
+export async function getPublicRecipes(
+  search?: string,
+  limit = 60,
+): Promise<Recipe[]> {
+  try {
+    const conds = [eq(recipes.isPublic, true)];
+    const q = (search ?? "").trim().toLowerCase();
+    if (q) conds.push(sql`lower(${recipes.name}) like ${"%" + q + "%"}`);
+    const rows = await db
+      .select()
+      .from(recipes)
+      .where(and(...conds))
+      .orderBy(desc(recipes.usageCount), desc(recipes.createdAt))
+      .limit(limit);
+    return rows.map(parseUserRecipe);
+  } catch {
+    return [];
+  }
+}
+
+/** Toggle a recipe's public visibility (owner-guarded). */
+export async function setRecipeVisibility(
+  id: string,
+  userId: string,
+  isPublic: boolean,
+): Promise<void> {
+  await db
+    .update(recipes)
+    .set({ isPublic })
+    .where(and(eq(recipes.id, id), eq(recipes.userId, userId)));
+}
+
+/**
+ * Copy a public recipe into a user's own library as a fresh `ur_*` clone (keeps
+ * sourceUrl, resets sharing), and bump the origin's usageCount. Won't copy your
+ * own recipe. Returns the new recipe, or null if the source isn't copyable.
+ */
+export async function copyRecipeToUser(
+  sourceId: string,
+  userId: string,
+): Promise<Recipe | null> {
+  const [src] = await db
+    .select()
+    .from(recipes)
+    .where(eq(recipes.id, sourceId))
+    .limit(1);
+  if (!src || !src.isPublic || src.userId === userId) return null;
+
+  const [row] = await db
+    .insert(recipes)
+    .values({
+      userId,
+      name: src.name,
+      blurb: src.blurb,
+      imageUrl: src.imageUrl,
+      sourceUrl: src.sourceUrl,
+      ingredients: src.ingredients,
+      steps: src.steps,
+      tags: src.tags,
+      minutes: src.minutes,
+      serves: src.serves,
+      isPublic: false,
+      usageCount: 0,
+    })
+    .returning();
+  await db
+    .update(recipes)
+    .set({ usageCount: (src.usageCount ?? 0) + 1 })
+    .where(eq(recipes.id, sourceId));
+  return parseUserRecipe(row);
 }
 
 // ─── MEAL PLAN ─────────────────────────────────────────────
@@ -1863,4 +1951,161 @@ export async function deleteScheduledMeal(
   await db
     .delete(scheduledMeals)
     .where(and(eq(scheduledMeals.id, id), eq(scheduledMeals.storeId, storeId)));
+}
+
+// ─── DOSE SCHEDULES (reminders v1) ─────────────────────────
+// Opt-in "take N times a day" schedules for medication items. Scoped to the
+// user who tracks it. Taking a dose is an itemLogs row (delta −1, note "dose"),
+// so adherence + refill prediction reuse existing machinery.
+
+/** A dose schedule joined with its item + store context (pre-adherence). */
+export type DoseScheduleRow = {
+  id: string;
+  itemId: string;
+  userId: string;
+  timesPerDay: number;
+  startDate: Date;
+  endDate: Date | null;
+  active: boolean;
+  createdAt: Date | null;
+  itemName: string;
+  quantity: number;
+  unit: string | null;
+  storeId: string;
+  storeName: string;
+};
+
+/**
+ * Every dose schedule a user owns, joined to item + store labels. Degrades to an
+ * empty list on any DB trouble (e.g. before the reminders migration is applied)
+ * so the dashboard/reminders never break — same resilience as `getCrowdTypeHints`.
+ */
+export async function getDoseSchedulesByUser(
+  userId: string,
+): Promise<DoseScheduleRow[]> {
+  try {
+    return await db
+      .select({
+        id: doseSchedules.id,
+        itemId: doseSchedules.itemId,
+        userId: doseSchedules.userId,
+        timesPerDay: doseSchedules.timesPerDay,
+        startDate: doseSchedules.startDate,
+        endDate: doseSchedules.endDate,
+        active: doseSchedules.active,
+        createdAt: doseSchedules.createdAt,
+        itemName: items.name,
+        quantity: items.quantity,
+        unit: items.unit,
+        storeId: items.storeId,
+        storeName: stores.name,
+      })
+      .from(doseSchedules)
+      .innerJoin(items, eq(doseSchedules.itemId, items.id))
+      .innerJoin(stores, eq(items.storeId, stores.id))
+      .where(eq(doseSchedules.userId, userId));
+  } catch {
+    return [];
+  }
+}
+
+/** The (single) schedule tracked for an item by a user, or null. */
+export async function getDoseScheduleForItem(itemId: string, userId: string) {
+  const [row] = await db
+    .select()
+    .from(doseSchedules)
+    .where(
+      and(eq(doseSchedules.itemId, itemId), eq(doseSchedules.userId, userId)),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+export async function getDoseScheduleById(id: string) {
+  const [row] = await db
+    .select()
+    .from(doseSchedules)
+    .where(eq(doseSchedules.id, id))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function createDoseSchedule(input: {
+  itemId: string;
+  userId: string;
+  timesPerDay: number;
+  startDate: Date;
+  endDate: Date | null;
+}) {
+  const [row] = await db
+    .insert(doseSchedules)
+    .values({
+      itemId: input.itemId,
+      userId: input.userId,
+      timesPerDay: input.timesPerDay,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      active: true,
+    })
+    .returning();
+  return row;
+}
+
+/** Update a schedule's cadence/duration/active flag, scoped to its owner. */
+export async function updateDoseSchedule(
+  id: string,
+  userId: string,
+  patch: Partial<{
+    timesPerDay: number;
+    endDate: Date | null;
+    active: boolean;
+  }>,
+) {
+  await db
+    .update(doseSchedules)
+    .set(patch)
+    .where(and(eq(doseSchedules.id, id), eq(doseSchedules.userId, userId)));
+}
+
+export async function deleteDoseSchedule(
+  id: string,
+  userId: string,
+): Promise<void> {
+  await db
+    .delete(doseSchedules)
+    .where(and(eq(doseSchedules.id, id), eq(doseSchedules.userId, userId)));
+}
+
+/**
+ * Doses taken today per item — a count of itemLogs with note "dose" on or after
+ * `since` (the caller passes local start-of-day). Only the listed items.
+ */
+export async function getTodayDoseCounts(
+  itemIds: string[],
+  since: Date,
+): Promise<Map<string, number>> {
+  if (!itemIds.length) return new Map();
+  const rows = await db
+    .select({ itemId: itemLogs.itemId, n: sql<number>`count(*)` })
+    .from(itemLogs)
+    .where(
+      and(
+        inArray(itemLogs.itemId, itemIds),
+        eq(itemLogs.note, "dose"),
+        gte(itemLogs.loggedAt, since),
+      ),
+    )
+    .groupBy(itemLogs.itemId);
+  return new Map(rows.map((r) => [r.itemId, Number(r.n)]));
+}
+
+/** Snooze/dismiss an item's alerts until `until` (null clears the snooze). */
+export async function snoozeItemAlert(
+  itemId: string,
+  until: Date | null,
+): Promise<void> {
+  await db
+    .update(items)
+    .set({ alertSnoozedUntil: until })
+    .where(eq(items.id, itemId));
 }

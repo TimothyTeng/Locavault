@@ -51,6 +51,7 @@ export function RecipeEditor({
   onClose: () => void;
 }) {
   const save = useFetcher<{ recipe?: Recipe; ok?: boolean; error?: string }>();
+  const vis = useFetcher();
   const imp = useFetcher<{ recipe?: Partial<Recipe>; error?: string }>();
   const search = useFetcher<{
     results?: RecipeSearchResult[];
@@ -71,6 +72,17 @@ export function RecipeEditor({
   const [showUrlImport, setShowUrlImport] = useState(false);
   const [importUrl, setImportUrl] = useState("");
   const [imgBroken, setImgBroken] = useState(false);
+  const [isPublic, setIsPublic] = useState(!!initial?.isPublic);
+
+  const toggleVisibility = () => {
+    if (!initial) return;
+    const next = !isPublic;
+    setIsPublic(next);
+    vis.submit(
+      { _action: "setVisibility", id: initial.id, isPublic: next },
+      { method: "post", action: "/api/recipes", encType: "application/json" },
+    );
+  };
 
   const idRef = useRef(0);
   idRef.current = _seq; // keep the shared seq monotonic across instances
@@ -569,6 +581,34 @@ export function RecipeEditor({
               className={inputCls}
             />
           </label>
+
+          {/* Share to community — only for a saved recipe you own */}
+          {initial && (
+            <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isPublic}
+                onClick={toggleVisibility}
+                className={`mt-0.5 flex h-5 w-9 shrink-0 items-center rounded-full transition-colors ${
+                  isPublic ? "bg-emerald-500" : "bg-slate-300"
+                }`}
+              >
+                <span
+                  className={`h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${
+                    isPublic ? "translate-x-4" : "translate-x-0.5"
+                  }`}
+                />
+              </button>
+              <div className="min-w-0">
+                <span className={labelCls}>Share to community</span>
+                <p className="mt-0.5 text-[10px] leading-snug text-slate-400">
+                  {isPublic ? "Public — " : ""}Only the name, photo, and steps
+                  are shared. Never your inventory.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}

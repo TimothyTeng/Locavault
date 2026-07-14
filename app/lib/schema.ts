@@ -97,6 +97,9 @@ export const items = sqliteTable("items", {
   // Bazaar. `tradeNote` is the optional "looking for…" (wants) line.
   forTrade: integer("for_trade", { mode: "boolean" }).notNull().default(false),
   tradeNote: text("trade_note"),
+  // Snooze/dismiss for this item's alerts (DESIGN.md §6): while set to a future
+  // time, getItemStatus suppresses its low/expiring/dose signals. Null = active.
+  alertSnoozedUntil: integer("alert_snoozed_until", { mode: "timestamp" }),
 });
 
 // ─── ITEM LOGS ─────────────────────────────────────────────
@@ -340,6 +343,11 @@ export const recipes = sqliteTable("recipes", {
   tags: text("tags").notNull().default("[]"),
   minutes: integer("minutes"),
   serves: integer("serves"),
+  // Recipe sharing ("template recipes", DESIGN §7 / templates pattern): a public
+  // recipe is visible to everyone and copyable; `usageCount` bumps on each copy.
+  // Only name/photo/steps/ingredients are shared — never inventory.
+  isPublic: integer("is_public", { mode: "boolean" }).notNull().default(false),
+  usageCount: integer("usage_count").notNull().default(0),
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
     () => new Date(),
   ),
@@ -445,6 +453,38 @@ export const scheduledMealsRelations = relations(scheduledMeals, ({ one }) => ({
   store: one(stores, {
     fields: [scheduledMeals.storeId],
     references: [stores.id],
+  }),
+}));
+
+// ─── DOSE SCHEDULES (reminders v1) ─────────────────────────
+// An opt-in "take N times a day" schedule for a medication item (DESIGN.md §4/§6).
+// User-scoped (whoever tracks it) but FK'd to the item so it's removed with it.
+// `timesPerDay` slots are spread evenly across waking hours (see dose.helper);
+// `endDate` null = ongoing/indefinite. Taking a dose is recorded as an itemLogs
+// row (delta −1, note "dose"), so adherence + refill prediction reuse existing
+// machinery rather than a second store of truth.
+
+export const doseSchedules = sqliteTable("dose_schedules", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  itemId: text("item_id")
+    .notNull()
+    .references(() => items.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  timesPerDay: integer("times_per_day").notNull().default(1),
+  startDate: integer("start_date", { mode: "timestamp" }).notNull(),
+  endDate: integer("end_date", { mode: "timestamp" }), // null = ongoing
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
+    () => new Date(),
+  ),
+});
+
+export const doseSchedulesRelations = relations(doseSchedules, ({ one }) => ({
+  item: one(items, {
+    fields: [doseSchedules.itemId],
+    references: [items.id],
   }),
 }));
 

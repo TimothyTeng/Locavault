@@ -1,6 +1,21 @@
 import type { Item, ItemStatus } from "~/types/storeTypes";
 import { expiryDateRemainingDays, remainingDays } from "./store.helper";
-import { TYPE_RUNOUT_THRESHOLD_DAYS } from "~/lib/itemTypes";
+import { TYPE_RUNOUT_THRESHOLD_DAYS, hasTrait } from "~/lib/itemTypes";
+
+/**
+ * Would this item benefit from a detail the fast-capture path skipped? A
+ * perishable item with no expiry, or a depleting one with no min-stock, can't be
+ * predicted well — the "enrich later" queue surfaces these gently. Out-of-stock
+ * items are excluded (nothing to enrich). Pure — drives the StoreOverview chip.
+ */
+export function itemNeedsDetails(item: Item): boolean {
+  if (item.quantity <= 0) return false;
+  if (hasTrait(item.itemType, "perishable") && item.expiryDate == null)
+    return true;
+  if (hasTrait(item.itemType, "depletes") && item.minQuantity == null)
+    return true;
+  return false;
+}
 
 export function formatCost(cents: number | null) {
   if (cents == null) return "—";
@@ -53,6 +68,11 @@ export function itemRunoutDays(item: Item): number | null {
 
 export function getItemStatus(item: Item): ItemStatus {
   if (item.quantity <= 0) return "out";
+  // Snoozed/dismissed: stay quiet on low/expiring until the snooze passes (a
+  // factual "out" above still shows). DESIGN §6 — gentle, never nagging.
+  if (item.alertSnoozedUntil && item.alertSnoozedUntil.getTime() > Date.now()) {
+    return "ok";
+  }
   const runoutDaysVal = itemRunoutDays(item);
   // Only an evidence-backed estimate (real history or a user-entered rate) may
   // raise a low-stock alert — a `prior` guess stays silent ("still learning").

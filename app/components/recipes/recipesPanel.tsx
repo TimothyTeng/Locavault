@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useFetcher } from "react-router";
 import {
   X,
   Clock,
@@ -14,6 +15,8 @@ import {
   ChefHat,
   Minus,
   CalendarPlus,
+  Globe,
+  Download,
 } from "lucide-react";
 import type { Item } from "~/types/storeTypes";
 import type { BlocksMap } from "~/types/storeViewFinderTypes";
@@ -35,7 +38,7 @@ import { PillButton } from "~/components/common/PillButton";
 import { EmptyState } from "~/components/common/EmptyState";
 import { RecipeEditor } from "./RecipeEditor";
 
-type Filter = "all" | "cook" | "almost" | "mine";
+type Filter = "all" | "cook" | "almost" | "mine" | "community";
 
 /** Subtle per-meal-type accent (mirrors the calendar panel). */
 const MEAL_TONE: Record<MealType, string> = {
@@ -122,6 +125,28 @@ export function RecipesPanel({
   const [editing, setEditing] = useState<Recipe | null>(null);
   const [creating, setCreating] = useState(false);
 
+  // Community tab — public recipes fetched on demand, plus a "Save a copy" action.
+  const communityFetcher = useFetcher<{ recipes?: Recipe[] }>();
+  const copyFetcher = useFetcher();
+  useEffect(() => {
+    if (filter !== "community") return;
+    const q = query.trim();
+    communityFetcher.load(
+      `/api/recipes?public=1${q ? `&q=${encodeURIComponent(q)}` : ""}`,
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filter, query]);
+  const communityRecipes = communityFetcher.data?.recipes ?? [];
+  const ownedIds = useMemo(
+    () => new Set(userRecipes.map((r) => r.id)),
+    [userRecipes],
+  );
+  const saveCopy = (id: string) =>
+    copyFetcher.submit(
+      { _action: "copy", id },
+      { method: "POST", action: "/api/recipes", encType: "application/json" },
+    );
+
   // Parent requested a specific recipe (a calendar meal was clicked) — open its
   // detail and let the parent clear the request so it can re-fire next time.
   useEffect(() => {
@@ -192,8 +217,9 @@ export function RecipesPanel({
   const fromMatch = detailId ? matchById.get(detailId) : undefined;
   const fallback =
     detailId && !fromMatch
-      ? ([...userRecipes, ...RECIPES].find((r) => r.id === detailId) ??
-        undefined)
+      ? ([...userRecipes, ...RECIPES, ...communityRecipes].find(
+          (r) => r.id === detailId,
+        ) ?? undefined)
       : undefined;
   const detail = fromMatch ?? (fallback ? emptyMatch(fallback) : undefined);
 
@@ -311,12 +337,42 @@ export function RecipesPanel({
                     onClick={() => setFilter("mine")}
                   />
                 )}
+                <FilterPill
+                  label="Community"
+                  active={filter === "community"}
+                  onClick={() => setFilter("community")}
+                />
               </div>
             </div>
 
             {/* List */}
             <div className="flex-1 overflow-auto px-4 pb-6">
-              {shown.length === 0 ? (
+              {filter === "community" ? (
+                communityFetcher.state === "loading" ? (
+                  <p className="py-16 text-center text-[11px] text-slate-400">
+                    Loading community recipes…
+                  </p>
+                ) : communityRecipes.length === 0 ? (
+                  <EmptyState
+                    className="gap-1 py-16"
+                    title="No public recipes yet"
+                    description="Recipes shared by the community show up here. Make one of yours public from its editor."
+                  />
+                ) : (
+                  <div className="flex flex-col gap-2.5">
+                    {communityRecipes.map((r) => (
+                      <CommunityCard
+                        key={r.id}
+                        recipe={r}
+                        owned={ownedIds.has(r.id) || r.authorId === undefined}
+                        onOpen={() => setDetailId(r.id)}
+                        onSave={() => saveCopy(r.id)}
+                        saving={copyFetcher.state !== "idle"}
+                      />
+                    ))}
+                  </div>
+                )
+              ) : shown.length === 0 ? (
                 <EmptyState
                   className="gap-1 py-16"
                   title={
@@ -385,7 +441,7 @@ function FilterPill({
   tone = "slate",
 }: {
   label: string;
-  n: number;
+  n?: number;
   active: boolean;
   onClick: () => void;
   tone?: "slate" | "emerald";
@@ -404,8 +460,67 @@ function FilterPill({
       }`}
     >
       {label}
-      <span className={active ? "opacity-80" : "text-slate-300"}>{n}</span>
+      {n != null && (
+        <span className={active ? "opacity-80" : "text-slate-300"}>{n}</span>
+      )}
     </button>
+  );
+}
+
+/** A public recipe row with a one-tap "Save a copy" into your own library. */
+function CommunityCard({
+  recipe,
+  owned,
+  onOpen,
+  onSave,
+  saving,
+}: {
+  recipe: Recipe;
+  owned: boolean;
+  onOpen: () => void;
+  onSave: () => void;
+  saving: boolean;
+}) {
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white px-3.5 py-3">
+      <button onClick={onOpen} className="min-w-0 flex-1 text-left">
+        <span className="block truncate text-[13px] font-bold text-slate-800">
+          {recipe.name}
+        </span>
+        {recipe.blurb && (
+          <p className="mt-0.5 truncate text-[11px] text-slate-400">
+            {recipe.blurb}
+          </p>
+        )}
+        <div className="mt-1.5 flex items-center gap-3 text-[10px] text-slate-400">
+          {recipe.minutes > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <Clock size={10} />
+              {recipe.minutes}m
+            </span>
+          )}
+          {(recipe.usageCount ?? 0) > 0 && (
+            <span className="inline-flex items-center gap-1">
+              <Download size={10} />
+              {recipe.usageCount} saved
+            </span>
+          )}
+        </div>
+      </button>
+      {owned ? (
+        <span className="shrink-0 rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-slate-400">
+          Yours
+        </span>
+      ) : (
+        <button
+          onClick={onSave}
+          disabled={saving}
+          className="flex shrink-0 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-bold uppercase tracking-widest text-slate-600 transition-colors hover:border-emerald-300 hover:text-emerald-600 disabled:opacity-40"
+        >
+          <Download size={11} strokeWidth={2.5} /> Save a copy
+        </button>
+      )}
+    </div>
   );
 }
 
