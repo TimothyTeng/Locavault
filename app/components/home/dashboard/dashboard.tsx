@@ -8,10 +8,14 @@ import type {
   SortOption,
   SortDir,
   AttentionItem,
+  Digest,
+  ItemIndexEntry,
 } from "#types/dashboardTypes";
 import { StoreCard } from "./storecard";
 import { EmptyState } from "./emptystate";
 import { AttentionDigest } from "./attentionDigest";
+import { WeeklyDigest } from "./weeklyDigest";
+import { CommandPalette } from "./commandPalette";
 import { Button } from "~/components/common/Button";
 import { CountUp } from "#components/common/countUp";
 import { formatMoney } from "#utils/helpers/money.helper";
@@ -24,6 +28,8 @@ type Props = {
   spentThisMonthCents?: number;
   dosesDue?: number;
   incomingOffers?: number;
+  digest?: Digest;
+  itemIndex?: ItemIndexEntry[];
 };
 
 export default function Dashboard({
@@ -32,6 +38,8 @@ export default function Dashboard({
   spentThisMonthCents = 0,
   dosesDue = 0,
   incomingOffers = 0,
+  digest,
+  itemIndex = [],
 }: Props) {
   const { user } = useUser();
   const navigate = useNavigate();
@@ -180,6 +188,7 @@ export default function Dashboard({
       ref={rootRef}
       className="min-h-screen bg-slate-50 px-4 sm:px-8 py-10 max-w-7xl mx-auto"
     >
+      <CommandPalette items={itemIndex} />
       {/* ── Header ── */}
       <div className="lv-dash-head flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
         <div>
@@ -208,6 +217,9 @@ export default function Dashboard({
           New store
         </Button>
       </div>
+
+      {/* ── Weekly digest (habit anchor) ── */}
+      {digest && stores.length > 0 && <WeeklyDigest digest={digest} />}
 
       {/* ── Action chips (doses / trade offers) ── */}
       {(dosesDue > 0 || incomingOffers > 0) && (

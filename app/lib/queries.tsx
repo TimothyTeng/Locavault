@@ -1273,6 +1273,103 @@ export async function createStoreFromTemplate(
   });
 }
 
+/**
+ * First-run onboarding: create a store from a template, apply the user's zone
+ * renames, and place their tapped starter items — all in one transaction. Unlike
+ * `createStoreFromTemplate` this assigns explicit block ids so items can be
+ * placed into the freshly-created zones by the template block they chose.
+ */
+export async function onboardStoreFromTemplate(
+  userId: string,
+  input: {
+    templateId: string;
+    storeName?: string;
+    zones: { templateBlockId: string; label: string }[];
+    items: {
+      name: string;
+      quantity: number;
+      itemType?: ItemType;
+      templateBlockId: string | null;
+    }[];
+  },
+): Promise<string> {
+  return db.transaction(async (tx) => {
+    const [tpl] = await tx
+      .select()
+      .from(templates)
+      .where(eq(templates.id, input.templateId));
+    if (!tpl) throw new Response("Template not found", { status: 404 });
+    if (!tpl.isPublic && tpl.userId !== userId)
+      throw new Response("Unauthorized", { status: 403 });
+
+    const storeId = crypto.randomUUID();
+    await tx.insert(stores).values({
+      id: storeId,
+      name: input.storeName?.trim() || tpl.name,
+      userId,
+      tags: tpl.tags,
+      description: tpl.description,
+      rows: tpl.rows,
+      cols: tpl.cols,
+      walls: tpl.walls ?? "[]",
+    });
+    await tx.insert(storeMembers).values({ storeId, userId, role: "owner" });
+
+    const tBlocks = await tx
+      .select()
+      .from(templateBlocks)
+      .where(eq(templateBlocks.templateId, input.templateId));
+
+    const labelOverride = new Map(
+      input.zones.map((z) => [z.templateBlockId, z.label]),
+    );
+    const idMap = new Map<string, string>(); // template block id → new block id
+
+    if (tBlocks.length) {
+      await tx.insert(blocks).values(
+        tBlocks.map((b) => {
+          const newId = crypto.randomUUID();
+          idMap.set(b.block_id, newId);
+          return {
+            id: newId,
+            storeId,
+            background: b.background,
+            border: b.border,
+            label: labelOverride.get(b.block_id)?.trim() || b.label,
+            height: b.height,
+            width: b.width,
+            x: b.x,
+            y: b.y,
+            kind: b.kind ?? "standard",
+            fixture: b.fixture ?? null,
+          };
+        }),
+      );
+    }
+
+    const itemValues = input.items
+      .filter((it) => it.name.trim())
+      .map((it) => ({
+        id: crypto.randomUUID(),
+        name: it.name.trim(),
+        storeId,
+        quantity: it.quantity > 0 ? it.quantity : 1,
+        blockId: it.templateBlockId
+          ? (idMap.get(it.templateBlockId) ?? null)
+          : null,
+        itemType: it.itemType ?? ("other" as ItemType),
+      }));
+    if (itemValues.length) await tx.insert(items).values(itemValues);
+
+    await tx
+      .update(templates)
+      .set({ usageCount: tpl.usageCount + 1 })
+      .where(eq(templates.id, input.templateId));
+
+    return storeId;
+  });
+}
+
 /** Toggle a template between public and private */
 export async function updateTemplateVisibility(id: string, isPublic: boolean) {
   return db.update(templates).set({ isPublic }).where(eq(templates.id, id));

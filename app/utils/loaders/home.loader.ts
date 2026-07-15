@@ -13,9 +13,13 @@ import {
   getTodayDoseCounts,
   getUserRecipes,
   getIncomingOfferCount,
+  getTemplatesForGallery,
+  onboardStoreFromTemplate,
   verifyStoreAccess,
   verifyStoreOwner,
 } from "~/lib/queries";
+import type { TemplateWithBlocks } from "~/types/templateTypes";
+import type { ItemType } from "~/types/itemTypeTypes";
 import { dosesDueNow } from "~/utils/helpers/dose.helper";
 import { matchRecipes } from "~/utils/helpers/recipes.helper";
 import {
@@ -31,7 +35,8 @@ import {
 import { expiryDateRemainingDays } from "~/utils/helpers/store.helper";
 import { spentCents } from "~/utils/helpers/money.helper";
 import type { Item, ItemStatus, UsageLog } from "~/types/storeTypes";
-import type { AttentionItem } from "~/types/dashboardTypes";
+import type { AttentionItem, ItemIndexEntry } from "~/types/dashboardTypes";
+import { redirect } from "react-router";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 
 const USAGE_WINDOW_DAYS = 120;
@@ -51,6 +56,9 @@ export async function loader(args: LoaderFunctionArgs) {
       spentThisMonthCents: 0,
       dosesDue: 0,
       incomingOffers: 0,
+      digest: { low: 0, expiring: 0, cookable: 0, doseEnding: 0 },
+      itemIndex: [] as ItemIndexEntry[],
+      onboardingTemplates: [] as TemplateWithBlocks[],
     };
 
   const [ownedStores, memberStores] = await Promise.all([
@@ -62,6 +70,22 @@ export async function loader(args: LoaderFunctionArgs) {
     ...ownedStores.map((s) => ({ ...s, role: "owner" as const })),
     ...memberStores,
   ];
+
+  // First run: no stores yet → hand the wizard the template gallery and skip the
+  // (empty) foresight/digest pipeline entirely.
+  if (stores.length === 0) {
+    const onboardingTemplates = await getTemplatesForGallery(userId);
+    return {
+      stores: [],
+      attention: [] as AttentionItem[],
+      spentThisMonthCents: 0,
+      dosesDue: 0,
+      incomingOffers: 0,
+      digest: { low: 0, expiring: 0, cookable: 0, doseEnding: 0 },
+      itemIndex: [] as ItemIndexEntry[],
+      onboardingTemplates,
+    };
+  }
 
   // ── Foresight digest: what needs attention across every store ──
   const storeIds = stores.map((s) => s.id);
@@ -160,12 +184,43 @@ export async function loader(args: LoaderFunctionArgs) {
     arr.push(it as Item);
     itemsByStore.set(it.storeId, arr);
   }
-  const storesWithCookable = stores.map((s) => ({
-    ...s,
-    cookableCount: matchRecipes(
-      itemsByStore.get(s.id) ?? [],
-      userRecipes,
-    ).filter((m) => m.cookable).length,
+  // Match once per store; derive the per-card count and a de-duped cookable set
+  // (same recipe cookable in two stores shouldn't count twice in the digest).
+  const cookableRecipeIds = new Set<string>();
+  const storesWithCookable = stores.map((s) => {
+    const matches = matchRecipes(itemsByStore.get(s.id) ?? [], userRecipes);
+    let cookableCount = 0;
+    for (const m of matches) {
+      if (!m.cookable) continue;
+      cookableCount += 1;
+      cookableRecipeIds.add(m.recipe.id);
+    }
+    return { ...s, cookableCount };
+  });
+
+  // ── Weekly digest: one habit-anchoring line over data already loaded ──
+  const weekAhead = new Date(now.getTime() + 7 * 86_400_000);
+  const digest = {
+    low: attention.filter((a) => a.status === "low" || a.status === "out")
+      .length,
+    expiring: attention.filter((a) => a.status === "expiring").length,
+    cookable: cookableRecipeIds.size,
+    doseEnding: schedules.filter(
+      (s) =>
+        s.active &&
+        s.endDate != null &&
+        s.endDate >= now &&
+        s.endDate <= weekAhead,
+    ).length,
+  };
+
+  // Lightweight cross-store item index for the ⌘K command palette.
+  const itemIndex = rawItems.map((i) => ({
+    id: i.id,
+    name: i.name,
+    storeId: i.storeId,
+    storeName: storeById.get(i.storeId)?.name ?? "Store",
+    itemType: i.itemType,
   }));
 
   return {
@@ -174,6 +229,9 @@ export async function loader(args: LoaderFunctionArgs) {
     spentThisMonthCents,
     dosesDue,
     incomingOffers,
+    digest,
+    itemIndex,
+    onboardingTemplates: [] as TemplateWithBlocks[],
   };
 }
 
@@ -200,6 +258,31 @@ function suggestQty(item: {
 export async function action(args: ActionFunctionArgs) {
   const { userId } = await getAuth(args);
   if (!userId) throw new Response("Unauthorized", { status: 401 });
+
+  // The first-run wizard posts structured JSON; everything else is form-encoded.
+  if (args.request.headers.get("content-type")?.includes("application/json")) {
+    const body = (await args.request.json()) as Record<string, unknown>;
+    if (body._action === "onboard") {
+      const storeId = await onboardStoreFromTemplate(userId, {
+        templateId: String(body.templateId ?? ""),
+        storeName:
+          typeof body.storeName === "string" ? body.storeName : undefined,
+        zones: Array.isArray(body.zones)
+          ? (body.zones as { templateBlockId: string; label: string }[])
+          : [],
+        items: Array.isArray(body.items)
+          ? (body.items as {
+              name: string;
+              quantity: number;
+              itemType?: ItemType;
+              templateBlockId: string | null;
+            }[])
+          : [],
+      });
+      return redirect(`/store/${storeId}`);
+    }
+    throw new Response("Unknown action", { status: 400 });
+  }
 
   const formData = await args.request.formData();
   const _action = formData.get("_action");

@@ -22,6 +22,23 @@ export type StoreWithDetails = {
 export type SortOption = "name" | "created";
 export type SortDir = "asc" | "desc";
 
+/** A searchable item for the ⌘K command palette (cross-store). */
+export type ItemIndexEntry = {
+  id: string;
+  name: string;
+  storeId: string;
+  storeName: string;
+  itemType: import("./itemTypeTypes").ItemType;
+};
+
+/** One-line weekly digest counts, aggregated across all the user's stores. */
+export type Digest = {
+  low: number;
+  expiring: number;
+  cookable: number;
+  doseEnding: number;
+};
+
 /** A cross-store item that needs attention (out / low / expiring / predicted). */
 export type AttentionItem = {
   id: string;
