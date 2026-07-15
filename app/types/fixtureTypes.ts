@@ -1,6 +1,6 @@
 /**
  * Fixtures give a block "character" — it renders as a recognisable top-down
- * pixel sprite (shelf, fridge, bed…) tinted by the block's colour. `null`
+ * vector drawing (shelf, fridge, bed…) tinted by the block's colour. `null`
  * fixture = a plain coloured block (the original look). See DESIGN.md §5 / editor.
  */
 export const FIXTURE_IDS = [
@@ -35,12 +35,23 @@ export const FIXTURE_IDS = [
 export type FixtureId = (typeof FIXTURE_IDS)[number];
 
 /**
- * How a fixture fills a block that spans multiple cells:
- * - `tile`   — repeat the sprite seamlessly across every cell (shelving runs,
- *              cabinet banks, counters). Grid-aligned, never stretched.
- * - `single` — one sprite at true 1-cell scale, centred on the colour zone
- *              (discrete appliances: a fridge stays fridge-sized in a big block).
- * - `fit`    — one sprite scaled (aspect preserved) to fill the whole footprint
- *              (large furniture: a bed/table fills the block you drew for it).
+ * Which group a fixture sits in within the block picker (drives the categorised
+ * gallery in `AddBlockModal`). Structural block kinds (room/divider/stairs) are a
+ * separate axis — see `BlockKind` — so they're not a fixture category.
  */
-export type FixtureFill = "tile" | "single" | "fit";
+export type FixtureCategory = "storage" | "furniture" | "appliance" | "object";
+
+/**
+ * How a fixture fills the block it occupies (the vector builder is recomputed at
+ * the block's size — see `app/lib/fixtures.tsx`):
+ * - `slice` / `fit` — fill the whole footprint. Fixed structure (frame, posts,
+ *                     arms) plus a *modest, size-keyed* count of repeating parts
+ *                     (shelves, doors, cushions), so a big block reads as ONE
+ *                     object, not duplicated tiles. Used by shelving / cabinetry
+ *                     / counters and by large furniture / appliances.
+ * - `single`        — a small discrete object (bin, nightstand, toilet, plant):
+ *                     drawn at a capped size and centred, so it doesn't smear to
+ *                     fill a large block.
+ * - `tile`          — legacy; no longer used by any fixture.
+ */
+export type FixtureFill = "slice" | "tile" | "single" | "fit";

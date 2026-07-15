@@ -17,13 +17,25 @@ export function GridRuler({
   rows: number;
   size: number;
 }) {
+  // Darker + semibold + tabular numerals so the guides stay legible over the
+  // map's gradient and tiles (the old slate-400/9px read as "very faint").
   const labelCls =
-    "absolute flex items-center justify-center font-mono text-slate-400 pointer-events-none select-none";
+    "absolute flex items-center justify-center font-mono font-semibold text-slate-500 tabular-nums pointer-events-none select-none";
   return (
     <div className="pointer-events-none absolute inset-0 z-20" aria-hidden>
-      {/* corner */}
+      {/* Gutter bands — a faint backing strip behind the labels so they read as a
+          proper ruler against any background, not floating text. */}
       <div
-        className="absolute top-0 left-0 bg-slate-50/70"
+        className="absolute top-0 left-0 right-0 bg-slate-100/85 border-b border-slate-200/80"
+        style={{ height: size }}
+      />
+      <div
+        className="absolute top-0 left-0 bottom-0 bg-slate-100/85 border-r border-slate-200/80"
+        style={{ width: size }}
+      />
+      {/* corner cap */}
+      <div
+        className="absolute top-0 left-0 bg-slate-200/70"
         style={{ width: size, height: size }}
       />
       {/* column headers (letters) */}
@@ -36,7 +48,7 @@ export function GridRuler({
             height: size,
             left: `calc(${size}px + (100% - ${size}px) * ${i} / ${cols})`,
             width: `calc((100% - ${size}px) / ${cols})`,
-            fontSize: 9,
+            fontSize: 10,
           }}
         >
           {colLabel(i)}
@@ -52,7 +64,7 @@ export function GridRuler({
             width: size,
             top: `calc(${size}px + (100% - ${size}px) * ${j} / ${rows})`,
             height: `calc((100% - ${size}px) / ${rows})`,
-            fontSize: 9,
+            fontSize: 10,
           }}
         >
           {j + 1}

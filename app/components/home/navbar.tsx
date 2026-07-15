@@ -9,7 +9,7 @@ import {
   useAuth,
 } from "@clerk/react-router";
 
-export default function Navbar() {
+export default function Navbar({ tradeBadge = 0 }: { tradeBadge?: number }) {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const { isSignedIn } = useAuth();
@@ -39,6 +39,7 @@ export default function Navbar() {
   const appLinks = [
     { href: "/", label: "My stores" },
     { href: "/templates", label: "Templates" },
+    { href: "/reminders", label: "Reminders" },
     { href: "/trade", label: "Trade" },
   ];
 
@@ -80,23 +81,31 @@ export default function Navbar() {
         <div className="w-px h-4 bg-gray-200 mx-1" />
 
         {/* Links */}
-        {navLinks.map((link) => (
-          <a
-            key={link.href}
-            href={link.href}
-            className={`
-              px-3.5 py-1.5 rounded-full text-sm font-medium whitespace-nowrap
-              transition-all duration-150
-              ${
-                isActive(link.href)
-                  ? "text-emerald-700 bg-emerald-50"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
-              }
-            `}
-          >
-            {link.label}
-          </a>
-        ))}
+        {navLinks.map((link) => {
+          const badge = link.href === "/trade" ? tradeBadge : 0;
+          return (
+            <a
+              key={link.href}
+              href={link.href}
+              className={`
+                relative px-3.5 py-1.5 rounded-full text-sm font-medium whitespace-nowrap
+                transition-all duration-150
+                ${
+                  isActive(link.href)
+                    ? "text-emerald-700 bg-emerald-50"
+                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                }
+              `}
+            >
+              {link.label}
+              {badge > 0 && (
+                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-bold text-white">
+                  {badge}
+                </span>
+              )}
+            </a>
+          );
+        })}
 
         {/* Divider */}
         <div className="w-px h-4 bg-gray-200 mx-1" />
@@ -225,7 +234,14 @@ export default function Navbar() {
               `}
               style={{ animationDelay: `${i * 40}ms` }}
             >
-              {link.label}
+              <span className="flex items-center gap-2">
+                {link.label}
+                {link.href === "/trade" && tradeBadge > 0 && (
+                  <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-bold text-white">
+                    {tradeBadge}
+                  </span>
+                )}
+              </span>
               <svg
                 width="16"
                 height="16"

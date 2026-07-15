@@ -1,12 +1,16 @@
 import { useState, useEffect } from "react";
 import { useFetcher, useParams } from "react-router";
 import type { StoreMember } from "~/types/memberTypes";
+import { SidePanel } from "~/components/common/SidePanel";
+import { SegmentedTabs } from "~/components/common/SegmentedTabs";
 
 type Props = {
   isOpen: boolean;
   members: StoreMember[];
   onRemoveMember: (userId: string) => void;
+  onChangeRole?: (userId: string, role: "editor" | "viewer") => void;
   onClose: () => void;
+  isMobile?: boolean;
 };
 
 type Tab = "editor" | "viewer";
@@ -21,7 +25,9 @@ export function MembersPanel({
   isOpen,
   members,
   onRemoveMember,
+  onChangeRole,
   onClose,
+  isMobile = false,
 }: Props) {
   const { id: storeId } = useParams();
   const [activeTab, setActiveTab] = useState<Tab>("editor");
@@ -33,7 +39,7 @@ export function MembersPanel({
 
   // When action returns a token, copy the editor invite URL
   useEffect(() => {
-    const token = (fetcher.data as any)?.token;
+    const token = (fetcher.data as { token?: string } | undefined)?.token;
     if (!token) return;
     const link = `${window.location.origin}/invite/${token}`;
     navigator.clipboard.writeText(link).then(() => {
@@ -58,36 +64,14 @@ export function MembersPanel({
   };
 
   return (
-    <>
-      {/* Backdrop */}
-      {isOpen && <div className="absolute inset-0 z-10" onClick={onClose} />}
-
-      {/* Panel */}
-      <div
-        className={`absolute top-0 right-0 h-full w-80 bg-white border-l border-slate-200 z-20 flex flex-col shadow-xl transition-transform duration-200 ${
-          isOpen ? "translate-x-0" : "translate-x-full"
-        }`}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 h-10 border-b border-slate-100 shrink-0">
-          <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
-            Members
-          </span>
-          <button
-            onClick={onClose}
-            className="text-slate-300 hover:text-slate-600 transition-colors"
-          >
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path
-                d="M1 1l10 10M11 1L1 11"
-                stroke="currentColor"
-                strokeWidth="1.4"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
-        </div>
-
+    <SidePanel
+      isOpen={isOpen}
+      onClose={onClose}
+      isMobile={isMobile}
+      ariaLabel="Members"
+      title="Members"
+    >
+      <>
         {/* Share section */}
         <div className="px-5 py-4 border-b border-slate-100 shrink-0">
           <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 mb-3">
@@ -95,21 +79,16 @@ export function MembersPanel({
           </p>
 
           {/* Tabs */}
-          <div className="flex gap-1 mb-3 bg-slate-100 rounded-lg p-0.5">
-            {(["editor", "viewer"] as Tab[]).map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase tracking-widest transition-all duration-150 ${
-                  activeTab === tab
-                    ? "bg-white text-slate-700 shadow-sm"
-                    : "text-slate-400 hover:text-slate-600"
-                }`}
-              >
-                {tab}
-              </button>
-            ))}
-          </div>
+          <SegmentedTabs<Tab>
+            ariaLabel="Invite type"
+            className="mb-3"
+            value={activeTab}
+            onChange={setActiveTab}
+            tabs={[
+              { id: "editor", label: "Editor" },
+              { id: "viewer", label: "Viewer" },
+            ]}
+          />
 
           {/* Editor tab */}
           {activeTab === "editor" && (
@@ -213,55 +192,93 @@ export function MembersPanel({
             </div>
           ) : (
             <ul>
-              {members.map((member) => (
-                <li
-                  key={member.id}
-                  className="flex items-center justify-between px-5 py-3 border-b border-slate-50 group"
-                >
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[11px] font-mono text-slate-700 truncate max-w-[160px]">
-                      {member.userId}
-                    </span>
-                    <span
-                      className={`text-[9px] font-bold uppercase tracking-widest ${
-                        member.role === "owner"
-                          ? "text-slate-500"
-                          : member.role === "editor"
-                            ? "text-blue-400"
-                            : "text-slate-300"
-                      }`}
-                    >
-                      {ROLE_LABELS[member.role]}
-                    </span>
-                  </div>
-
-                  {member.role !== "owner" && (
-                    <button
-                      onClick={() => onRemoveMember(member.userId)}
-                      className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-400 transition-all duration-150"
-                      title="Remove member"
-                    >
-                      <svg
-                        width="12"
-                        height="12"
-                        viewBox="0 0 12 12"
-                        fill="none"
-                      >
-                        <path
-                          d="M1 1l10 10M11 1L1 11"
-                          stroke="currentColor"
-                          strokeWidth="1.4"
-                          strokeLinecap="round"
+              {members.map((member) => {
+                const label = member.displayName || member.userId;
+                const initial = (label[0] ?? "?").toUpperCase();
+                return (
+                  <li
+                    key={member.id}
+                    className="flex items-center justify-between gap-2 px-5 py-3 border-b border-slate-50 group"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {member.imageUrl ? (
+                        <img
+                          src={member.imageUrl}
+                          alt=""
+                          className="w-7 h-7 rounded-full object-cover border border-slate-200 shrink-0"
                         />
-                      </svg>
-                    </button>
-                  )}
-                </li>
-              ))}
+                      ) : (
+                        <span className="w-7 h-7 rounded-full bg-slate-100 border border-slate-200 shrink-0 flex items-center justify-center text-[11px] font-bold text-slate-500">
+                          {initial}
+                        </span>
+                      )}
+                      <div className="flex flex-col gap-0.5 min-w-0">
+                        <span
+                          className="text-[12px] font-semibold text-slate-700 truncate max-w-[150px]"
+                          title={member.displayName ? member.userId : undefined}
+                        >
+                          {label}
+                        </span>
+                        <span
+                          className={`text-[9px] font-bold uppercase tracking-widest ${
+                            member.role === "owner"
+                              ? "text-slate-500"
+                              : member.role === "editor"
+                                ? "text-blue-400"
+                                : "text-slate-300"
+                          }`}
+                        >
+                          {ROLE_LABELS[member.role]}
+                        </span>
+                      </div>
+                    </div>
+
+                    {member.role !== "owner" && (
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {onChangeRole && (
+                          <select
+                            value={member.role}
+                            onChange={(e) =>
+                              onChangeRole(
+                                member.userId,
+                                e.target.value as "editor" | "viewer",
+                              )
+                            }
+                            className="text-[10px] font-mono text-slate-600 bg-slate-50 border border-slate-200 rounded px-1.5 py-1 focus:outline-none focus:border-slate-400"
+                            title="Change role"
+                          >
+                            <option value="editor">Editor</option>
+                            <option value="viewer">Viewer</option>
+                          </select>
+                        )}
+                        <button
+                          onClick={() => onRemoveMember(member.userId)}
+                          className="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-400 transition-all duration-150"
+                          title="Remove member"
+                        >
+                          <svg
+                            width="12"
+                            height="12"
+                            viewBox="0 0 12 12"
+                            fill="none"
+                          >
+                            <path
+                              d="M1 1l10 10M11 1L1 11"
+                              stroke="currentColor"
+                              strokeWidth="1.4"
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
-      </div>
-    </>
+      </>
+    </SidePanel>
   );
 }

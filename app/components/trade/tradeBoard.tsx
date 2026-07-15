@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useFetcher, Link } from "react-router";
 import {
   Search,
@@ -6,11 +6,14 @@ import {
   ArrowLeftRight,
   Tag,
   Check,
+  CheckCircle2,
   X,
   Plus,
   ExternalLink,
   Inbox,
   Send,
+  MessageSquare,
+  History as HistoryIcon,
 } from "lucide-react";
 import { TypeIcon } from "~/components/store/typeIcon";
 import { useFetcherFailureToast } from "~/components/common/toast";
@@ -20,6 +23,7 @@ import type {
   TradeListing,
   TradeOffer,
   TradeOfferStatus,
+  TradeMessage,
 } from "~/types/tradeTypes";
 
 export type MyTradeItem = {
@@ -41,12 +45,14 @@ export function TradeBoard({
   offers,
   myItems,
   userId,
+  messagesByOffer,
 }: {
   bazaar: TradeListing[];
   myListings: TradeListing[];
   offers: TradeOffer[];
   myItems: MyTradeItem[];
   userId: string;
+  messagesByOffer: Record<string, TradeMessage[]>;
 }) {
   const fetcher = useFetcher();
   useFetcherFailureToast(fetcher);
@@ -127,7 +133,13 @@ export function TradeBoard({
         />
       )}
       {tab === "offers" && (
-        <OffersTab offers={offers} userId={userId} submit={submit} />
+        <OffersTab
+          offers={offers}
+          userId={userId}
+          submit={submit}
+          messagesByOffer={messagesByOffer}
+          busy={fetcher.state !== "idle"}
+        />
       )}
 
       {offerFor && (
@@ -427,19 +439,29 @@ const STATUS_STYLE: Record<TradeOfferStatus, string> = {
   accepted: "bg-emerald-50 text-emerald-700",
   declined: "bg-slate-100 text-slate-400",
   cancelled: "bg-slate-100 text-slate-400",
+  completed: "bg-sky-50 text-sky-700",
 };
+
+const isActive = (o: TradeOffer) =>
+  o.status === "pending" || o.status === "accepted";
 
 function OffersTab({
   offers,
   userId,
   submit,
+  messagesByOffer,
+  busy,
 }: {
   offers: TradeOffer[];
   userId: string;
   submit: (p: Record<string, string | boolean | null>) => void;
+  messagesByOffer: Record<string, TradeMessage[]>;
+  busy: boolean;
 }) {
-  const incoming = offers.filter((o) => o.toUserId === userId);
-  const outgoing = offers.filter((o) => o.fromUserId === userId);
+  const active = offers.filter(isActive);
+  const history = offers.filter((o) => !isActive(o));
+  const incoming = active.filter((o) => o.toUserId === userId);
+  const outgoing = active.filter((o) => o.fromUserId === userId);
 
   if (offers.length === 0)
     return (
@@ -449,44 +471,64 @@ function OffersTab({
       />
     );
 
+  const rowProps = (o: TradeOffer, direction: "incoming" | "outgoing") => ({
+    key: o.id,
+    offer: o,
+    direction,
+    userId,
+    submit,
+    busy,
+    messages: messagesByOffer[o.id] ?? [],
+  });
+
   return (
-    <div className="grid gap-6 md:grid-cols-2">
-      <div>
-        <h2 className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-slate-500">
-          <Inbox size={13} /> Incoming
-        </h2>
-        <div className="flex flex-col gap-2">
-          {incoming.length === 0 && (
-            <p className="text-[11px] text-slate-400">Nothing incoming.</p>
-          )}
-          {incoming.map((o) => (
-            <OfferRow
-              key={o.id}
-              offer={o}
-              direction="incoming"
-              submit={submit}
-            />
-          ))}
+    <div className="flex flex-col gap-8">
+      <div className="grid gap-6 md:grid-cols-2">
+        <div>
+          <h2 className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-slate-500">
+            <Inbox size={13} /> Incoming
+          </h2>
+          <div className="flex flex-col gap-2">
+            {incoming.length === 0 && (
+              <p className="text-[11px] text-slate-400">Nothing incoming.</p>
+            )}
+            {incoming.map((o) => (
+              <OfferRow {...rowProps(o, "incoming")} />
+            ))}
+          </div>
+        </div>
+        <div>
+          <h2 className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-slate-500">
+            <Send size={13} /> Outgoing
+          </h2>
+          <div className="flex flex-col gap-2">
+            {outgoing.length === 0 && (
+              <p className="text-[11px] text-slate-400">Nothing outgoing.</p>
+            )}
+            {outgoing.map((o) => (
+              <OfferRow {...rowProps(o, "outgoing")} />
+            ))}
+          </div>
         </div>
       </div>
-      <div>
-        <h2 className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-slate-500">
-          <Send size={13} /> Outgoing
-        </h2>
-        <div className="flex flex-col gap-2">
-          {outgoing.length === 0 && (
-            <p className="text-[11px] text-slate-400">Nothing outgoing.</p>
-          )}
-          {outgoing.map((o) => (
-            <OfferRow
-              key={o.id}
-              offer={o}
-              direction="outgoing"
-              submit={submit}
-            />
-          ))}
+
+      {history.length > 0 && (
+        <div>
+          <h2 className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-widest text-slate-400">
+            <HistoryIcon size={13} /> History
+          </h2>
+          <div className="grid gap-2 md:grid-cols-2">
+            {history.map((o) => (
+              <OfferRow
+                {...rowProps(
+                  o,
+                  o.fromUserId === userId ? "outgoing" : "incoming",
+                )}
+              />
+            ))}
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
@@ -494,17 +536,27 @@ function OffersTab({
 function OfferRow({
   offer,
   direction,
+  userId,
   submit,
+  busy,
+  messages,
 }: {
   offer: TradeOffer;
   direction: "incoming" | "outgoing";
+  userId: string;
   submit: (p: Record<string, string | boolean | null>) => void;
+  busy: boolean;
+  messages: TradeMessage[];
 }) {
   const respond = (status: TradeOfferStatus) =>
     submit({ _action: "respondOffer", id: offer.id, status });
 
+  const dimmed = offer.status === "declined" || offer.status === "cancelled";
+
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-3">
+    <div
+      className={`rounded-xl border border-slate-200 bg-white p-3 ${dimmed ? "opacity-70" : ""}`}
+    >
       <div className="flex items-center gap-2 text-[12px] font-semibold text-slate-800">
         <span className="truncate">{offer.listingName}</span>
         {offer.offeredName && (
@@ -551,6 +603,116 @@ function OfferRow({
           )}
         </div>
       )}
+
+      {offer.status === "accepted" && (
+        <Thread
+          offer={offer}
+          userId={userId}
+          messages={messages}
+          submit={submit}
+          busy={busy}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Per-offer contact thread (accepted offers) ──
+function Thread({
+  offer,
+  userId,
+  messages,
+  submit,
+  busy,
+}: {
+  offer: TradeOffer;
+  userId: string;
+  messages: TradeMessage[];
+  submit: (p: Record<string, string | boolean | null>) => void;
+  busy: boolean;
+}) {
+  const [draft, setDraft] = useState("");
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const count = messages.length;
+
+  // Keep the newest message in view as the thread grows.
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+  }, [count]);
+
+  const send = () => {
+    const body = draft.trim();
+    if (!body) return;
+    submit({ _action: "sendMessage", id: offer.id, body });
+    setDraft("");
+  };
+
+  return (
+    <div className="mt-2.5 rounded-lg border border-emerald-100 bg-emerald-50/40 p-2">
+      <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700">
+        <MessageSquare size={11} /> Arrange the handoff
+      </div>
+
+      <div
+        ref={scrollRef}
+        className="flex max-h-44 flex-col gap-1.5 overflow-y-auto"
+      >
+        {messages.length === 0 && (
+          <p className="px-1 py-2 text-center text-[10px] text-slate-400">
+            Swap accepted — say hi and sort out when and where to meet.
+          </p>
+        )}
+        {messages.map((m) => {
+          const mine = m.fromUserId === userId;
+          return (
+            <div
+              key={m.id}
+              className={`flex ${mine ? "justify-end" : "justify-start"}`}
+            >
+              <span
+                className={`max-w-[80%] whitespace-pre-wrap break-words rounded-2xl px-2.5 py-1 text-[11px] ${
+                  mine
+                    ? "bg-emerald-600 text-white"
+                    : "bg-white text-slate-700 ring-1 ring-slate-200"
+                }`}
+              >
+                {m.body}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-2 flex items-center gap-1.5">
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              send();
+            }
+          }}
+          placeholder="Message…"
+          className="flex-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] text-slate-700 placeholder-slate-300 outline-none focus:border-emerald-400"
+        />
+        <button
+          onClick={send}
+          disabled={busy || !draft.trim()}
+          aria-label="Send message"
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-40"
+        >
+          <Send size={13} />
+        </button>
+      </div>
+
+      <button
+        onClick={() => submit({ _action: "completeOffer", id: offer.id })}
+        disabled={busy}
+        className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 py-1.5 text-[10px] font-bold uppercase tracking-widest text-sky-700 hover:bg-sky-100 disabled:opacity-50"
+      >
+        <CheckCircle2 size={12} /> Mark completed
+      </button>
     </div>
   );
 }

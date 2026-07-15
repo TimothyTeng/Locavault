@@ -9,5 +9,12 @@ export default [
   route("/templates", "routes/templates.tsx"),
   route("/templates/new", "routes/templates.new.tsx"),
   route("/trade", "routes/trade.tsx"),
+  route("/reminders", "routes/reminders.tsx"),
   route("/api/barcode", "routes/api.barcode.ts"),
+  route("/api/item-history", "routes/api.item-history.ts"),
+  route("/api/doses", "routes/api.doses.ts"),
+  route("/api/fixtures", "routes/api.fixtures.ts"),
+  route("/api/recipes", "routes/api.recipes.ts"),
+  route("/api/recipe-import", "routes/api.recipe-import.ts"),
+  route("/api/recipe-search", "routes/api.recipe-search.ts"),
 ] satisfies RouteConfig;

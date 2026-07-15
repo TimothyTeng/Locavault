@@ -1,3 +1,5 @@
+import { Button } from "~/components/common/Button";
+
 export function EmptyState({
   search,
   onClear,
@@ -72,13 +74,9 @@ export function EmptyState({
           Create your first store to start mapping inventory
         </p>
       </div>
-      <button
-        onClick={onCreate}
-        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm
-                   font-semibold rounded-xl transition-colors"
-      >
+      <Button variant="primary" size="md" onClick={onCreate}>
         Create your first store
-      </button>
+      </Button>
     </div>
   );
 }

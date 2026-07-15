@@ -16,6 +16,7 @@ export default tseslint.config(
       "drizzle/**",
       "node_modules/**",
       "**/*.config.{js,ts}",
+      "public/**", // static assets (service worker, etc.) — not app source
     ],
   },
   js.configs.recommended,

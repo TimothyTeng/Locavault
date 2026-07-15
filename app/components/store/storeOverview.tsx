@@ -12,6 +12,10 @@ export function StoreOverview({
   onAddAll,
   activeStatus,
   onSelectStatus,
+  needsDetailsCount = 0,
+  detailsActive = false,
+  onToggleDetails,
+  onDismissDetails,
   viewMode,
   onViewModeChange,
 }: {
@@ -23,6 +27,11 @@ export function StoreOverview({
   activeStatus?: ItemStatus | null;
   /** Toggle a status filter on the list below. */
   onSelectStatus?: (status: ItemStatus) => void;
+  /** Enrich-later queue: items missing a trait-suggested field (expiry/min). */
+  needsDetailsCount?: number;
+  detailsActive?: boolean;
+  onToggleDetails?: () => void;
+  onDismissDetails?: () => void;
   /** Cards/table view of the list below. */
   viewMode?: "cards" | "table";
   onViewModeChange?: (mode: "cards" | "table") => void;
@@ -30,13 +39,15 @@ export function StoreOverview({
   let out = 0;
   let low = 0;
   let expiring = 0;
+  let confirm = 0;
   for (const i of items) {
+    if (i.runoutConfirm) confirm += 1;
     const s = getItemStatus(i);
     if (s === "out") out += 1;
     else if (s === "low") low += 1;
     else if (s === "expiring") expiring += 1;
   }
-  const allOk = out + low + expiring === 0;
+  const allOk = out + low + expiring + confirm === 0;
 
   return (
     <div className="px-3 py-2 border-b border-slate-100 bg-white shrink-0 flex items-center gap-2 flex-wrap">
@@ -79,7 +90,47 @@ export function StoreOverview({
               }
             />
           )}
+          {confirm > 0 && (
+            <Chip tone="attention" label="to confirm" count={confirm} />
+          )}
         </>
+      )}
+
+      {/* Enrich-later queue — dismissible, shown even when nothing's alerting. */}
+      {needsDetailsCount > 0 && onToggleDetails && (
+        <span
+          className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-mono tabular-nums transition-colors ${
+            detailsActive
+              ? "border-slate-400 bg-slate-100 text-slate-700"
+              : "border-slate-200 bg-white text-slate-500"
+          }`}
+        >
+          <button
+            type="button"
+            onClick={onToggleDetails}
+            title="Show items missing an expiry or min-stock"
+            className="hover:brightness-95"
+          >
+            {needsDetailsCount} needs details
+          </button>
+          {onDismissDetails && (
+            <button
+              type="button"
+              onClick={onDismissDetails}
+              title="Dismiss"
+              className="text-slate-300 hover:text-slate-500"
+            >
+              <svg width="8" height="8" viewBox="0 0 12 12" fill="none">
+                <path
+                  d="M1 1l10 10M11 1L1 11"
+                  stroke="currentColor"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                />
+              </svg>
+            </button>
+          )}
+        </span>
       )}
 
       <div className="flex-1" />

@@ -2,6 +2,7 @@ import { memo, useState } from "react";
 import { GridThumbnail } from "../home/dashboard/gridtumbnail";
 import { formatDate } from "~/utils/dashboardUtils";
 import type { TemplateWithBlocks } from "~/types/templateTypes";
+import { Button } from "~/components/common/Button";
 
 export const TemplateCard = memo(function TemplateCard({
   template,
@@ -39,6 +40,7 @@ export const TemplateCard = memo(function TemplateCard({
           rows={template.rows}
           cols={template.cols}
           name={template.name}
+          walls={template.walls}
         />
 
         {/* Visibility pill / toggle */}
@@ -139,10 +141,11 @@ export const TemplateCard = memo(function TemplateCard({
           <span className="text-[10px] text-slate-300">
             {formatDate(template.createdAt)}
           </span>
-          <button
+          <Button
+            variant="primary"
+            size="sm"
             onClick={() => onUse(template)}
             disabled={busy}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-[11px] font-semibold transition-colors"
           >
             {busy ? (
               <span className="w-3 h-3 border border-white/70 border-t-transparent rounded-full animate-spin" />
@@ -157,7 +160,7 @@ export const TemplateCard = memo(function TemplateCard({
               </svg>
             )}
             Use template
-          </button>
+          </Button>
         </div>
       </div>
     </div>

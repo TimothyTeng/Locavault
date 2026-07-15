@@ -19,6 +19,7 @@ type Props = {
   onSave: (updated: Item) => void;
   onDelete: (itemId: string) => void;
   onMarkOut?: (item: Item) => void;
+  onStillHave?: (item: Item) => void;
   onAddToList?: (item: Item) => void;
   accessLevel: AccessLevel;
   storeIsPublic: boolean;
@@ -34,6 +35,7 @@ export function StoreTable({
   onSave,
   onDelete,
   onMarkOut,
+  onStillHave,
   onAddToList,
   accessLevel,
   storeIsPublic,
@@ -309,6 +311,7 @@ export function StoreTable({
                   onSave={onSave}
                   onDelete={onDelete}
                   onMarkOut={onMarkOut}
+                  onStillHave={onStillHave}
                   onAddToList={onAddToList}
                   isOwner={isOwner}
                   storeIsPublic={storeIsPublic}

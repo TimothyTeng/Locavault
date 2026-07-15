@@ -18,7 +18,7 @@ export function meta({}: Route.MetaArgs) {
 }
 
 export default function TradePage() {
-  const { bazaar, myListings, offers, myItems, userId } =
+  const { bazaar, myListings, offers, myItems, userId, messagesByOffer } =
     useLoaderData<typeof loader>();
   return (
     <div className="min-h-screen bg-slate-50 font-mono">
@@ -29,6 +29,7 @@ export default function TradePage() {
         offers={offers}
         myItems={myItems}
         userId={userId}
+        messagesByOffer={messagesByOffer}
       />
     </div>
   );

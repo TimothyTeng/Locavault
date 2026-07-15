@@ -23,8 +23,14 @@ export type Item = {
   // Trade: listed on the global Bazaar + optional "looking for…" note.
   forTrade?: boolean;
   tradeNote?: string | null;
+  // Snooze/dismiss for this item's alerts — while in the future, getItemStatus
+  // stays quiet (DESIGN.md §6).
+  alertSnoozedUntil?: Date | null;
   // Derived (server-computed) — usage prediction. Absent on optimistic rows.
   usage?: UsageEstimate;
+  // Derived — the predicted run-out has passed but stock remains: show the
+  // one-tap confirm-loop question ("out? / still have it") on the status chip.
+  runoutConfirm?: boolean;
 };
 
 export type ItemStatus = "out" | "low" | "expiring" | "ok";
@@ -38,19 +44,36 @@ export type UsageSource = "history" | "manual" | "prior" | "none";
 /** How much to trust the estimate, driven by sample size + span. */
 export type UsageConfidence = "high" | "medium" | "low" | "none";
 
+/**
+ * A coarse, human-facing "when does this run out?" band. Phrases are shown as the
+ * chip; the exact day range lives in the tooltip. `learning` means the spread is
+ * too wide to commit to a week (honest uncertainty, regardless of the mean).
+ */
+export type RunoutBucket =
+  | "out"
+  | "days"
+  | "this_week"
+  | "next_week"
+  | "later"
+  | "learning";
+
 /** A single quantity-change record used to learn usage (outflow + inflow). */
 export type UsageLog = {
   delta: number; // negative = consumed, positive = restocked
   loggedAt: Date | null;
+  note?: string | null; // e.g. "out", "edit", "cooked", "dose", "confirmed"
 };
 
 /** Result of estimating how fast an item is consumed and when it runs out. */
 export type UsageEstimate = {
-  dailyRate: number | null; // units consumed per day
+  dailyRate: number | null; // posterior-mean units consumed per day
   source: UsageSource;
   confidence: UsageConfidence;
-  runoutDays: number | null; // whole days from "now" until quantity hits 0
+  runoutDays: number | null; // whole days from "now" until quantity hits 0 (point)
   runoutDate: Date | null;
+  runoutEarly: number | null; // p25 (Lomax-predictive) — earliest plausible run-out
+  runoutLate: number | null; // p75 — latest plausible run-out
+  bucket: RunoutBucket;
   events: number; // consumption events that backed the estimate
   windowDays: number; // span of history considered
 };

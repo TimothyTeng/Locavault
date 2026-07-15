@@ -8,6 +8,7 @@ type Props = {
   onAddItem: () => void;
   onQuickAdd: () => void;
   onRecipes: () => void;
+  onCalendar: () => void;
   onCollections: () => void;
   onMembersToggle: () => void;
   onPurchaseOrder: () => void;
@@ -43,6 +44,29 @@ function RecipeIcon() {
   );
 }
 
+/** Calendar glyph for the store calendar. */
+function CalendarIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+      <rect
+        x="1.5"
+        y="2.5"
+        width="9"
+        height="8"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="1.3"
+      />
+      <path
+        d="M1.5 4.5h9M4 1.5v2M8 1.5v2"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 /** Stacked-boxes glyph for Collections. */
 function CollectionsIcon() {
   return (
@@ -72,6 +96,7 @@ export function StoreToolbar({
   onAddItem,
   onQuickAdd,
   onRecipes,
+  onCalendar,
   onCollections,
   onMembersToggle,
   onPurchaseOrder,
@@ -164,6 +189,17 @@ export function StoreToolbar({
         >
           <RecipeIcon />
         </button>
+
+        {/* Calendar */}
+        {canEdit && (
+          <button
+            onClick={onCalendar}
+            className="flex items-center justify-center w-8 h-8 rounded-md border border-slate-300 text-slate-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all"
+            title="Calendar"
+          >
+            <CalendarIcon />
+          </button>
+        )}
 
         {/* Collections */}
         <button
@@ -358,56 +394,6 @@ export function StoreToolbar({
         </button>
       )}
 
-      <button
-        onClick={onRecipes}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-300 text-[10px] font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-150"
-      >
-        <RecipeIcon />
-        Recipes
-      </button>
-
-      <button
-        onClick={onCollections}
-        className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-300 text-[10px] font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-150"
-      >
-        <CollectionsIcon />
-        Collections
-      </button>
-
-      {canEdit && (
-        <button
-          onClick={onPurchaseOrder}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md border text-[10px] font-bold uppercase tracking-widest transition-all duration-150 ${
-            restockCount > 0
-              ? "bg-amber-50 border-amber-300 text-amber-700 hover:bg-amber-100"
-              : "border-slate-300 text-slate-600 hover:bg-slate-800 hover:text-white hover:border-slate-800"
-          }`}
-        >
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-            <path
-              d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-            <path
-              d="M3 6h18M16 10a4 4 0 01-8 0"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-          Shopping List
-          {restockCount > 0 && (
-            <span className="ml-0.5 min-w-4 h-4 px-1 rounded-full bg-amber-500 text-white text-[9px] font-bold flex items-center justify-center">
-              {restockCount}
-            </span>
-          )}
-        </button>
-      )}
-
       {isOwner && store && (
         <>
           <div className="w-px h-5 bg-slate-200" />
@@ -442,38 +428,7 @@ export function StoreToolbar({
               {store.canvasVisible ? "Map Visible" : "Map Hidden"}
             </button>
           )}
-          <div className="w-px h-5 bg-slate-200" />
         </>
-      )}
-
-      {isOwner && (
-        <button
-          onClick={onMembersToggle}
-          className="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-300 text-[10px] font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-150"
-        >
-          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-            <circle
-              cx="4.5"
-              cy="3.5"
-              r="2"
-              stroke="currentColor"
-              strokeWidth="1.4"
-            />
-            <path
-              d="M1 10c0-2 1.5-3.5 3.5-3.5S8 8 8 10"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-            />
-            <path
-              d="M8.5 5v3M10 6.5H7"
-              stroke="currentColor"
-              strokeWidth="1.4"
-              strokeLinecap="round"
-            />
-          </svg>
-          Members
-        </button>
       )}
     </div>
   );

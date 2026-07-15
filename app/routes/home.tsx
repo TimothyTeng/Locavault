@@ -15,6 +15,7 @@ import Pricing from "../components/home/pricing";
 import CtaBanner from "../components/home/ctabanner";
 import Footer from "../components/home/footer";
 import Dashboard from "../components/home/dashboard/dashboard";
+import { FirstRunWizard } from "../components/home/dashboard/firstRunWizard";
 import type { loader } from "#utils/loaders/home.loader";
 
 export { loader, action } from "#utils/loaders/home.loader";
@@ -37,7 +38,16 @@ export function meta({}: Route.MetaArgs) {
 export default function Home() {
   const { isSignedIn, isLoaded } = useAuth();
   const { revalidate } = useRevalidator();
-  const { stores, attention } = useLoaderData<typeof loader>();
+  const {
+    stores,
+    attention,
+    spentThisMonthCents,
+    dosesDue,
+    incomingOffers,
+    digest,
+    itemIndex,
+    onboardingTemplates,
+  } = useLoaderData<typeof loader>();
 
   // Only revalidate on actual sign-in/sign-out transitions, not on initial mount
   const prevSignedIn = useRef<boolean | undefined>(undefined);
@@ -150,7 +160,7 @@ export default function Home() {
 
   return (
     <div className="page-bg">
-      <Navbar />
+      <Navbar tradeBadge={isSignedIn ? (incomingOffers ?? 0) : 0} />
       <Show when="signed-out">
         <Hero />
         <DashboardPreview />
@@ -162,7 +172,19 @@ export default function Home() {
         <Footer />
       </Show>
       <Show when="signed-in">
-        <Dashboard stores={stores} attention={attention ?? []} />
+        {stores.length === 0 && (onboardingTemplates?.length ?? 0) > 0 ? (
+          <FirstRunWizard templates={onboardingTemplates ?? []} />
+        ) : (
+          <Dashboard
+            stores={stores}
+            attention={attention ?? []}
+            spentThisMonthCents={spentThisMonthCents ?? 0}
+            dosesDue={dosesDue ?? 0}
+            incomingOffers={incomingOffers ?? 0}
+            digest={digest}
+            itemIndex={itemIndex ?? []}
+          />
+        )}
       </Show>
     </div>
   );

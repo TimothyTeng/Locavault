@@ -1,4 +1,4 @@
-import { eq, sql, inArray, and, isNull, gt, desc, ne } from "drizzle-orm";
+import { eq, sql, inArray, and, isNull, gt, gte, desc, ne } from "drizzle-orm";
 import { db } from "./db";
 import {
   stores,
@@ -13,12 +13,28 @@ import {
   collections,
   collectionItems,
   tradeOffers,
+  tradeMessages,
+  customFixtures,
+  recipes,
+  scheduledMeals,
+  doseSchedules,
+  nameTypeConsensus,
 } from "./schema";
+import type {
+  RecipeIngredient,
+  RecipeStep,
+  ScheduledMeal,
+  MealType,
+} from "~/types/recipeTypes";
+import type { Recipe } from "./recipes";
+import type { CustomFixture, CustomShape } from "~/types/customFixtureTypes";
+import type { FixtureCategory } from "~/types/fixtureTypes";
 import type { Collection, CollectionKind } from "~/types/collectionTypes";
 import type {
   TradeListing,
   TradeOffer,
   TradeOfferStatus,
+  TradeMessage,
 } from "~/types/tradeTypes";
 import type { StoreWithDetails } from "~/types/dashboardTypes";
 import type { TemplateWithBlocks } from "~/types/templateTypes";
@@ -28,7 +44,10 @@ import type {
 } from "~/types/storeViewFinderTypes";
 import type { AccessLevel, StoreRole } from "~/types/memberTypes";
 import type { BlockKind } from "~/types/BlockTypes";
+import type { Wall } from "~/types/wallTypes";
+import { parseWalls, serializeWalls } from "~/utils/helpers/wall.helper";
 import type { ItemType } from "~/types/itemTypeTypes";
+import { computeConsensus } from "~/utils/helpers/poInference.helper";
 
 // ─── Helpers ───────────────────────────────────────────────
 
@@ -92,6 +111,7 @@ export async function getStoresByUserWithDetails(
   return userStores.map((store) => ({
     ...store,
     blocks: blocksByStore[store.id] ?? [],
+    walls: parseWalls(store.walls),
     itemCount: itemCountMap[store.id] ?? 0,
   }));
 }
@@ -144,6 +164,7 @@ export async function getStoresMemberOf(
   return nonOwnedStores.map((store) => ({
     ...store,
     blocks: blocksByStore[store.id] ?? [],
+    walls: parseWalls(store.walls),
     itemCount: itemCountMap[store.id] ?? 0,
     role: roleMap[store.id] as "editor" | "viewer",
   }));
@@ -152,6 +173,174 @@ export async function getStoresMemberOf(
 /** Fetch all stores belonging to a user (lightweight, no blocks) */
 export async function getStoresByUser(userId: string) {
   return db.select().from(stores).where(eq(stores.userId, userId));
+}
+
+/**
+ * The user's own name→type "memory": for every item name they've assigned a
+ * concrete (non-"other") type to — across all the stores they own, in both
+ * inventory and shopping-list rows — the type they've used most. Feeds shopping
+ * -list inference so a name typed/confirmed once is remembered everywhere after.
+ * Keyed by lower-cased, trimmed name.
+ */
+export async function getUserTypeHints(
+  userId: string,
+): Promise<Record<string, ItemType>> {
+  const owned = await db
+    .select({ id: stores.id })
+    .from(stores)
+    .where(eq(stores.userId, userId));
+  const storeIds = owned.map((s) => s.id);
+  if (!storeIds.length) return {};
+
+  const [itemRows, poRows] = await Promise.all([
+    db
+      .select({ name: items.name, itemType: items.itemType })
+      .from(items)
+      .where(
+        and(inArray(items.storeId, storeIds), ne(items.itemType, "other")),
+      ),
+    db
+      .select({
+        name: purchaseOrderItems.name,
+        itemType: purchaseOrderItems.itemType,
+      })
+      .from(purchaseOrderItems)
+      .where(
+        and(
+          inArray(purchaseOrderItems.storeId, storeIds),
+          ne(purchaseOrderItems.itemType, "other"),
+        ),
+      ),
+  ]);
+
+  // Most-used type per name wins (a simple vote across both sources).
+  const votes = new Map<string, Map<ItemType, number>>();
+  for (const r of [...itemRows, ...poRows]) {
+    const key = r.name.trim().toLowerCase();
+    if (!key) continue;
+    const tally = votes.get(key) ?? new Map<ItemType, number>();
+    tally.set(r.itemType, (tally.get(r.itemType) ?? 0) + 1);
+    votes.set(key, tally);
+  }
+  const hints: Record<string, ItemType> = {};
+  for (const [key, tally] of votes) {
+    let best: [ItemType, number] | null = null;
+    for (const entry of tally) if (!best || entry[1] > best[1]) best = entry;
+    if (best) hints[key] = best[0];
+  }
+  return hints;
+}
+
+// ─── Crowd type consensus (Stage B: materialised) ──────────
+// The k-anonymous name→type map aggregated across ALL users. Scanning every
+// item/PO row is expensive, so it's materialised into `name_type_consensus` and
+// only rebuilt when the stored copy goes stale — a durable, cross-restart /
+// cross-instance cache. Reads take a plain table scan; a short in-process TTL
+// keeps the 15s shopping-list poll from even touching the table each time.
+const CONSENSUS_SENTINEL = "__lastrun__"; // reserved key canonicalNameKey can't emit
+const CROWD_CACHE_TTL_MS = 30 * 60 * 1000; // in-process read cache: 30 min
+const CROWD_REFRESH_MS = 6 * 60 * 60 * 1000; // rebuild the table at most every 6 h
+let crowdCache: { at: number; map: Record<string, ItemType> } | null = null;
+
+/**
+ * Rebuild `name_type_consensus` from every user's items + PO rows and return the
+ * fresh name→type map. Only k-anonymous aggregates are stored (see
+ * `computeConsensus`): a name surfaces only once enough distinct users agree on a
+ * concrete type, so no individual's item names or contents leak. The table is
+ * replaced atomically, and a `__lastrun__` sentinel records the rebuild time so an
+ * empty result reads as "computed, nothing qualified" rather than "never ran".
+ */
+export async function recomputeTypeConsensus(): Promise<
+  Record<string, ItemType>
+> {
+  const [itemVotes, poVotes] = await Promise.all([
+    db
+      .select({
+        name: items.name,
+        itemType: items.itemType,
+        userId: stores.userId,
+      })
+      .from(items)
+      .innerJoin(stores, eq(items.storeId, stores.id))
+      .where(ne(items.itemType, "other")),
+    db
+      .select({
+        name: purchaseOrderItems.name,
+        itemType: purchaseOrderItems.itemType,
+        userId: stores.userId,
+      })
+      .from(purchaseOrderItems)
+      .innerJoin(stores, eq(purchaseOrderItems.storeId, stores.id))
+      .where(ne(purchaseOrderItems.itemType, "other")),
+  ]);
+
+  const consensus = computeConsensus([...itemVotes, ...poVotes]);
+  const now = new Date();
+  await db.transaction(async (tx) => {
+    await tx.delete(nameTypeConsensus);
+    // Sentinel first so the table is never "empty" after a real run.
+    await tx.insert(nameTypeConsensus).values({
+      name: CONSENSUS_SENTINEL,
+      itemType: "other",
+      userCount: 0,
+      updatedAt: now,
+    });
+    // Insert in chunks to stay well under libSQL's bound-parameter limit.
+    for (let i = 0; i < consensus.length; i += 100) {
+      await tx.insert(nameTypeConsensus).values(
+        consensus.slice(i, i + 100).map((c) => ({
+          name: c.name,
+          itemType: c.itemType,
+          userCount: c.userCount,
+          updatedAt: now,
+        })),
+      );
+    }
+  });
+
+  const map: Record<string, ItemType> = {};
+  for (const c of consensus) map[c.name] = c.itemType;
+  crowdCache = { at: Date.now(), map };
+  return map;
+}
+
+/**
+ * The crowd name→type map for shopping-list inference (below the user's own
+ * memory and the curated lexicon). Reads the materialised table; if it's missing
+ * a sentinel or the last rebuild is older than `CROWD_REFRESH_MS`, it triggers a
+ * rebuild first. Short-TTL cached in-process. Any DB trouble degrades to an empty
+ * map rather than breaking the store load.
+ */
+export async function getCrowdTypeHints(): Promise<Record<string, ItemType>> {
+  const now = Date.now();
+  if (crowdCache && now - crowdCache.at < CROWD_CACHE_TTL_MS)
+    return crowdCache.map;
+  try {
+    const rows = await db
+      .select({
+        name: nameTypeConsensus.name,
+        itemType: nameTypeConsensus.itemType,
+        updatedAt: nameTypeConsensus.updatedAt,
+      })
+      .from(nameTypeConsensus);
+
+    const sentinel = rows.find((r) => r.name === CONSENSUS_SENTINEL);
+    const lastRun = sentinel?.updatedAt?.getTime() ?? 0;
+    if (!sentinel || now - lastRun > CROWD_REFRESH_MS) {
+      return await recomputeTypeConsensus();
+    }
+
+    const map: Record<string, ItemType> = {};
+    for (const r of rows) {
+      if (r.name === CONSENSUS_SENTINEL) continue;
+      map[r.name] = r.itemType;
+    }
+    crowdCache = { at: now, map };
+    return map;
+  } catch {
+    // Never let the crowd layer take down the store loader — fall back to none.
+    return crowdCache?.map ?? {};
+  }
 }
 
 /** Fetch a single store by ID, including its blocks */
@@ -177,6 +366,7 @@ export async function getStoreById(
       rows: store.rows,
       cols: store.cols,
       blocks: blockRows.map(toBlockDetails),
+      walls: parseWalls(store.walls),
       isPublic: store.isPublic,
       canvasVisible: store.canvasVisible,
     };
@@ -215,6 +405,7 @@ export async function createStoreWithBlocks(data: CreateStoreInput) {
       description: data.description ?? null,
       rows: data.rows ?? 10,
       cols: data.cols ?? 10,
+      walls: serializeWalls(data.walls ?? []),
     });
 
     // Auto-insert owner into storeMembers
@@ -225,6 +416,9 @@ export async function createStoreWithBlocks(data: CreateStoreInput) {
     if (data.blocks?.length) {
       await tx.insert(blocks).values(
         data.blocks.map((b) => ({
+          // Preserve the client-supplied id so items added to a just-created
+          // block (referenced by the nav-state block id) resolve without a race.
+          block_id: b.block_id,
           storeId: id,
           background: b.background ?? "#000000",
           border: b.border ?? "#000000",
@@ -435,6 +629,7 @@ export async function updateStoreWithBlocks(
     rows: number;
     cols: number;
     blocks: BlockDetails[];
+    walls?: Wall[];
   },
 ) {
   return db.transaction(async (tx) => {
@@ -446,6 +641,7 @@ export async function updateStoreWithBlocks(
         description: data.description ?? null,
         rows: data.rows,
         cols: data.cols,
+        walls: serializeWalls(data.walls ?? []),
       })
       .where(eq(stores.id, storeId));
 
@@ -550,6 +746,7 @@ export async function createItems(
     blockId?: string | null;
     itemType?: ItemType;
     unit?: string | null;
+    cost?: number | null;
   }>,
 ): Promise<string[]> {
   if (!rows.length) return [];
@@ -561,6 +758,7 @@ export async function createItems(
     blockId: r.blockId ?? undefined,
     itemType: r.itemType ?? "other",
     unit: r.unit ?? null,
+    cost: r.cost ?? null,
   }));
   await db.insert(items).values(values);
   return values.map((v) => v.id);
@@ -638,6 +836,7 @@ export async function getUsageLogsByStore(storeId: string, since?: Date) {
       itemId: itemLogs.itemId,
       delta: itemLogs.delta,
       loggedAt: itemLogs.loggedAt,
+      note: itemLogs.note,
     })
     .from(itemLogs)
     .where(and(...conds))
@@ -654,49 +853,11 @@ export async function getUsageLogsByStores(storeIds: string[], since?: Date) {
       itemId: itemLogs.itemId,
       delta: itemLogs.delta,
       loggedAt: itemLogs.loggedAt,
+      note: itemLogs.note,
     })
     .from(itemLogs)
     .where(and(...conds))
     .orderBy(sql`${itemLogs.loggedAt} asc`);
-}
-
-/**
- * Predict days until an item runs out.
- * Uses log history if available, falls back to useRate/useRatePeriod fields.
- * Returns null if there's not enough data to make a prediction.
- */
-export async function predictRunoutDays(
-  itemId: string,
-): Promise<number | null> {
-  const item = await getItemById(itemId);
-  if (!item || item.quantity <= 0) return null;
-
-  // ── Log-based prediction (preferred) ──
-  const logs = await db
-    .select()
-    .from(itemLogs)
-    .where(and(eq(itemLogs.itemId, itemId), sql`${itemLogs.delta} < 0`))
-    .orderBy(sql`${itemLogs.loggedAt} asc`);
-
-  if (logs.length >= 2) {
-    const totalConsumed = logs.reduce((sum, l) => sum + Math.abs(l.delta), 0);
-    const first = logs[0].loggedAt!.getTime();
-    const last = logs[logs.length - 1].loggedAt!.getTime();
-    const days = (last - first) / (1000 * 60 * 60 * 24);
-    if (days > 0) {
-      const dailyRate = totalConsumed / days;
-      return Math.floor(item.quantity / dailyRate);
-    }
-  }
-
-  // ── Fallback: manual useRate fields ──
-  if (item.useRate && item.useRatePeriod) {
-    const periodDays = { day: 1, week: 7, month: 30 }[item.useRatePeriod];
-    const dailyRate = item.useRate / periodDays;
-    return Math.floor(item.quantity / dailyRate);
-  }
-
-  return null;
 }
 
 // ─── MEMBERS ───────────────────────────────────────────────
@@ -871,6 +1032,8 @@ export async function createPurchaseOrder(data: {
   expiryDate?: Date | null;
   useRate?: number | null;
   useRatePeriod?: "day" | "week" | "month" | null;
+  itemType?: ItemType;
+  packageSize?: string | null;
   createdBy?: string | null;
 }) {
   const [row] = await db.insert(purchaseOrderItems).values(data).returning();
@@ -880,10 +1043,7 @@ export async function createPurchaseOrder(data: {
 export async function updatePurchaseOrder(
   id: string,
   data: Partial<
-    Omit<
-      typeof purchaseOrderItems.$inferInsert,
-      "id" | "storeId" | "createdAt" | "itemId"
-    >
+    Omit<typeof purchaseOrderItems.$inferInsert, "id" | "storeId" | "createdAt">
   >,
 ) {
   const [row] = await db
@@ -951,7 +1111,11 @@ export async function getTemplatesForGallery(
     {},
   );
 
-  return rows.map((t) => ({ ...t, blocks: byTemplate[t.id] ?? [] }));
+  return rows.map((t) => ({
+    ...t,
+    walls: parseWalls(t.walls),
+    blocks: byTemplate[t.id] ?? [],
+  }));
 }
 
 /** Fetch a single template with its blocks */
@@ -964,7 +1128,11 @@ export async function getTemplateById(
     .select()
     .from(templateBlocks)
     .where(eq(templateBlocks.templateId, id));
-  return { ...tpl, blocks: blockRows.map(toTemplateBlockDetails) };
+  return {
+    ...tpl,
+    walls: parseWalls(tpl.walls),
+    blocks: blockRows.map(toTemplateBlockDetails),
+  };
 }
 
 /** Verify a template belongs to a user before mutating it */
@@ -986,6 +1154,7 @@ export async function createTemplate(data: {
   cols?: number;
   isPublic?: boolean;
   blocks: BlockDetails[];
+  walls?: Wall[];
 }): Promise<string> {
   return db.transaction(async (tx) => {
     const id = crypto.randomUUID();
@@ -997,6 +1166,7 @@ export async function createTemplate(data: {
       tags: data.tags ?? "[]",
       rows: data.rows ?? 10,
       cols: data.cols ?? 10,
+      walls: serializeWalls(data.walls ?? []),
       isPublic: data.isPublic ?? false,
     });
     if (data.blocks.length) {
@@ -1036,6 +1206,7 @@ export async function createTemplateFromStore(
     cols: store.cols,
     isPublic: opts.isPublic ?? false,
     blocks: store.blocks,
+    walls: store.walls,
   });
 }
 
@@ -1064,6 +1235,7 @@ export async function createStoreFromTemplate(
       description: tpl.description,
       rows: tpl.rows,
       cols: tpl.cols,
+      walls: tpl.walls ?? "[]", // copy the template's wall layer verbatim (serialized)
     });
 
     await tx
@@ -1101,6 +1273,103 @@ export async function createStoreFromTemplate(
   });
 }
 
+/**
+ * First-run onboarding: create a store from a template, apply the user's zone
+ * renames, and place their tapped starter items — all in one transaction. Unlike
+ * `createStoreFromTemplate` this assigns explicit block ids so items can be
+ * placed into the freshly-created zones by the template block they chose.
+ */
+export async function onboardStoreFromTemplate(
+  userId: string,
+  input: {
+    templateId: string;
+    storeName?: string;
+    zones: { templateBlockId: string; label: string }[];
+    items: {
+      name: string;
+      quantity: number;
+      itemType?: ItemType;
+      templateBlockId: string | null;
+    }[];
+  },
+): Promise<string> {
+  return db.transaction(async (tx) => {
+    const [tpl] = await tx
+      .select()
+      .from(templates)
+      .where(eq(templates.id, input.templateId));
+    if (!tpl) throw new Response("Template not found", { status: 404 });
+    if (!tpl.isPublic && tpl.userId !== userId)
+      throw new Response("Unauthorized", { status: 403 });
+
+    const storeId = crypto.randomUUID();
+    await tx.insert(stores).values({
+      id: storeId,
+      name: input.storeName?.trim() || tpl.name,
+      userId,
+      tags: tpl.tags,
+      description: tpl.description,
+      rows: tpl.rows,
+      cols: tpl.cols,
+      walls: tpl.walls ?? "[]",
+    });
+    await tx.insert(storeMembers).values({ storeId, userId, role: "owner" });
+
+    const tBlocks = await tx
+      .select()
+      .from(templateBlocks)
+      .where(eq(templateBlocks.templateId, input.templateId));
+
+    const labelOverride = new Map(
+      input.zones.map((z) => [z.templateBlockId, z.label]),
+    );
+    const idMap = new Map<string, string>(); // template block id → new block id
+
+    if (tBlocks.length) {
+      await tx.insert(blocks).values(
+        tBlocks.map((b) => {
+          const newId = crypto.randomUUID();
+          idMap.set(b.block_id, newId);
+          return {
+            id: newId,
+            storeId,
+            background: b.background,
+            border: b.border,
+            label: labelOverride.get(b.block_id)?.trim() || b.label,
+            height: b.height,
+            width: b.width,
+            x: b.x,
+            y: b.y,
+            kind: b.kind ?? "standard",
+            fixture: b.fixture ?? null,
+          };
+        }),
+      );
+    }
+
+    const itemValues = input.items
+      .filter((it) => it.name.trim())
+      .map((it) => ({
+        id: crypto.randomUUID(),
+        name: it.name.trim(),
+        storeId,
+        quantity: it.quantity > 0 ? it.quantity : 1,
+        blockId: it.templateBlockId
+          ? (idMap.get(it.templateBlockId) ?? null)
+          : null,
+        itemType: it.itemType ?? ("other" as ItemType),
+      }));
+    if (itemValues.length) await tx.insert(items).values(itemValues);
+
+    await tx
+      .update(templates)
+      .set({ usageCount: tpl.usageCount + 1 })
+      .where(eq(templates.id, input.templateId));
+
+    return storeId;
+  });
+}
+
 /** Toggle a template between public and private */
 export async function updateTemplateVisibility(id: string, isPublic: boolean) {
   return db.update(templates).set({ isPublic }).where(eq(templates.id, id));
@@ -1115,11 +1384,18 @@ export async function deleteTemplate(id: string) {
 
 /** Fetch a store's collections, each with its items (newest collection first). */
 export async function getCollections(storeId: string): Promise<Collection[]> {
-  const cols = await db
-    .select()
-    .from(collections)
-    .where(eq(collections.storeId, storeId))
-    .orderBy(collections.createdAt);
+  let cols;
+  try {
+    cols = await db
+      .select()
+      .from(collections)
+      .where(eq(collections.storeId, storeId))
+      .orderBy(collections.createdAt);
+  } catch {
+    // is_preset column may not exist pre-migration — degrade to no collections
+    // rather than breaking the store load.
+    return [];
+  }
   if (!cols.length) return [];
 
   const ids = cols.map((c) => c.id);
@@ -1144,6 +1420,7 @@ export async function getCollections(storeId: string): Promise<Collection[]> {
       description: c.description,
       kind: c.kind as CollectionKind,
       checkedOut: c.checkedOut,
+      isPreset: c.isPreset ?? false,
       userId: c.userId,
       createdAt: c.createdAt,
       items: (byCollection.get(c.id) ?? []).map((r) => ({
@@ -1165,6 +1442,7 @@ export async function createCollection(data: {
   name: string;
   kind?: CollectionKind;
   description?: string | null;
+  isPreset?: boolean;
   userId: string;
 }) {
   const [row] = await db
@@ -1175,10 +1453,104 @@ export async function createCollection(data: {
       name: data.name,
       kind: data.kind ?? "packing",
       description: data.description ?? null,
+      isPreset: data.isPreset ?? false,
       userId: data.userId,
     })
     .returning();
   return row;
+}
+
+/**
+ * Clone a collection (and its item rows) into a new one in the same store.
+ * "Save as preset" → `asPreset: true` (a reusable template that never checks
+ * out); "Start from preset" → `asPreset: false` (a fresh active set). Copies keep
+ * the item links but reset the packed ticks; the new collection starts checked-in.
+ */
+export async function duplicateCollection(
+  sourceId: string,
+  userId: string,
+  opts: { asPreset: boolean; name?: string },
+): Promise<Collection | null> {
+  const [src] = await db
+    .select()
+    .from(collections)
+    .where(eq(collections.id, sourceId));
+  if (!src) return null;
+
+  const srcItems = await db
+    .select()
+    .from(collectionItems)
+    .where(eq(collectionItems.collectionId, sourceId))
+    .orderBy(collectionItems.createdAt);
+
+  const newId = crypto.randomUUID();
+  const suffix = opts.asPreset ? " (preset)" : "";
+  await db.insert(collections).values({
+    id: newId,
+    storeId: src.storeId,
+    name: opts.name?.trim() || `${src.name}${suffix}`,
+    kind: src.kind,
+    description: src.description,
+    isPreset: opts.asPreset,
+    checkedOut: false,
+    userId,
+  });
+
+  if (srcItems.length) {
+    await db.insert(collectionItems).values(
+      srcItems.map((r) => ({
+        id: crypto.randomUUID(),
+        collectionId: newId,
+        itemId: r.itemId,
+        name: r.name,
+        desiredQty: r.desiredQty,
+        checked: false,
+      })),
+    );
+  }
+
+  const [created] = await getCollectionsByIds([newId]);
+  return created ?? null;
+}
+
+/** Fetch specific collections (with items) by id — used after a duplicate. */
+async function getCollectionsByIds(ids: string[]): Promise<Collection[]> {
+  if (!ids.length) return [];
+  const cols = await db
+    .select()
+    .from(collections)
+    .where(inArray(collections.id, ids));
+  const ciRows = await db
+    .select()
+    .from(collectionItems)
+    .where(inArray(collectionItems.collectionId, ids))
+    .orderBy(collectionItems.createdAt);
+  const byCollection = new Map<string, typeof ciRows>();
+  for (const r of ciRows) {
+    const arr = byCollection.get(r.collectionId);
+    if (arr) arr.push(r);
+    else byCollection.set(r.collectionId, [r]);
+  }
+  return cols.map((c) => ({
+    id: c.id,
+    storeId: c.storeId,
+    name: c.name,
+    description: c.description,
+    kind: c.kind as CollectionKind,
+    checkedOut: c.checkedOut,
+    isPreset: c.isPreset ?? false,
+    userId: c.userId,
+    createdAt: c.createdAt,
+    items: (byCollection.get(c.id) ?? []).map((r) => ({
+      id: r.id,
+      collectionId: r.collectionId,
+      itemId: r.itemId,
+      name: r.name,
+      desiredQty: r.desiredQty,
+      checked: r.checked,
+      createdAt: r.createdAt,
+    })),
+  }));
 }
 
 export async function updateCollection(
@@ -1372,14 +1744,38 @@ export async function createTradeOffer(data: {
 export async function getTradeOffersForUser(
   userId: string,
 ): Promise<TradeOffer[]> {
-  const rows = await db
-    .select()
-    .from(tradeOffers)
-    .where(
-      sql`${tradeOffers.fromUserId} = ${userId} OR ${tradeOffers.toUserId} = ${userId}`,
-    )
-    .orderBy(desc(tradeOffers.createdAt));
-  return rows as TradeOffer[];
+  try {
+    const rows = await db
+      .select()
+      .from(tradeOffers)
+      .where(
+        sql`${tradeOffers.fromUserId} = ${userId} OR ${tradeOffers.toUserId} = ${userId}`,
+      )
+      .orderBy(desc(tradeOffers.createdAt));
+    return rows as TradeOffer[];
+  } catch {
+    // completed_at column may not exist pre-migration — degrade to no offers
+    // rather than breaking the whole /trade + dashboard load.
+    return [];
+  }
+}
+
+/** Count of pending offers awaiting the user's response (incoming only). */
+export async function getIncomingOfferCount(userId: string): Promise<number> {
+  try {
+    const [row] = await db
+      .select({ n: sql<number>`count(*)` })
+      .from(tradeOffers)
+      .where(
+        and(
+          eq(tradeOffers.toUserId, userId),
+          eq(tradeOffers.status, "pending"),
+        ),
+      );
+    return row?.n ?? 0;
+  } catch {
+    return 0;
+  }
 }
 
 export async function getTradeOfferById(id: string) {
@@ -1423,4 +1819,562 @@ export async function acceptTradeOffer(id: string) {
       );
   }
   return offer;
+}
+
+/**
+ * Mark an accepted offer as physically completed. Either participant can do it;
+ * the caller is responsible for authorising that they're a party. No-op (returns
+ * null) unless the offer is currently `accepted`.
+ */
+export async function completeTradeOffer(id: string) {
+  const offer = await getTradeOfferById(id);
+  if (!offer || offer.status !== "accepted") return null;
+  await db
+    .update(tradeOffers)
+    .set({ status: "completed", completedAt: new Date() })
+    .where(eq(tradeOffers.id, id));
+  return offer;
+}
+
+/** All messages in an offer's thread, oldest first. Resilient to a missing table. */
+export async function getTradeMessages(
+  offerId: string,
+): Promise<TradeMessage[]> {
+  try {
+    const rows = await db
+      .select()
+      .from(tradeMessages)
+      .where(eq(tradeMessages.offerId, offerId))
+      .orderBy(tradeMessages.createdAt);
+    return rows as TradeMessage[];
+  } catch {
+    return [];
+  }
+}
+
+/** Post a message to an offer's thread. Authorisation is the caller's job. */
+export async function createTradeMessage(data: {
+  offerId: string;
+  fromUserId: string;
+  body: string;
+}) {
+  const [row] = await db.insert(tradeMessages).values(data).returning();
+  return row as TradeMessage;
+}
+
+// ─── CUSTOM FIXTURES ───────────────────────────────────────
+
+function parseCustomFixture(
+  row: typeof customFixtures.$inferSelect,
+): CustomFixture {
+  let shapes: CustomShape[] = [];
+  try {
+    const parsed = JSON.parse(row.shapes);
+    if (Array.isArray(parsed)) shapes = parsed as CustomShape[];
+  } catch {
+    shapes = [];
+  }
+  return {
+    id: row.id,
+    userId: row.userId,
+    name: row.name,
+    category: row.category,
+    defaultColor: row.defaultColor,
+    shapes,
+    createdAt: row.createdAt ? row.createdAt.getTime() : null,
+  };
+}
+
+/** All custom fixtures owned by a user (newest first). */
+export async function getCustomFixturesByUser(
+  userId: string,
+): Promise<CustomFixture[]> {
+  const rows = await db
+    .select()
+    .from(customFixtures)
+    .where(eq(customFixtures.userId, userId))
+    .orderBy(desc(customFixtures.createdAt));
+  return rows.map(parseCustomFixture);
+}
+
+/** Resolve a set of custom-fixture ids (e.g. those placed on a store's blocks),
+ *  regardless of owner — so a shared/public store still renders them. */
+export async function getCustomFixturesByIds(
+  ids: string[],
+): Promise<CustomFixture[]> {
+  const unique = [...new Set(ids.filter((id) => id.startsWith("cf_")))];
+  if (unique.length === 0) return [];
+  const rows = await db
+    .select()
+    .from(customFixtures)
+    .where(inArray(customFixtures.id, unique));
+  return rows.map(parseCustomFixture);
+}
+
+export async function createCustomFixture(input: {
+  userId: string;
+  name: string;
+  category: FixtureCategory;
+  defaultColor: string;
+  shapes: CustomShape[];
+}): Promise<CustomFixture> {
+  const [row] = await db
+    .insert(customFixtures)
+    .values({
+      userId: input.userId,
+      name: input.name,
+      category: input.category,
+      defaultColor: input.defaultColor,
+      shapes: JSON.stringify(input.shapes ?? []),
+    })
+    .returning();
+  return parseCustomFixture(row);
+}
+
+export async function updateCustomFixture(
+  id: string,
+  userId: string,
+  patch: {
+    name?: string;
+    category?: FixtureCategory;
+    defaultColor?: string;
+    shapes?: CustomShape[];
+  },
+): Promise<CustomFixture | null> {
+  const set: Partial<typeof customFixtures.$inferInsert> = {};
+  if (patch.name !== undefined) set.name = patch.name;
+  if (patch.category !== undefined) set.category = patch.category;
+  if (patch.defaultColor !== undefined) set.defaultColor = patch.defaultColor;
+  if (patch.shapes !== undefined) set.shapes = JSON.stringify(patch.shapes);
+  if (Object.keys(set).length === 0) return null;
+  const [row] = await db
+    .update(customFixtures)
+    .set(set)
+    .where(and(eq(customFixtures.id, id), eq(customFixtures.userId, userId)))
+    .returning();
+  return row ? parseCustomFixture(row) : null;
+}
+
+export async function deleteCustomFixture(
+  id: string,
+  userId: string,
+): Promise<void> {
+  await db
+    .delete(customFixtures)
+    .where(and(eq(customFixtures.id, id), eq(customFixtures.userId, userId)));
+}
+
+// ─── RECIPES ───────────────────────────────────────────────
+// A user's saved recipe library. Ingredients/steps/tags are JSON columns; we
+// parse them into the runtime `Recipe` shape with `custom: true` so they drop
+// straight into the matcher + panel. All mutations are user-scoped.
+
+function parseJsonArray<T>(raw: string): T[] {
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? (parsed as T[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseUserRecipe(row: typeof recipes.$inferSelect): Recipe {
+  return {
+    id: row.id,
+    name: row.name,
+    blurb: row.blurb ?? "",
+    imageUrl: row.imageUrl ?? undefined,
+    sourceUrl: row.sourceUrl ?? undefined,
+    ingredients: parseJsonArray<RecipeIngredient>(row.ingredients),
+    steps: parseJsonArray<RecipeStep>(row.steps),
+    tags: parseJsonArray<string>(row.tags),
+    minutes: row.minutes ?? 0,
+    serves: row.serves ?? 1,
+    custom: true,
+    isPublic: row.isPublic,
+    usageCount: row.usageCount,
+    authorId: row.userId,
+  };
+}
+
+type RecipeInput = {
+  name: string;
+  blurb?: string | null;
+  imageUrl?: string | null;
+  sourceUrl?: string | null;
+  ingredients: RecipeIngredient[];
+  steps: RecipeStep[];
+  tags: string[];
+  minutes?: number | null;
+  serves?: number | null;
+};
+
+/** All recipes saved by a user (newest first), as runtime `Recipe`s. Degrades to
+ *  [] on DB trouble (e.g. before the recipe-sharing migration adds its columns) so
+ *  the store/dashboard loaders never break. */
+export async function getUserRecipes(userId: string): Promise<Recipe[]> {
+  try {
+    const rows = await db
+      .select()
+      .from(recipes)
+      .where(eq(recipes.userId, userId))
+      .orderBy(desc(recipes.createdAt));
+    return rows.map(parseUserRecipe);
+  } catch {
+    return [];
+  }
+}
+
+export async function createUserRecipe(
+  input: RecipeInput & { userId: string },
+): Promise<Recipe> {
+  const [row] = await db
+    .insert(recipes)
+    .values({
+      userId: input.userId,
+      name: input.name,
+      blurb: input.blurb ?? null,
+      imageUrl: input.imageUrl ?? null,
+      sourceUrl: input.sourceUrl ?? null,
+      ingredients: JSON.stringify(input.ingredients ?? []),
+      steps: JSON.stringify(input.steps ?? []),
+      tags: JSON.stringify(input.tags ?? []),
+      minutes: input.minutes ?? null,
+      serves: input.serves ?? null,
+    })
+    .returning();
+  return parseUserRecipe(row);
+}
+
+export async function updateUserRecipe(
+  id: string,
+  userId: string,
+  patch: Partial<RecipeInput>,
+): Promise<Recipe | null> {
+  const set: Partial<typeof recipes.$inferInsert> = {};
+  if (patch.name !== undefined) set.name = patch.name;
+  if (patch.blurb !== undefined) set.blurb = patch.blurb;
+  if (patch.imageUrl !== undefined) set.imageUrl = patch.imageUrl;
+  if (patch.sourceUrl !== undefined) set.sourceUrl = patch.sourceUrl;
+  if (patch.ingredients !== undefined)
+    set.ingredients = JSON.stringify(patch.ingredients);
+  if (patch.steps !== undefined) set.steps = JSON.stringify(patch.steps);
+  if (patch.tags !== undefined) set.tags = JSON.stringify(patch.tags);
+  if (patch.minutes !== undefined) set.minutes = patch.minutes;
+  if (patch.serves !== undefined) set.serves = patch.serves;
+  if (Object.keys(set).length === 0) return null;
+  const [row] = await db
+    .update(recipes)
+    .set(set)
+    .where(and(eq(recipes.id, id), eq(recipes.userId, userId)))
+    .returning();
+  return row ? parseUserRecipe(row) : null;
+}
+
+export async function deleteUserRecipe(
+  id: string,
+  userId: string,
+): Promise<void> {
+  await db
+    .delete(recipes)
+    .where(and(eq(recipes.id, id), eq(recipes.userId, userId)));
+}
+
+// ─── RECIPE SHARING (community / "template recipes") ───────
+
+/**
+ * Public recipes for the community tab, most-copied first. Optional case-insensitive
+ * name search. Degrades to [] on DB trouble (e.g. before the sharing migration).
+ */
+export async function getPublicRecipes(
+  search?: string,
+  limit = 60,
+): Promise<Recipe[]> {
+  try {
+    const conds = [eq(recipes.isPublic, true)];
+    const q = (search ?? "").trim().toLowerCase();
+    if (q) conds.push(sql`lower(${recipes.name}) like ${"%" + q + "%"}`);
+    const rows = await db
+      .select()
+      .from(recipes)
+      .where(and(...conds))
+      .orderBy(desc(recipes.usageCount), desc(recipes.createdAt))
+      .limit(limit);
+    return rows.map(parseUserRecipe);
+  } catch {
+    return [];
+  }
+}
+
+/** Toggle a recipe's public visibility (owner-guarded). */
+export async function setRecipeVisibility(
+  id: string,
+  userId: string,
+  isPublic: boolean,
+): Promise<void> {
+  await db
+    .update(recipes)
+    .set({ isPublic })
+    .where(and(eq(recipes.id, id), eq(recipes.userId, userId)));
+}
+
+/**
+ * Copy a public recipe into a user's own library as a fresh `ur_*` clone (keeps
+ * sourceUrl, resets sharing), and bump the origin's usageCount. Won't copy your
+ * own recipe. Returns the new recipe, or null if the source isn't copyable.
+ */
+export async function copyRecipeToUser(
+  sourceId: string,
+  userId: string,
+): Promise<Recipe | null> {
+  const [src] = await db
+    .select()
+    .from(recipes)
+    .where(eq(recipes.id, sourceId))
+    .limit(1);
+  if (!src || !src.isPublic || src.userId === userId) return null;
+
+  const [row] = await db
+    .insert(recipes)
+    .values({
+      userId,
+      name: src.name,
+      blurb: src.blurb,
+      imageUrl: src.imageUrl,
+      sourceUrl: src.sourceUrl,
+      ingredients: src.ingredients,
+      steps: src.steps,
+      tags: src.tags,
+      minutes: src.minutes,
+      serves: src.serves,
+      isPublic: false,
+      usageCount: 0,
+    })
+    .returning();
+  await db
+    .update(recipes)
+    .set({ usageCount: (src.usageCount ?? 0) + 1 })
+    .where(eq(recipes.id, sourceId));
+  return parseUserRecipe(row);
+}
+
+// ─── MEAL PLAN ─────────────────────────────────────────────
+// Recipes scheduled on a day, per store (owner/editor planning data). All
+// mutations are scoped to the store; the loader/action authorises store access.
+
+function parseScheduledMeal(
+  row: typeof scheduledMeals.$inferSelect,
+): ScheduledMeal {
+  return {
+    id: row.id,
+    storeId: row.storeId,
+    recipeRef: row.recipeRef,
+    recipeName: row.recipeName,
+    dateKey: row.dateKey,
+    mealType: row.mealType,
+    createdAt: row.createdAt ? row.createdAt.getTime() : null,
+  };
+}
+
+/** All meals scheduled in a store, ordered by day. */
+export async function getScheduledMeals(
+  storeId: string,
+): Promise<ScheduledMeal[]> {
+  const rows = await db
+    .select()
+    .from(scheduledMeals)
+    .where(eq(scheduledMeals.storeId, storeId))
+    .orderBy(scheduledMeals.dateKey);
+  return rows.map(parseScheduledMeal);
+}
+
+export async function createScheduledMeal(input: {
+  id?: string;
+  storeId: string;
+  userId: string;
+  recipeRef: string;
+  recipeName: string;
+  dateKey: string;
+  mealType: MealType;
+}): Promise<ScheduledMeal> {
+  const [row] = await db
+    .insert(scheduledMeals)
+    .values({
+      ...(input.id ? { id: input.id } : {}),
+      storeId: input.storeId,
+      userId: input.userId,
+      recipeRef: input.recipeRef,
+      recipeName: input.recipeName,
+      dateKey: input.dateKey,
+      mealType: input.mealType,
+    })
+    .returning();
+  return parseScheduledMeal(row);
+}
+
+/** Delete a scheduled meal, scoped to its store (cross-store guard). */
+export async function deleteScheduledMeal(
+  id: string,
+  storeId: string,
+): Promise<void> {
+  await db
+    .delete(scheduledMeals)
+    .where(and(eq(scheduledMeals.id, id), eq(scheduledMeals.storeId, storeId)));
+}
+
+// ─── DOSE SCHEDULES (reminders v1) ─────────────────────────
+// Opt-in "take N times a day" schedules for medication items. Scoped to the
+// user who tracks it. Taking a dose is an itemLogs row (delta −1, note "dose"),
+// so adherence + refill prediction reuse existing machinery.
+
+/** A dose schedule joined with its item + store context (pre-adherence). */
+export type DoseScheduleRow = {
+  id: string;
+  itemId: string;
+  userId: string;
+  timesPerDay: number;
+  startDate: Date;
+  endDate: Date | null;
+  active: boolean;
+  createdAt: Date | null;
+  itemName: string;
+  quantity: number;
+  unit: string | null;
+  storeId: string;
+  storeName: string;
+};
+
+/**
+ * Every dose schedule a user owns, joined to item + store labels. Degrades to an
+ * empty list on any DB trouble (e.g. before the reminders migration is applied)
+ * so the dashboard/reminders never break — same resilience as `getCrowdTypeHints`.
+ */
+export async function getDoseSchedulesByUser(
+  userId: string,
+): Promise<DoseScheduleRow[]> {
+  try {
+    return await db
+      .select({
+        id: doseSchedules.id,
+        itemId: doseSchedules.itemId,
+        userId: doseSchedules.userId,
+        timesPerDay: doseSchedules.timesPerDay,
+        startDate: doseSchedules.startDate,
+        endDate: doseSchedules.endDate,
+        active: doseSchedules.active,
+        createdAt: doseSchedules.createdAt,
+        itemName: items.name,
+        quantity: items.quantity,
+        unit: items.unit,
+        storeId: items.storeId,
+        storeName: stores.name,
+      })
+      .from(doseSchedules)
+      .innerJoin(items, eq(doseSchedules.itemId, items.id))
+      .innerJoin(stores, eq(items.storeId, stores.id))
+      .where(eq(doseSchedules.userId, userId));
+  } catch {
+    return [];
+  }
+}
+
+/** The (single) schedule tracked for an item by a user, or null. */
+export async function getDoseScheduleForItem(itemId: string, userId: string) {
+  const [row] = await db
+    .select()
+    .from(doseSchedules)
+    .where(
+      and(eq(doseSchedules.itemId, itemId), eq(doseSchedules.userId, userId)),
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+export async function getDoseScheduleById(id: string) {
+  const [row] = await db
+    .select()
+    .from(doseSchedules)
+    .where(eq(doseSchedules.id, id))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function createDoseSchedule(input: {
+  itemId: string;
+  userId: string;
+  timesPerDay: number;
+  startDate: Date;
+  endDate: Date | null;
+}) {
+  const [row] = await db
+    .insert(doseSchedules)
+    .values({
+      itemId: input.itemId,
+      userId: input.userId,
+      timesPerDay: input.timesPerDay,
+      startDate: input.startDate,
+      endDate: input.endDate,
+      active: true,
+    })
+    .returning();
+  return row;
+}
+
+/** Update a schedule's cadence/duration/active flag, scoped to its owner. */
+export async function updateDoseSchedule(
+  id: string,
+  userId: string,
+  patch: Partial<{
+    timesPerDay: number;
+    endDate: Date | null;
+    active: boolean;
+  }>,
+) {
+  await db
+    .update(doseSchedules)
+    .set(patch)
+    .where(and(eq(doseSchedules.id, id), eq(doseSchedules.userId, userId)));
+}
+
+export async function deleteDoseSchedule(
+  id: string,
+  userId: string,
+): Promise<void> {
+  await db
+    .delete(doseSchedules)
+    .where(and(eq(doseSchedules.id, id), eq(doseSchedules.userId, userId)));
+}
+
+/**
+ * Doses taken today per item — a count of itemLogs with note "dose" on or after
+ * `since` (the caller passes local start-of-day). Only the listed items.
+ */
+export async function getTodayDoseCounts(
+  itemIds: string[],
+  since: Date,
+): Promise<Map<string, number>> {
+  if (!itemIds.length) return new Map();
+  const rows = await db
+    .select({ itemId: itemLogs.itemId, n: sql<number>`count(*)` })
+    .from(itemLogs)
+    .where(
+      and(
+        inArray(itemLogs.itemId, itemIds),
+        eq(itemLogs.note, "dose"),
+        gte(itemLogs.loggedAt, since),
+      ),
+    )
+    .groupBy(itemLogs.itemId);
+  return new Map(rows.map((r) => [r.itemId, Number(r.n)]));
+}
+
+/** Snooze/dismiss an item's alerts until `until` (null clears the snooze). */
+export async function snoozeItemAlert(
+  itemId: string,
+  until: Date | null,
+): Promise<void> {
+  await db
+    .update(items)
+    .set({ alertSnoozedUntil: until })
+    .where(eq(items.id, itemId));
 }

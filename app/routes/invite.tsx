@@ -1,7 +1,5 @@
-import { redirect, type LoaderFunctionArgs, useLoaderData } from "react-router";
-import { getAuth } from "@clerk/react-router/server";
+import { useLoaderData } from "react-router";
 import { useClerk } from "@clerk/react-router";
-import { getInviteByToken, claimInvite } from "~/lib/queries";
 import Navbar from "~/components/home/navbar";
 export { loader } from "#utils/loaders/invite.loader";
 export { RouteErrorBoundary as ErrorBoundary } from "~/components/common/errorState";

@@ -8,19 +8,38 @@ import type {
   SortOption,
   SortDir,
   AttentionItem,
+  Digest,
+  ItemIndexEntry,
 } from "#types/dashboardTypes";
 import { StoreCard } from "./storecard";
 import { EmptyState } from "./emptystate";
 import { AttentionDigest } from "./attentionDigest";
+import { WeeklyDigest } from "./weeklyDigest";
+import { CommandPalette } from "./commandPalette";
+import { Button } from "~/components/common/Button";
 import { CountUp } from "#components/common/countUp";
+import { formatMoney } from "#utils/helpers/money.helper";
 
 // ── Main Dashboard ─────────────────────────────────────────
 
-type Props = { stores: StoreWithDetails[]; attention: AttentionItem[] };
+type Props = {
+  stores: StoreWithDetails[];
+  attention: AttentionItem[];
+  spentThisMonthCents?: number;
+  dosesDue?: number;
+  incomingOffers?: number;
+  digest?: Digest;
+  itemIndex?: ItemIndexEntry[];
+};
 
 export default function Dashboard({
   stores: initialStores,
   attention: initialAttention,
+  spentThisMonthCents = 0,
+  dosesDue = 0,
+  incomingOffers = 0,
+  digest,
+  itemIndex = [],
 }: Props) {
   const { user } = useUser();
   const navigate = useNavigate();
@@ -169,6 +188,7 @@ export default function Dashboard({
       ref={rootRef}
       className="min-h-screen bg-slate-50 px-4 sm:px-8 py-10 max-w-7xl mx-auto"
     >
+      <CommandPalette items={itemIndex} />
       {/* ── Header ── */}
       <div className="lv-dash-head flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
         <div>
@@ -179,18 +199,54 @@ export default function Dashboard({
             <CountUp value={stores.length} />{" "}
             {stores.length === 1 ? "location" : "locations"}
             {pinnedCount > 0 && ` · ${pinnedCount} pinned`}
+            {spentThisMonthCents > 0 && (
+              <span title="Estimated from items restocked this month × their price">
+                {" · ~"}
+                {formatMoney(spentThisMonthCents)} spent this month
+              </span>
+            )}
           </p>
         </div>
-        <button
+        <Button
+          variant="primary"
+          size="lg"
           onClick={() => navigate("/addstore")}
-          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500
-                     text-white text-sm font-semibold rounded-xl transition-colors
-                     shadow-sm shadow-emerald-900/10 self-start sm:self-auto"
+          className="shadow-sm shadow-emerald-900/10 self-start sm:self-auto"
         >
           <Plus size={15} strokeWidth={2.4} />
           New store
-        </button>
+        </Button>
       </div>
+
+      {/* ── Weekly digest (habit anchor) ── */}
+      {digest && stores.length > 0 && <WeeklyDigest digest={digest} />}
+
+      {/* ── Action chips (doses / trade offers) ── */}
+      {(dosesDue > 0 || incomingOffers > 0) && (
+        <div className="lv-dash-attn mb-4 flex flex-wrap gap-2">
+          {dosesDue > 0 && (
+            <button
+              onClick={() => navigate("/reminders")}
+              className="flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 transition-colors"
+            >
+              <span className="h-2 w-2 rounded-full bg-blue-500" />
+              {dosesDue} dose{dosesDue !== 1 ? "s" : ""} due
+              <span className="text-blue-400">→</span>
+            </button>
+          )}
+          {incomingOffers > 0 && (
+            <button
+              onClick={() => navigate("/trade")}
+              className="flex items-center gap-2 rounded-full border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 transition-colors"
+            >
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              {incomingOffers} trade offer{incomingOffers !== 1 ? "s" : ""} to
+              review
+              <span className="text-emerald-400">→</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ── Foresight digest ── */}
       <AttentionDigest items={attention} onAdd={handleAddToList} />

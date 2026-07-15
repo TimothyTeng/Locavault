@@ -1,4 +1,4 @@
-import type { FixtureId } from "./fixtureTypes";
+import type { FixtureRef } from "./customFixtureTypes";
 
 export const PRESET_COLORS = [
   "#2d6b44",
@@ -47,8 +47,9 @@ interface BlockBase {
   id: string;
   name: string;
   color: string;
-  /** Optional furniture fixture; null/undefined = plain coloured block. */
-  fixture?: FixtureId | null;
+  /** Fixture reference — a built-in FixtureId or a custom "cf_<id>";
+   *  null/undefined = plain coloured block. */
+  fixture?: FixtureRef | null;
 }
 
 export interface StandardBlock extends BlockBase {
@@ -71,8 +72,9 @@ export type Block = StandardBlock | DividerBlock | StairsBlock | RoomBlock;
 
 // ─── Default blocks ───────────────────────────────────────────────────────────
 
+// Doors and walls are now drawn from the Draw tab's wall tools (edge-based wall
+// layer), so they're no longer block types here.
 export const DEFAULT_BLOCKS: Block[] = [
-  { id: "default-door", name: "Door", color: "#3d8a58", kind: "divider" },
   {
     id: "default-shelf",
     name: "Shelf",
@@ -87,6 +89,5 @@ export const DEFAULT_BLOCKS: Block[] = [
     kind: "standard",
     fixture: "cabinet",
   },
-  { id: "default-wall", name: "Wall", color: "#1e2520", kind: "divider" },
   { id: "default-room", name: "Room", color: "#64748b", kind: "room" },
 ];

@@ -1,4 +1,5 @@
 import type { BlockDetails } from "./storeViewFinderTypes";
+import type { Wall } from "./wallTypes";
 
 export type StoreWithDetails = {
   id: string;
@@ -10,13 +11,33 @@ export type StoreWithDetails = {
   userId: string;
   createdAt: Date | null;
   blocks: BlockDetails[];
+  walls: Wall[];
   itemCount: number;
   pinned?: boolean;
   role?: "owner" | "editor" | "viewer"; // undefined = owned (legacy), set for member stores
+  /** Recipes cookable right now from this store's stock ("cook tonight?"). */
+  cookableCount?: number;
 };
 
 export type SortOption = "name" | "created";
 export type SortDir = "asc" | "desc";
+
+/** A searchable item for the ⌘K command palette (cross-store). */
+export type ItemIndexEntry = {
+  id: string;
+  name: string;
+  storeId: string;
+  storeName: string;
+  itemType: import("./itemTypeTypes").ItemType;
+};
+
+/** One-line weekly digest counts, aggregated across all the user's stores. */
+export type Digest = {
+  low: number;
+  expiring: number;
+  cookable: number;
+  doseEnding: number;
+};
 
 /** A cross-store item that needs attention (out / low / expiring / predicted). */
 export type AttentionItem = {
@@ -30,6 +51,8 @@ export type AttentionItem = {
   zoneLabel: string | null;
   status: import("./storeTypes").ItemStatus;
   runoutDays: number | null;
+  /** Human run-out phrase ("Likely this week"), null if no usable estimate. */
+  runoutPhrase: string | null;
   expiryDays: number | null;
   /** Already on a shopping list. */
   onList: boolean;

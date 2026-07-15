@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "react-router";
 import gsap from "gsap";
 import { Plus, Minus, X } from "lucide-react";
 import type { Item, ItemStatus } from "~/types/storeTypes";
@@ -8,6 +9,8 @@ import {
   itemRunoutDays,
 } from "~/utils/helpers/storeTable.helper";
 import { FixtureGraphic } from "~/lib/fixtures";
+import { WallLayer } from "~/components/common/wallLayer";
+import type { Wall } from "~/types/wallTypes";
 import { GridRuler } from "~/components/addstore/storeViewFinder/GridRuler";
 import { useProductImage } from "~/utils/useProductImage";
 import { TypeIcon } from "./typeIcon";
@@ -56,6 +59,8 @@ type Props = {
   canEdit: boolean;
   isOwner: boolean;
   storeIsPublic: boolean;
+  /** Edge-based wall layer rendered over the floor. */
+  walls?: Wall[];
   /** Search-jump target — opens & pulses this zone's panel. */
   pulseZoneId?: string | null;
   /** Item to flag inside the opened panel after a search jump. */
@@ -63,10 +68,13 @@ type Props = {
   onSaveItem: (updated: Item) => void;
   onDeleteItem: (itemId: string) => void;
   onMarkOut?: (item: Item) => void;
+  onStillHave?: (item: Item) => void;
   onAddToList?: (item: Item) => void;
   onToggleVisibility: (itemId: string, isPublic: boolean) => void;
   /** Open the add-item panel pre-targeted to a zone (null = no zone). */
   onAddItemToZone: (blockId: string | null) => void;
+  /** Desktop shows the right-edge panel rail — controls inset to clear it. */
+  isMobile?: boolean;
 };
 
 function useElementSize() {
@@ -91,18 +99,21 @@ export function StoreMapView({
   rows,
   items,
   canEdit,
-  isOwner,
-  storeIsPublic,
+  walls = [],
   pulseZoneId,
   pulseItemId,
   onSaveItem,
   onDeleteItem,
   onMarkOut,
+  onStillHave,
   onAddToList,
-  onToggleVisibility,
   onAddItemToZone,
+  isMobile = false,
 }: Props) {
   const { ref, size } = useElementSize();
+  // Inset for the right-edge panel rail (desktop only) so floating controls and
+  // the legend don't sit underneath it.
+  const railInset = isMobile ? "right-3" : "right-14";
   const [zoom, setZoom] = useState(1);
   const [openZoneId, setOpenZoneId] = useState<string | null>(null);
   const [unassignedOpen, setUnassignedOpen] = useState(false);
@@ -299,14 +310,34 @@ export function StoreMapView({
             "radial-gradient(110% 90% at 50% 40%, #000 55%, transparent 100%)",
         }}
       />
-      {/* Ambient vignette for depth */}
-      <div
-        className="pointer-events-none absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(80% 70% at 50% 35%, transparent 55%, rgba(15,23,42,0.12) 100%)",
-        }}
-      />
+
+      {/* Empty floor plan — nudge the owner/editor into the builder rather than
+          leaving them staring at a blank board. */}
+      {Object.keys(blocks).length === 0 && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center p-6">
+          <div className="pointer-events-auto flex max-w-xs flex-col items-center gap-3 rounded-2xl border border-slate-200 bg-white/90 px-6 py-7 text-center shadow-xl backdrop-blur">
+            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-400">
+              <Plus size={20} strokeWidth={2} />
+            </div>
+            <p className="text-[13px] font-bold text-slate-800">
+              Draw your floor plan
+            </p>
+            <p className="text-[11px] leading-relaxed text-slate-400">
+              {canEdit
+                ? "Sketch the shelves, zones and rooms that mirror your home — then place items on them."
+                : "This store doesn't have a floor plan yet."}
+            </p>
+            {canEdit && (
+              <Link
+                to="edit"
+                className="mt-1 rounded-md border border-slate-800 bg-slate-800 px-4 py-2 text-[10px] font-bold uppercase tracking-widest text-white transition-colors hover:bg-slate-700"
+              >
+                Draw your first shelf
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Scrollable board */}
       <div ref={ref} className="absolute inset-0 overflow-auto">
@@ -329,29 +360,48 @@ export function StoreMapView({
                 height: contentH,
               }}
             >
-              {/* Room regions — passive grouping layer, behind tiles */}
-              {rooms.map((r) => (
-                <div
-                  key={r.id}
-                  data-room-id={r.id}
-                  className="absolute rounded-md pointer-events-none"
-                  style={{
-                    left: r.x * cell,
-                    top: r.y * cell,
-                    width: r.w * cell,
-                    height: r.h * cell,
-                    background: `${r.border}0e`,
-                    border: `1.5px dashed ${r.border}59`,
-                  }}
-                >
-                  <span
-                    className="absolute left-1 top-1 rounded bg-white/80 px-1 font-mono uppercase tracking-wide leading-none"
-                    style={{ fontSize: 9, color: r.border, paddingBlock: 1 }}
+              {/* Room regions — passive grouping layer, behind tiles. The
+                  focused room (selected in the room bar) gets a solid ring so
+                  it's obvious which room you're zoomed into. */}
+              {rooms.map((r) => {
+                const isFocused = r.id === focusRoomId;
+                const dimmed = focusRoomId !== null && !isFocused;
+                return (
+                  <div
+                    key={r.id}
+                    data-room-id={r.id}
+                    className="absolute rounded-md pointer-events-none transition-all duration-200"
+                    style={{
+                      left: r.x * cell,
+                      top: r.y * cell,
+                      width: r.w * cell,
+                      height: r.h * cell,
+                      background: isFocused ? `${r.border}1f` : `${r.border}0e`,
+                      border: isFocused
+                        ? `2px solid ${r.border}`
+                        : `1.5px dashed ${r.border}59`,
+                      boxShadow: isFocused
+                        ? `0 0 0 3px ${r.border}26`
+                        : undefined,
+                      opacity: dimmed ? 0.45 : 1,
+                    }}
                   >
-                    {r.label}
-                  </span>
-                </div>
-              ))}
+                    <span
+                      className="absolute left-1 top-1 rounded px-1 font-mono uppercase tracking-wide leading-none"
+                      style={{
+                        fontSize: 9,
+                        paddingBlock: 1,
+                        color: isFocused ? "#fff" : r.border,
+                        background: isFocused
+                          ? r.border
+                          : "rgba(255,255,255,0.8)",
+                      }}
+                    >
+                      {r.label}
+                    </span>
+                  </div>
+                );
+              })}
 
               {Object.entries(blocks).map(([bid, b]) => {
                 if (b.kind === "room") return null;
@@ -396,6 +446,9 @@ export function StoreMapView({
                   />
                 );
               })}
+
+              {/* ── Wall layer (over the floor + blocks) ── */}
+              <WallLayer walls={walls} cell={cell} cols={cols} rows={rows} />
 
               {/* ── Expanded shelf panel (anchored to the block) ── */}
               {openBlock && (
@@ -480,14 +533,16 @@ export function StoreMapView({
       )}
 
       {/* ── Floating map tools ── */}
-      <div className="absolute bottom-4 right-4 z-20 flex flex-col items-end gap-2">
+      <div
+        className={`absolute bottom-4 ${railInset} z-20 flex flex-col items-end gap-2`}
+      >
         <div className="flex items-center gap-1.5">
           <button
             onClick={toggleRuler}
             title={
               showRuler ? "Hide coordinate guides" : "Show coordinate guides"
             }
-            className={`rounded-lg border bg-white/95 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest shadow-sm backdrop-blur transition-colors ${
+            className={`rounded-lg border bg-white/95 px-3 py-2 text-[11px] font-bold uppercase tracking-widest shadow-sm backdrop-blur transition-colors ${
               showRuler
                 ? "border-slate-400 text-slate-700"
                 : "border-slate-200 text-slate-500 hover:text-slate-700"
@@ -498,7 +553,7 @@ export function StoreMapView({
           <button
             onClick={togglePlain}
             title={plain ? "Show furniture fixtures" : "Show plain blocks"}
-            className="rounded-lg border border-slate-200 bg-white/95 px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500 shadow-sm backdrop-blur transition-colors hover:text-slate-700"
+            className="rounded-lg border border-slate-200 bg-white/95 px-3 py-2 text-[11px] font-bold uppercase tracking-widest text-slate-500 shadow-sm backdrop-blur transition-colors hover:text-slate-700"
           >
             {plain ? "Plain" : "Detailed"}
           </button>
@@ -506,9 +561,9 @@ export function StoreMapView({
         {canEdit && (
           <button
             onClick={() => onAddItemToZone(null)}
-            className="flex items-center gap-1.5 rounded-lg bg-slate-900 px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-white shadow-lg hover:bg-slate-700 transition-colors"
+            className="flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white shadow-lg hover:bg-slate-700 transition-colors"
           >
-            <Plus size={12} strokeWidth={2.4} />
+            <Plus size={14} strokeWidth={2.4} />
             Add item
           </button>
         )}
@@ -519,11 +574,11 @@ export function StoreMapView({
             }
             label="Zoom out"
           >
-            <Minus size={13} />
+            <Minus size={15} />
           </ZoomBtn>
           <button
             onClick={() => setZoom(1)}
-            className="px-2 text-[9px] font-mono font-bold tabular-nums text-slate-500 hover:text-slate-800"
+            className="px-2.5 text-[10px] font-mono font-bold tabular-nums text-slate-500 hover:text-slate-800"
             title="Reset zoom"
           >
             {Math.round(zoom * 100)}%
@@ -534,7 +589,7 @@ export function StoreMapView({
             }
             label="Zoom in"
           >
-            <Plus size={13} />
+            <Plus size={15} />
           </ZoomBtn>
         </div>
       </div>
@@ -557,26 +612,41 @@ export function StoreMapView({
               setFocusRoomId(null);
               setZoom(1);
             }}
-            className="shrink-0 rounded-md px-2 py-0.5 text-[10px] font-mono text-slate-500 hover:bg-slate-100"
+            aria-pressed={focusRoomId === null}
+            className={`shrink-0 rounded-md px-2 py-0.5 text-[10px] font-mono transition-colors ${
+              focusRoomId === null
+                ? "bg-slate-900 text-white"
+                : "text-slate-500 hover:bg-slate-100"
+            }`}
           >
             All
           </button>
-          {rooms.map((r) => (
-            <button
-              key={r.id}
-              onClick={() => zoomToRoom(r)}
-              title={`Zoom to ${r.label || "room"}`}
-              className="shrink-0 rounded-md px-2 py-0.5 text-[10px] font-mono transition-all hover:brightness-95"
-              style={{ color: r.border, background: `${r.border}14` }}
-            >
-              {r.label || "Room"}
-            </button>
-          ))}
+          {rooms.map((r) => {
+            const isActive = r.id === focusRoomId;
+            return (
+              <button
+                key={r.id}
+                onClick={() => zoomToRoom(r)}
+                title={`Zoom to ${r.label || "room"}`}
+                aria-pressed={isActive}
+                className="shrink-0 rounded-md px-2 py-0.5 text-[10px] font-mono transition-all hover:brightness-95"
+                style={{
+                  color: isActive ? "#fff" : r.border,
+                  background: isActive ? r.border : `${r.border}14`,
+                  boxShadow: isActive ? `0 0 0 2px ${r.border}40` : undefined,
+                }}
+              >
+                {r.label || "Room"}
+              </button>
+            );
+          })}
         </div>
       )}
 
       {/* ── Legend ── */}
-      <div className="absolute top-3 right-3 z-20 flex items-center gap-3 rounded-lg border border-slate-200 bg-white/90 px-3 py-1.5 shadow-sm backdrop-blur">
+      <div
+        className={`absolute top-3 ${railInset} z-20 flex items-center gap-3 rounded-lg border border-slate-200 bg-white/90 px-3 py-2 shadow-sm backdrop-blur`}
+      >
         <LegendDot color="#f59e0b" label="Expiring" />
         <LegendDot color="#ef4444" label="Low / out" />
         <LegendDot color="#34d399" label="Stocked" />
@@ -602,6 +672,7 @@ export function StoreMapView({
                 }
               : undefined
           }
+          onStillHave={onStillHave}
           onAddToList={
             onAddToList
               ? (i) => {
@@ -1050,7 +1121,7 @@ function ZoomBtn({
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="flex h-7 w-7 items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
+      className="flex h-8 w-8 items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-slate-800 transition-colors"
     >
       {children}
     </button>
@@ -1059,11 +1130,8 @@ function ZoomBtn({
 
 function LegendDot({ color, label }: { color: string; label: string }) {
   return (
-    <span className="flex items-center gap-1 text-[9px] font-mono uppercase tracking-wider text-slate-400">
-      <span
-        className="h-1.5 w-1.5 rounded-full"
-        style={{ background: color }}
-      />
+    <span className="flex items-center gap-1.5 text-[10px] font-mono uppercase tracking-wider text-slate-500">
+      <span className="h-2 w-2 rounded-full" style={{ background: color }} />
       {label}
     </span>
   );

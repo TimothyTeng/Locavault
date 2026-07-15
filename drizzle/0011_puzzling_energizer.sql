@@ -1,0 +1,1 @@
+ALTER TABLE `collections` ADD `is_preset` integer DEFAULT false NOT NULL;

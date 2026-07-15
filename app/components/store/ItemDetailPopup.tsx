@@ -1,8 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { useFetcher } from "react-router";
+import { CloseButton } from "~/components/common/CloseButton";
 import type { Item } from "~/types/storeTypes";
 import {
   fieldsForType,
+  hasTrait,
   ITEM_TYPES,
   TYPE_META,
   type ItemType,
@@ -14,7 +17,16 @@ import {
   itemRunoutDays,
 } from "~/utils/helpers/storeTable.helper";
 import { describeUsage } from "~/utils/helpers/usage.helper";
+import { describeSchedule } from "~/utils/helpers/dose.helper";
 import { useDialog } from "~/components/common/useDialog";
+import { useBlockOptions } from "./blockOptions";
+import { RunoutPhrase, RunoutConfirm } from "./runoutChip";
+import {
+  describeLogNote,
+  describeDelta,
+  relativeDay,
+  type ItemHistoryEntry,
+} from "~/utils/helpers/itemHistory.helper";
 
 export function ItemDetailPopup({
   item,
@@ -22,6 +34,7 @@ export function ItemDetailPopup({
   onSave,
   onDelete,
   onMarkOut,
+  onStillHave,
   onAddToList,
 }: {
   item: Item;
@@ -29,16 +42,28 @@ export function ItemDetailPopup({
   onSave: (updated: Item) => void;
   onDelete: (itemId: string) => void;
   onMarkOut?: (item: Item) => void;
+  onStillHave?: (item: Item) => void;
   onAddToList?: (item: Item) => void;
 }) {
   const [isEditing, setIsEditing] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const dialogRef = useDialog(true, onClose);
+  const { options: blockOptions, labelOf } = useBlockOptions();
+
+  // Load the change history once the popup opens (owner/editor only; the route
+  // 403s otherwise and we simply show nothing).
+  const historyFetcher = useFetcher<{ entries?: ItemHistoryEntry[] }>();
+  useEffect(() => {
+    historyFetcher.load(`/api/item-history?itemId=${item.id}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id]);
+  const history = historyFetcher.data?.entries ?? [];
 
   // Editable fields
   const [name, setName] = useState(item.name);
   const [itemType, setItemType] = useState<ItemType>(item.itemType);
   const [quantity, setQuantity] = useState(item.quantity);
+  const [blockId, setBlockId] = useState<string | null>(item.blockId);
   const [description, setDescription] = useState(item.description ?? "");
   const [sku, setSku] = useState(item.sku ?? "");
   const [unit, setUnit] = useState(item.unit ?? "");
@@ -77,6 +102,7 @@ export function ItemDetailPopup({
       name: name.trim() || item.name,
       itemType,
       quantity: Number(quantity) || 0,
+      blockId,
       description: description || null,
       sku: sku || null,
       unit: unit || null,
@@ -93,6 +119,7 @@ export function ItemDetailPopup({
     setName(item.name);
     setItemType(item.itemType);
     setQuantity(item.quantity);
+    setBlockId(item.blockId);
     setDescription(item.description ?? "");
     setSku(item.sku ?? "");
     setUnit(item.unit ?? "");
@@ -162,19 +189,12 @@ export function ItemDetailPopup({
               </p>
             )}
           </div>
-          <button
+          <CloseButton
             onClick={onClose}
+            size={14}
+            strokeWidth={1.8}
             className="text-slate-300 hover:text-slate-600 transition-colors ml-3 shrink-0"
-          >
-            <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-              <path
-                d="M2 2l10 10M12 2L2 12"
-                stroke="currentColor"
-                strokeWidth="1.8"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
+          />
         </div>
 
         {/* Fields */}
@@ -220,7 +240,32 @@ export function ItemDetailPopup({
               />
             }
           />
-          <DetailRow label="Location" value={item.blockId ?? "—"} />
+          <DetailRow
+            label="Location"
+            value={labelOf(item.blockId) ?? "Unassigned"}
+            editContent={
+              <select
+                className={inputClass}
+                value={blockId ?? ""}
+                onChange={(e) => setBlockId(e.target.value || null)}
+              >
+                <option value="">Unassigned</option>
+                {blockOptions.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.label}
+                  </option>
+                ))}
+                {/* Keep the current block selectable even if it isn't a
+                    labelled standard shelf (so editing never silently moves it). */}
+                {item.blockId &&
+                  !blockOptions.some((b) => b.id === item.blockId) && (
+                    <option value={item.blockId}>
+                      {labelOf(item.blockId) ?? "Current location"}
+                    </option>
+                  )}
+              </select>
+            }
+          />
           <DetailRow
             label="In Store"
             value={item.quantity > 0 ? "Yes" : "No"}
@@ -350,7 +395,9 @@ export function ItemDetailPopup({
           <DetailRow
             label="Runs Out"
             value={
-              runoutDaysVal != null ? (
+              item.usage && item.usage.runoutDays != null ? (
+                <RunoutPhrase item={item} />
+              ) : runoutDaysVal != null ? (
                 <span
                   className={
                     Number(runoutDaysVal) <= 7
@@ -405,6 +452,48 @@ export function ItemDetailPopup({
           )}
         </div>
 
+        {/* History timeline — who changed what, when */}
+        {!isEditing && history.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
+              History
+            </span>
+            <ul className="flex flex-col divide-y divide-slate-50 max-h-40 overflow-y-auto">
+              {history.map((h, idx) => {
+                const at = h.loggedAt ? new Date(h.loggedAt) : null;
+                const delta = describeDelta(h.delta);
+                return (
+                  <li
+                    key={idx}
+                    className="flex items-center justify-between gap-2 py-1.5"
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {delta && (
+                        <span
+                          className={`font-mono text-[10px] font-bold tabular-nums ${
+                            h.delta > 0 ? "text-emerald-600" : "text-slate-400"
+                          }`}
+                        >
+                          {delta}
+                        </span>
+                      )}
+                      <span className="text-[11px] text-slate-600 truncate">
+                        {describeLogNote(h.note, h.delta)}
+                        {h.by && (
+                          <span className="text-slate-400"> · {h.by}</span>
+                        )}
+                      </span>
+                    </div>
+                    <span className="shrink-0 font-mono text-[10px] text-slate-300">
+                      {relativeDay(at)}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+
         {/* Actions */}
         {isEditing ? (
           <div className="flex gap-2 mt-1">
@@ -435,6 +524,25 @@ export function ItemDetailPopup({
             >
               Close
             </button>
+          </div>
+        )}
+
+        {/* Dose tracking — opt-in reminder schedule for medications. */}
+        {!isEditing && hasTrait(item.itemType, "dosed") && (
+          <DoseControls item={item} />
+        )}
+
+        {/* Confirm loop — predicted run-out passed but stock remains. */}
+        {!isEditing && item.runoutConfirm && onMarkOut && onStillHave && (
+          <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 flex flex-col gap-2">
+            <p className="text-[10px] text-slate-500">
+              Predicted to be running out by now — is it gone?
+            </p>
+            <RunoutConfirm
+              item={item}
+              onMarkOut={onMarkOut}
+              onStillHave={onStillHave}
+            />
           </div>
         )}
 
@@ -495,5 +603,144 @@ export function ItemDetailPopup({
       </div>
     </div>,
     document.body,
+  );
+}
+
+type LoadedSchedule = {
+  id: string;
+  timesPerDay: number;
+  endDate: string | null;
+  active: boolean;
+} | null;
+
+/**
+ * Opt-in dose tracking for a medication item (DESIGN.md §4/§6 — the `dosed`
+ * trait). Loads the current schedule, lets the owner start one (times/day +
+ * duration), take a dose now, or stop. Posts to /api/doses; the reminders page
+ * and dashboard chip read the same schedules.
+ */
+function DoseControls({ item }: { item: Item }) {
+  const loadFetcher = useFetcher<{ schedule: LoadedSchedule }>();
+  const actionFetcher = useFetcher();
+  const [adding, setAdding] = useState(false);
+  const [times, setTimes] = useState(1);
+  const [days, setDays] = useState(""); // blank = ongoing
+
+  useEffect(() => {
+    loadFetcher.load(`/api/doses?itemId=${item.id}`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item.id]);
+  // Reload the schedule after any mutation settles.
+  useEffect(() => {
+    if (actionFetcher.state === "idle" && actionFetcher.data) {
+      loadFetcher.load(`/api/doses?itemId=${item.id}`);
+      setAdding(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [actionFetcher.state, actionFetcher.data]);
+
+  const schedule = loadFetcher.data?.schedule ?? null;
+  const busy = actionFetcher.state !== "idle";
+  const post = (body: Record<string, string | number>) =>
+    actionFetcher.submit(body, {
+      method: "POST",
+      action: "/api/doses",
+      encType: "application/json",
+    });
+
+  const btn =
+    "rounded-md px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest transition-colors";
+
+  return (
+    <div className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2.5 flex flex-col gap-2">
+      <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
+        Dose tracking
+      </span>
+
+      {schedule ? (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] text-slate-600">
+            {describeSchedule({
+              timesPerDay: schedule.timesPerDay,
+              endDate: schedule.endDate ? new Date(schedule.endDate) : null,
+            })}
+          </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => post({ _action: "takeDose", itemId: item.id })}
+              disabled={busy || item.quantity <= 0}
+              className={`${btn} bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40`}
+            >
+              Take dose
+            </button>
+            <button
+              onClick={() =>
+                post({ _action: "removeSchedule", itemId: item.id })
+              }
+              disabled={busy}
+              className={`${btn} border border-slate-200 text-slate-500 hover:bg-white`}
+            >
+              Stop
+            </button>
+          </div>
+        </div>
+      ) : adding ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <label className="text-[10px] text-slate-500 flex items-center gap-1">
+            <select
+              value={times}
+              onChange={(e) => setTimes(Number(e.target.value))}
+              className="bg-white border border-slate-200 rounded px-1.5 py-1 text-[11px] font-mono focus:outline-none"
+            >
+              {[1, 2, 3, 4].map((n) => (
+                <option key={n} value={n}>
+                  {n}×
+                </option>
+              ))}
+            </select>
+            daily
+          </label>
+          <label className="text-[10px] text-slate-500 flex items-center gap-1">
+            for
+            <input
+              type="number"
+              min={1}
+              value={days}
+              onChange={(e) => setDays(e.target.value)}
+              placeholder="ongoing"
+              className="w-20 bg-white border border-slate-200 rounded px-1.5 py-1 text-[11px] font-mono focus:outline-none"
+            />
+            days
+          </label>
+          <button
+            onClick={() =>
+              post({
+                _action: "setSchedule",
+                itemId: item.id,
+                timesPerDay: times,
+                days: days ? Number(days) : 0,
+              })
+            }
+            disabled={busy}
+            className={`${btn} bg-slate-800 text-white hover:bg-slate-700`}
+          >
+            Start
+          </button>
+          <button
+            onClick={() => setAdding(false)}
+            className={`${btn} border border-slate-200 text-slate-500 hover:bg-white`}
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          onClick={() => setAdding(true)}
+          className={`${btn} self-start border border-slate-300 text-slate-600 hover:bg-white`}
+        >
+          Track doses
+        </button>
+      )}
+    </div>
   );
 }

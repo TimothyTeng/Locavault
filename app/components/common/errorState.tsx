@@ -1,4 +1,5 @@
 import { isRouteErrorResponse, useRouteError } from "react-router";
+import { logError } from "~/lib/logger";
 
 /**
  * Friendly, presentational error screen. Used by the root and per-route
@@ -49,5 +50,7 @@ export function ErrorState({ error }: { error: unknown }) {
 
 /** Route-level ErrorBoundary: routes can `export { RouteErrorBoundary as ErrorBoundary }`. */
 export function RouteErrorBoundary() {
-  return <ErrorState error={useRouteError()} />;
+  const error = useRouteError();
+  logError(error, { boundary: "route" });
+  return <ErrorState error={error} />;
 }

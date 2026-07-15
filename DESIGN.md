@@ -338,6 +338,20 @@ A trait can raise a signal with a severity + time horizon; the item shows the
 The single *input* surface. Run-out predictions and recipe/packing gaps draft
 entries into it; the user confirms. Distinct from collections (see below).
 
+> ✅ *Done:* the **Shopping List panel** (`components/purchases/purchaseOrderPanel.tsx`)
+> splits into two tabs:
+> - **List** — the queue itself, plus an inline **"Needs restocking"** block
+>   (`purchaseOrderSuggestions.tsx`) surfacing low/out/expiring items with one-tap
+>   (and add-all) restock.
+> - **Upcoming** (`purchaseOrderUpcoming.tsx`) — ingredients the calendar's
+>   scheduled meals call for but the store is out of, scoped by a **timeframe**
+>   selector (3 days / 1 week / 2 weeks / 1 month) and tagged with the soonest day
+>   each is needed. One-tap (and add-all) → list. Fed by `MealNeed[]` (per-meal
+>   day + missing-from-stock names) computed in `store.tsx`.
+>
+> "Buying" a row adds quantity to a linked item (or creates one) then clears the
+> row; barcode scan + manual entry both add rows.
+
 ### Recipes (OUTPUT) — flagship **[DECIDED as first feature after core]**
 
 Reads items with the `edible` trait. Three jobs:
@@ -352,18 +366,43 @@ Reads items with the `edible` trait. Three jobs:
 > `matchRecipes` (`utils/helpers/recipes.helper.ts`) — **fuzzy, tokenized,
 > de-pluralised matching against "what you keep", never exact counts** (e.g.
 > "onion" ↔ "Red Onions"). Filters: **Cook now** (all on hand) / **Almost** (≤2
-> missing), each with a ring gauge. **Use it up** leads — recipes consuming items
-> expiring ≤30d get an amber banner + a top-of-panel nudge. One tap adds the
-> lacking ingredients to the shopping list (skips already-queued; cards show
-> what's listed) via the existing `createPOItems` action.
-> ⬜ *Remaining:* user-saved recipes; a recipe API for volume; a **"made this"**
-> tap that decrements matched items (closes the recipes → consumption →
-> prediction loop).
+> missing) / **Mine**, each with a ring gauge. **Use it up** leads — recipes
+> consuming items expiring ≤30d get an amber banner + a top-of-panel nudge.
+>
+> ✅ *Done (recipes module, 4 phases — see below):*
+> - **User-saved library** (table `recipes`, `ur_*` ids, user-scoped — drops into
+>   the matcher alongside the seeds). Create / edit / delete in a `RecipeEditor`
+>   modal with structured **ingredients (amount + unit), steps (+ per-step image
+>   URL), photo URL, tags, time, serves** (`types/recipeTypes.ts`).
+> - **Import, search-first:** the editor searches **TheMealDB** (free public API,
+>   `api.recipe-search.ts`) and fills the form from a result; a collapsible
+>   **paste-a-URL** path parses `schema.org/Recipe` JSON-LD server-side with an
+>   SSRF guard (`api.recipe-import.ts` + `recipeImport.helper.ts`). *(AllRecipes &
+>   many big sites return 402/403 to any server fetch — empirically confirmed — so
+>   search is the primary path; a paid discovery API can slot in via an env key.)*
+> - **Ingredient ↔ map:** the detail view shows availability dots; an in-stock
+>   ingredient links to its block (tap → pulse on the canvas). Two-way **add to
+>   shopping list** — missing *or* on-hand (restock), per-row or all-at-once.
+> - **Measurement-aware "Cooked this":** a servings ×N control decrements the
+>   matched items, converting the recipe amount into each item's unit via a unit
+>   registry (`utils/helpers/units.ts`, volume/mass/count) and logging the delta
+>   so prediction learns from it (`recipeCook.helper.ts`). Quantity stays integer
+>   (rounded) — "lenient, never exact". Items can declare a measured `unit` (datalist
+>   on the add-item form), so e.g. "50 ml vanilla essence" decrements correctly.
+> - **Schedule from a recipe:** an "Add to calendar" block (pick date + meal slot)
+>   sits beside "Cooked", so planning isn't confined to the calendar tab.
+> ✅ *Done:* shopping-list rows added from a recipe (missing ingredients),
+> the calendar's Upcoming tab, and a collection's gaps all flow through
+> `inferPOFields` (via `handleAddMissingToList`), so they resolve a real shelf
+> (type-fitting block, else the first standard block — never `blockId: null`),
+> matching the manual/scanned add paths.
+> ⬜ *Remaining:* a paid recipe-discovery API for breadth.
 
 Design rules learned from the critique:
-- **Volume comes from a seeded library and/or a recipe API** (Spoonacular /
-  Edamam / Samsung Food-style) + user saves — *never* depend on the user authoring
-  enough recipes.
+- **Volume comes from a seeded library and/or a recipe API** + user saves — *never*
+  depend on the user authoring enough recipes. We use a seeded library + **TheMealDB
+  search** + JSON-LD URL import; a paid API (Spoonacular / Edamam) stays a drop-in
+  option behind an env key.
 - **Match against "what you typically keep" (purchase profile), not exact
   counts.** Your buying history *is* your pantry. Avoid Grocy-style exact-quantity
   matching (it needs precise tracking we don't have); make it an in-the-moment
@@ -372,8 +411,32 @@ Design rules learned from the critique:
   core of food-first — it actively prevents waste.
 
 The reinforcing loop: track food → expiry/run-out signals → recipes suggest using
-expiring items → cooking optionally logs consumption → better prediction → smarter
-shopping list.
+expiring items → **cooking logs consumption ("Cooked this")** → better prediction
+→ smarter shopping list.
+
+### Calendar & meal planning (OUTPUT) **[DECIDED]**
+
+A per-store **calendar** in the side rail — deliberately named generically
+("calendar", not "meal plan") so it can host other reminders/entry types later.
+Today it plans meals; the planning → shopping loop is the point.
+
+> ✅ *Done:* **Calendar panel** (`components/recipes/calendarPanel.tsx`,
+> editor-only). Schedule recipes onto days in a **Week** or **Month** view
+> (toggle; month is a 6×7 Monday-aligned grid with per-meal-type dots; prev/next
+> steps by week or month; Today resets). Tap a month day → a **day-detail**
+> sub-view to add/remove that day's meals. Each scheduled meal carries a slot
+> (breakfast/lunch/dinner/snack). **Click a scheduled recipe → opens the recipes
+> panel jumped to its detail** (works even for a seeded recipe with nothing in
+> stock, via an `emptyMatch` fallback). **"What this week/month needs"** tallies
+> every ingredient the period's recipes call for into *in-stock* vs *to-buy*, with
+> one-tap (and all) add to the shopping list — the same `MealNeed[]` data feeds
+> the shopping list's **Upcoming** tab. Date math is date-only local "YYYY-MM-DD"
+> (`utils/helpers/calendar.helper.ts`, unit-tested) to avoid timezone drift.
+> Persisted in the `scheduled_meals` table (per-store; `recipeRef` is a recipe id,
+> not an FK, since seeds aren't in the DB; `recipeName` denormalised so an entry
+> still reads after a recipe is deleted).
+> ⬜ *Remaining:* non-meal reminders / entry types (the generic-naming bet);
+> drag-to-move a meal between days; cross-store / global calendar.
 
 ### Packing lists / collections (OUTPUT) — a check-out / check-in system **[DECIDED]**
 
@@ -598,9 +661,203 @@ bridge. Minimize 3's friction, maximize 5's accuracy.
      focus trap, focus restore) applied to the Recipes/Collections/Quick-add/
      item-detail/make-offer dialogs (all now `role="dialog"` + aria-modal +
      labelled); product images carry real alt text.
-   - ⬜ *Next (from the audit):* shared panel/modal/button/empty-state component
-     pass (dedupe the hand-rolled variants); rate-limit `/api/barcode`; error
-     monitoring; chip away at the lint warnings.
+   - ✅ *Done (chores):* `/api/barcode` hardened (auth + per-user rate limit +
+     24h cache, with a tested `rateLimit.helper`); dead imports/props pruned
+     (lint warnings 29 → 20).
+   - ✅ *Done (map polish):* softened the fixture palette — `shade()` now mixes
+     proportionally toward black/white instead of a fixed additive offset, so a
+     block's outline/shadow stay in its own hue (a green shelf's outline is a
+     deep green, not black) — and redesigned the chunky cabinet/wardrobe/pantry/
+     drawers sprites to a cleaner, cohesive style (`app/lib/fixtures.tsx`).
+   - ✅ *Done (9-slice fixtures):* storage/counter fixtures now render as ONE
+     coherent object at the block's full size (fixed caps + repeating/stretching
+     middle) instead of duplicated per-cell tiles — `fill: "slice"`, size-aware
+     `SPRITE_BUILDERS(W,H)`, run-length-merged rects. A 1×3 cabinet is one tall
+     cabinet; a 4×1 counter is one run. (Toward the Stardew-style top-down look —
+     **in-code sprites**, no external tileset.)
+   - ✅ *Done (vector fixtures — supersedes the pixel sprites above):* the pixel
+     art still read as *duplicated tiles* at larger sizes (backlog #1). Replaced
+     the 16×16 pixel engine with **top-down vector** fixtures — `app/lib/
+     fixtures.tsx` is now a small typed primitive DSL (`R`/`L`/`C` → rects/lines/
+     circles) and one `BUILDERS[id](W,H,tones)` per fixture, recomputed at the
+     block's size. Each piece carries its real-world signature (shelf = stocked
+     cubbies with *varied* contents, cabinet = recessed door panels + handles,
+     bed = pillows + duvet, sofa = backrest + arms + seamed seat, fridge =
+     fridge/freezer split, sink = basin + faucet…), so a block reads as ONE
+     recognisable object and the repeating parts (shelves, doors, cushions) are a
+     *modest, size-keyed* count — never tiled. Crisp at any zoom (no bitmaps).
+     `FixtureGraphic` keeps its `{fixture, color, cols, rows}` API, so the editor
+     canvas, store map, and block picker pick it up unchanged. Appliances
+     (fridge/freezer/stove/sink/washer) switched `single → fit` so they fill the
+     footprint you draw; small discrete objects (bin/nightstand/toilet/plant)
+     stay `single` (capped + centred so they don't smear in a big block). Colours
+     still derive from the block via in-hue `shade()` tones. *Follow-up:* the
+     dashboard/gallery thumbnails still draw plain coloured rects — could render
+     mini fixtures too, but they may be too small to read.
+   - ✅ *Done (categorized picker + room select):* the Add-block modal now leads
+     with a category gallery (Storage / Furniture / Appliances / Objects) and a
+     **Structural** group (Plain / Room / Divider / Stairs) — stairs & dividers are
+     no longer top-level "types" (`category` on `FIXTURE_META`). The store-map room
+     selector marks the active room button and rings the focused room (others dim);
+     selecting already centres it. The **desk** was redrawn as table-family (inset
+     top + corner legs + drawer pedestal).
+   - 🟡 *In progress (custom fixtures — freeform builder):* users can draw their
+     **own** fixtures and use them like built-ins. A freeform shape editor
+     (`CustomFixtureEditor`) — add rect / bar / circle base shapes, drag to move,
+     drag the corner to resize, per-shape fill tone, layer, duplicate, delete —
+     saves a `customFixtures` row (`{name, category, defaultColor, shapes}`, shapes
+     a JSON `CustomShape[]` in a normalised 0–100 box; migration `0003`). Shapes are
+     colour-relative (each names a tone resolved from the block colour at render),
+     so a custom fixture recolours per block like the built-ins. `block.fixture` is
+     now free text — a built-in `FixtureId` **or** a `cf_<id>` (`FixtureRef`); blocks
+     resolve `cf_*` through a `CustomFixtureProvider` context (loaded per page). The
+     Add-block modal's **Custom** group lists your fixtures + a ＋New tile (editor);
+     CRUD via `/api/fixtures` (per-user authorised). Wired into the addstore /
+     editstore / templates.new editors and the store map. *Pending:* the `0003`
+     migration must be applied to the live Turso DB before it works end-to-end;
+     custom fixtures on a template/store shared with another user won't resolve for
+     them yet (owner-scoped library).
+   - ✅ *Done (wall system):* an edge-based **wall layer** — segments live on the
+     grid lines *between* cells, auto-join into runs + corner posts. They're drawn
+     and edited from the **Draw** tab, not a separate mode: the draw toolbar carries
+     **Wall / Door / Window** tools alongside the block types. With a wall tool
+     active, drag = straight axis-locked run (Clash-of-Clans style), drag-from-a-
+     matching-segment = erase the run, click = toggle one; drawing one kind over
+     another converts it (door = framed opening + threshold, window = glazed pane).
+     Persisted as JSON on `stores.walls` (migration `0001_add_walls`), rendered in
+     the editor and the store map (slate, thin). Existing dividers untouched.
+     (`wall.helper.ts` + tests, `WallLayer`, `GridCanvas` draw branch.)
+     **Select** mode handles walls as first-class: click a wall to select just it
+     (`edgeAtCell` hit-test), or box-select to grab the walls inside the rectangle;
+     selected walls get a thin grey outline matching the block selection ring
+     (`WallLayer` glow). A group move carries the selection's walls along by the
+     same delta — the selected blocks' bbox ∪ explicitly-selected walls
+     (`effectiveWallKeys` → `moveWalls`, offset from an original-walls snapshot, the
+     rest stay put; unit-tested). ⌫ deletes selected walls too. Undoable like any
+     other edit. Walls also persist through **templates** now (`templates.walls`,
+     migration `0002`): the from-scratch builder and save-store-as-template both
+     capture the wall layer, and instantiating a store from a template copies it
+     back. The old `Door`/`Wall` divider block presets were removed — they're wall
+     tools now. Gallery/dashboard **thumbnails** render the wall layer too
+     (`GridThumbnail` draws thin bars coloured by kind, in its own SVG space).
+     *Follow-ups:* stone/wood floor textures.
+   - ✅ *Done (editor UX):* the block-picker modal is now viewport-capped
+     (`max-h-[90dvh]`) with a scrollable body so it never overflows off-screen;
+     the floor-plan builder supports **undo/redo** (⌘/Ctrl+Z, +Shift or Ctrl+Y —
+     coalesced snapshots of blocks+walls, so a drag is one step) and
+     **copy/paste** of selected blocks (Ctrl+C/V — pasted offset by one cell with
+     fresh ids).
+   - ✅ *Done (auth):* the temporary DEV-only Clerk bypass was **removed** —
+     `app/lib/auth.ts`'s `getAuth` now delegates straight to Clerk (`userId` is
+     `null` when signed out) and `requireAuth` redirects to `/`. Re-verified that
+     every loader/action gates on real Clerk auth: `requireAuth` on `/addstore`,
+     `/templates`, `/templates/new`, `/trade`; `getAuth` + `verifyStoreAccess`
+     (none → redirect, viewer/public filtered) on `/store/:id` and its action;
+     owner/editor required for `/store/:id/edit`; owner-only mutations via
+     `verifyStoreOwner`/`verifyTemplateOwner`; `/api/barcode` 401s when signed out.
+   - ✅ *Done (audit):* a focused typing pass cleared the remaining explicit
+     `any`s (lint warnings 20 → 12); **lightweight in-app error monitoring** —
+     `app/lib/logger.ts`'s `logError` emits one structured JSON line per real
+     failure (5xx / thrown `Error`) to the console, tagged `env: server|client`,
+     skipping expected 4xx control-flow throws. Wired into both error boundaries
+     (root + per-route); the single sink swaps for an external service later
+     without call-site churn.
+   - 🟡 *In progress (component dedup):* `CloseButton` (all hand-rolled close-`✕`
+     buttons), `EmptyState` (recipes + collections), and `Button` (variant × size
+     scale; the primary emerald CTAs migrated) are done and live in
+     `components/common/`. **Remaining is not a clean dedup:** the secondary buttons
+     are a distinct `uppercase tracking-widest font-bold` pill style spread across
+     ~15 controls at inconsistent slate-800/900, text-10/11, rounded-md/lg sizes
+     (and several are toggles/tabs, not buttons) — standardising them is a design
+     decision, best folded into the polish backlog below. `SidePanel`/`Modal`
+     (Phase 3) is deferred pending the panel-presentation rethink (#3 below).
+
+   ### Next iteration — product polish (review 2026-06-19)
+
+   1. ~~**Stretchable fixtures.** Furniture sprites still read as *duplicated*
+      tiles at larger sizes, which looks unprofessional.~~ **✅ Done** — replaced
+      the pixel sprites with top-down **vector** fixtures (see "Done (vector
+      fixtures)" above); each block reads as one recognisable, non-tiled object
+      and stays crisp at any zoom.
+   2. ~~**Store-map coordinate guides.** The A–J / 1–10 ruler labels are too
+      faint and don't line up cleanly.~~ **✅ Done** — darker/semibold/tabular
+      labels + faint gutter bands; positions were already cell-aligned
+      (`GridRuler`).
+   3. **Panel presentation.** ~~The slide-in side panels feel slightly out of
+      place.~~ **🟡 In progress** — picked the **tab rail** pattern (the panels
+      were side-panels wearing a modal's blocking scrim; the fix is making them
+      non-blocking, not switching to modals). A right-edge `PanelRail` toggles the
+      side panels, which now keep the map live (no backdrop). Modals stay for true
+      atomic tasks (confirms, make-offer). Still to do: shared `SidePanel`
+      extraction + non-blocking focus semantics + secondary-button standardisation.
+   4. **Recipes.** Let users add their own recipes; then integrate a public-recipe
+      source — a recipes API and/or web-scraping — so the library isn't only the
+      seeded set.
+
+   ### Task list — status (updated 2026-06-23)
+
+   **✅ Done & verified this session** (typecheck · lint 0-err · 59 tests · build):
+   - **Vector fixtures** — all 22 fixtures rewritten as top-down vector art; no
+     duplicated-tile look; appliances fill footprint, small objects stay centred
+     *(committed `7f0ab81`)*.
+   - **Desk redesign** — table-family (inset + corner legs + drawer pedestal)
+     *(committed `7f0ab81`)*.
+   - **Categorized picker** — Add-block modal grouped Storage / Furniture /
+     Appliances / Objects + Structural; stairs/dividers demoted *(committed
+     `7f0ab81`)*.
+   - **Room select** — focused room ring + dim others + active button on the store
+     map *(committed `7f0ab81`)*.
+   - **Custom fixture builder (P1)** — freeform shape editor + `customFixtures`
+     table/queries + `/api/fixtures` CRUD + `FixtureRef` (`cf_*`) +
+     `CustomFixtureProvider` render path + picker "Custom" group; wired into
+     addstore / editstore / templates-new / store map *(pending-commit)*.
+
+   **⏳ Pending — immediate (custom fixtures):**
+   - [x] **Apply migration `0003` to the live Turso DB** — applied 2026-06-24
+         (`custom_fixtures` table now live).
+   - [ ] **Verify** the full flow in-app via HMR (create → select → place → render
+         on the store map).
+
+   **⏳ Pending — custom fixtures P2/P3:**
+   - [ ] **Sharing:** a `cf_*` placed on a store/template shared with another user
+         doesn't resolve for them (owner-scoped library). Resolve placed ids for
+         viewers, or copy shapes onto shared templates.
+   - [ ] **Editor-edit edge case:** an *editor* (non-owner) editing a store that
+         uses the *owner's* custom fixtures won't see them in the edit canvas
+         (editstore loads only the editing user's library).
+   - [ ] **Manage-library UI** (rename/delete outside the picker); optional
+         thumbnails rendering custom fixtures.
+
+   **⏳ Pending — original polish backlog:**
+   - [x] **#2 Store-map ruler** — bumped label contrast (slate-500, semibold,
+         tabular, 10px) + faint gutter bands so the A1/B3 guides read against the
+         map background; positions were already cell-aligned (`GridRuler`).
+         *(pending your visual confirm via HMR)*
+   - [x] **#3 Panel presentation** — chose the **tab rail** pattern. Built a
+         right-edge `PanelRail` (Shopping / Recipes / Collections / Members) and
+         made the panels **non-blocking**: dropped the `bg-black/40` scrim so the
+         map stays live, offset all panels by the rail, removed the duplicated
+         desktop-toolbar buttons. **✅ Shared `SidePanel` extracted** — a single
+         `components/common/SidePanel.tsx` now backs all six panels (Shopping,
+         Recipes, Calendar, Collections, Members, Add Item) with a `chromeless`
+         mode for panels that bring their own headers and `mobileVariant` /
+         `desktopVariant` for the sheet + overlay cases. Focus semantics are now
+         genuinely **non-blocking**: a new `useSidePanel` hook does Escape-close +
+         focus-on-open + focus-restore **without** a Tab trap or `aria-modal`
+         (the old `useDialog` trap was the blocking bit; it stays only on the true
+         modals — item detail, quick-add, make-offer). Follow-up: secondary-button
+         standardisation (see #P1.2).
+   - [~] **Secondary-button / tab standardisation (P1.2)** — built two shared
+         primitives: `SegmentedTabs` (accessible `role="tablist"`/`role="tab"` +
+         `aria-selected`, in `segmented` + `underline` looks) and `PillButton`
+         (the signature `uppercase tracking-widest` mono pill, tones dark /
+         outline / subtle). Migrated the real tab groups (Members editor/viewer,
+         Shopping-list List/Upcoming) and a representative `PillButton` (Recipes
+         Add). Remaining ~10 scattered pills are cosmetic/height-coupled or carry
+         a bespoke success state (e.g. the copy-invite "Copied!" buttons) — left
+         as deferred polish to avoid layout regressions; migrate opportunistically
+         onto `PillButton`.
+   - [ ] **#4 Recipes** — add-your-own + public-recipe API / scraping.
 
 ---
 

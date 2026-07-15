@@ -10,13 +10,31 @@ import { useRevalidator } from "react-router";
 import { Check, AlertTriangle, Info, X } from "lucide-react";
 
 export type ToastKind = "error" | "success" | "info";
-type Toast = { id: number; message: string; kind: ToastKind };
+/** An optional inline action (e.g. "Undo"). */
+export type ToastAction = { label: string; onClick: () => void };
+export type ToastOptions = {
+  kind?: ToastKind;
+  action?: ToastAction;
+  /** Auto-dismiss delay (ms). Defaults longer when an action is present. */
+  duration?: number;
+};
+type Toast = {
+  id: number;
+  message: string;
+  kind: ToastKind;
+  action?: ToastAction;
+};
 
-const ToastCtx = createContext<(message: string, kind?: ToastKind) => void>(
-  () => {},
-);
+/** Second arg is either a bare kind (legacy) or a full options object. */
+type PushFn = (message: string, kindOrOpts?: ToastKind | ToastOptions) => void;
 
-/** Fire a transient toast: `const toast = useToast(); toast("Saved", "success")`. */
+const ToastCtx = createContext<PushFn>(() => {});
+
+/**
+ * Fire a transient toast:
+ *   toast("Saved", "success")
+ *   toast("Deleted", { action: { label: "Undo", onClick: restore } })
+ */
 export function useToast() {
   return useContext(ToastCtx);
 }
@@ -30,11 +48,20 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
     [],
   );
 
-  const push = useCallback(
-    (message: string, kind: ToastKind = "info") => {
+  const push = useCallback<PushFn>(
+    (message, kindOrOpts) => {
+      const opts: ToastOptions =
+        typeof kindOrOpts === "string"
+          ? { kind: kindOrOpts }
+          : (kindOrOpts ?? {});
       const id = (idRef.current += 1);
-      setToasts((t) => [...t, { id, message, kind }]);
-      setTimeout(() => dismiss(id), 4500);
+      setToasts((t) => [
+        ...t,
+        { id, message, kind: opts.kind ?? "info", action: opts.action },
+      ]);
+      // Give an actionable toast a little longer to be acted on.
+      const ms = opts.duration ?? (opts.action ? 7000 : 4500);
+      setTimeout(() => dismiss(id), ms);
     },
     [dismiss],
   );
@@ -77,6 +104,17 @@ function ToastItem({ toast, onClose }: { toast: Toast; onClose: () => void }) {
       <span className="flex-1 text-[12px] leading-snug text-slate-700">
         {toast.message}
       </span>
+      {toast.action && (
+        <button
+          onClick={() => {
+            toast.action!.onClick();
+            onClose();
+          }}
+          className="shrink-0 rounded-md px-2 py-0.5 text-[11px] font-bold uppercase tracking-widest text-emerald-600 transition-colors hover:bg-emerald-50"
+        >
+          {toast.action.label}
+        </button>
+      )}
       <button
         onClick={onClose}
         aria-label="Dismiss"

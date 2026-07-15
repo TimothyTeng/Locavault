@@ -1,4 +1,5 @@
 import type { BlocksMap, CreateStoreInput } from "~/types/storeViewFinderTypes";
+import { PERIOD_DAYS } from "~/utils/helpers/usage.helper";
 
 export function blocksToBlocksMap(
   blocks: CreateStoreInput["blocks"],
@@ -28,9 +29,7 @@ export const runOutDays = (
 ) => {
   const rate = Number(useRate);
   if (!rate || rate <= 0 || quantity <= 0) return null;
-  const periodDays =
-    useRatePeriod === "day" ? 1 : useRatePeriod === "week" ? 7 : 30;
-  const daily = rate / periodDays;
+  const daily = rate / PERIOD_DAYS[useRatePeriod];
   if (!daily) return null;
   return Math.floor(quantity / daily);
 };

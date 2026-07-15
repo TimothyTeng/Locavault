@@ -1,7 +1,14 @@
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
-import { getAuth } from "@clerk/react-router/server";
-import { updateStoreWithBlocks, verifyStoreAccess } from "~/lib/queries";
+import { getAuth } from "~/lib/auth";
+import {
+  updateStoreWithBlocks,
+  verifyStoreAccess,
+  getCustomFixturesByUser,
+  getCustomFixturesByIds,
+} from "~/lib/queries";
 import type { BlockDetails, BlocksMap } from "~/types/storeViewFinderTypes";
+import type { Wall } from "~/types/wallTypes";
+import { clampGridDim } from "~/lib/gridLimits";
 
 // ── Loader ─────────────────────────────────────────────────
 
@@ -36,8 +43,22 @@ export const loader = async (args: LoaderFunctionArgs) => {
     ]),
   );
 
+  // The editor's own fixture palette PLUS any custom fixtures already placed on
+  // this store's blocks (owned by whoever created the store) — resolved by id so
+  // an editor of a shared store sees the existing fixtures, not blank tiles.
+  const [ownFixtures, placedFixtures] = await Promise.all([
+    getCustomFixturesByUser(userId),
+    getCustomFixturesByIds(
+      store.blocks.map((b) => b.fixture).filter((f): f is string => !!f),
+    ),
+  ]);
+  const byId = new Map(ownFixtures.map((f) => [f.id, f]));
+  for (const f of placedFixtures) if (!byId.has(f.id)) byId.set(f.id, f);
+  const customFixtures = [...byId.values()];
+
   return {
     userId,
+    customFixtures,
     initialData: {
       storeId: store.id,
       name: store.name,
@@ -46,6 +67,7 @@ export const loader = async (args: LoaderFunctionArgs) => {
       rows: store.rows,
       cols: store.cols,
       blocks: blocksMap,
+      walls: store.walls ?? [],
     },
   };
 };
@@ -68,9 +90,12 @@ export const action = async (args: ActionFunctionArgs) => {
     name: data.name,
     tags: data.tags,
     description: data.description,
-    rows: data.rows,
-    cols: data.cols,
+    rows: clampGridDim(data.rows),
+    cols: clampGridDim(data.cols),
     blocks: data.blocks as BlockDetails[],
+    walls: Array.isArray(data.walls)
+      ? (data.walls.slice(0, 5000) as Wall[])
+      : [],
   });
 
   return { ok: true };

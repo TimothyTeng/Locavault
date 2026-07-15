@@ -108,8 +108,9 @@ app/
 │   ├── addstore/         # floor-plan editor: storeViewFinder/, blockPicker/
 │   ├── store/            # store view: table, rows, header, toolbar, minimap, members, filters
 │   ├── addItem/          # add-item slide-in panel + form + barcode scanner + quick (bulk) add
-│   ├── purchases/        # shopping-list panel, list, rows, suggestions, optional fields
-│   ├── recipes/          # recipes panel: seeded library matched against pantry (see DESIGN.md §7)
+│   ├── purchases/        # shopping-list panel (List + Upcoming tabs), list, rows, suggestions
+│                         #   rows show inline, editable type/location/unit/pack-size chips
+│   ├── recipes/          # recipes panel (library + import + cook) + calendar panel (DESIGN.md §7)
 │   ├── collections/      # collections / packing panel: group items, pick assist, check-out/in (DESIGN.md §7)
 │   ├── trade/            # the Bazaar: global trade board + offers (DESIGN.md §7)
 │   └── templates/        # templates gallery + card + save-from-store modal
@@ -146,7 +147,10 @@ export { loader, action } from "#utils/loaders/store.loader";
 | `/templates` | `templates.tsx` | Signed-in gallery of layout templates (public + your own private). Action handles `useTemplate` (→ new store), `createFromStore`, `setVisibility`, `deleteTemplate`. |
 | `/templates/new` | `templates.new.tsx` | From-scratch template builder; reuses `StoreViewFinder` via its `onSave` prop. Creates a **private** template (toggle public in the gallery). |
 | `/trade` | `trade.tsx` | Signed-in **global Bazaar** (DESIGN.md §7): browse all `forTrade` listings, list/unlist your own, and make/accept/decline/cancel trade offers. Action authorizes per-offer (owner vs requester). |
+| `/reminders` | `reminders.tsx` | Signed-in cross-store reminders (DESIGN §4/§6): doses due today (one-tap Take/Snooze), medications running low, and expiring meds. Loader aggregates over all the user's stores (reuses the home-loader pattern + `dose.helper`). Nav link + dashboard "N doses due" chip. |
 | `/api/barcode` | `api.barcode.ts` | Resource route (no UI). `GET ?code=` → Open Food Facts product lookup for barcode scanning. |
+| `/api/item-history` | `api.item-history.ts` | Resource route. `GET ?itemId=` → an item's `itemLogs` with `loggedBy` resolved to Clerk names (owner/editor only). Powers the ItemDetailPopup history timeline. |
+| `/api/doses` | `api.doses.ts` | Resource route. `GET ?itemId=` → the user's dose schedule for an item; `POST` `setSchedule`/`removeSchedule`/`takeDose`/`snooze` (each authorises the item's store). |
 
 ## Data model (`app/lib/schema.ts`)
 
@@ -164,20 +168,58 @@ All ids are `text` UUIDs (`crypto.randomUUID()`). Timestamps are `integer` epoch
   `{day, week, month}`. `itemType` maps to **traits** (`app/lib/itemTypes.ts`)
   that drive which form fields/behaviours apply — see `DESIGN.md` §5.
 - **itemLogs** — append-only quantity changes: `delta` (negative = consumed,
-  positive = restocked), `note`, `loggedBy`. Used by `predictRunoutDays`.
+  positive = restocked), `note`, `loggedBy`. Feeds the usage estimator
+  (`estimateUsage` / `getUsageLogsByStore`) that predicts run-out.
 - **storeMembers** — `(storeId, userId, role)` with role ∈ `{owner, editor, viewer}`.
   The owner is auto-inserted as a member on store creation.
 - **storeInvites** — shareable `token`, role `editor` only, 7-day expiry,
   `claimedAt`. `createInvite` reuses an existing unclaimed/unexpired invite.
 - **purchaseOrderItems** — a shopping list / restock queue. Mirrors the item field
-  set, with optional `itemId` linking to an existing item. "Buying" a PO row adds
-  quantity to the linked item (or creates a new item) then deletes the PO row.
+  set (including `itemType` + a free-text `packageSize` like "500 g"), with optional
+  `itemId` linking to an existing item. "Buying" a PO row adds quantity to the
+  linked item (or creates a new item, carrying `itemType`) then deletes the PO row.
+  Rows are captured low-friction: a name is enough — `poInference.helper` fills in
+  the type, a location (never null), unit, and an item link (see Smart capture).
+- **recipes** — a user's saved recipe (ids `ur_*`), **user-scoped** (not per-store)
+  so it matches against any store the owner opens — the custom layer over the
+  seeded library in `lib/recipes.ts`. `ingredients` (`{name, amount?, unit?}[]`),
+  `steps` (`{text, imageUrl?}[]`) and `tags` are JSON-string columns; plus
+  `blurb`, `imageUrl`, `sourceUrl`, `minutes`, `serves`. CRUD via `/api/recipes`;
+  import via `/api/recipe-search` (TheMealDB) + `/api/recipe-import` (JSON-LD).
+  **Sharing** (DESIGN §7, templates pattern): `isPublic` (default false) makes a
+  recipe visible + copyable in the Recipes panel's **Community** tab; `usageCount`
+  bumps on each copy. `copyRecipeToUser` clones a public recipe into a fresh `ur_*`
+  (never your own); only name/photo/steps/ingredients are shared — never inventory.
+  The dashboard shows a "N to cook tonight" chip per store card (cookable count
+  from `matchRecipes`, computed in `home.loader`).
+- **scheduledMeals** — a recipe scheduled on a day, **per-store** (FK → store,
+  cascade). `recipeRef` is a recipe id (a `ur_*` save or a seeded id) — intentionally
+  **not an FK** (seeds aren't rows); `recipeName` is denormalised so the entry reads
+  after a recipe is deleted. `dateKey` is local "YYYY-MM-DD" (date-only, no tz drift);
+  `mealType` ∈ `{breakfast, lunch, dinner, snack}`. Powers the calendar panel + the
+  shopping list's Upcoming tab.
+- **doseSchedules** — opt-in "take N times a day" schedule for a medication item
+  (reminders v1, DESIGN §4/§6). `userId` (whoever tracks it) + FK → item (cascade);
+  `timesPerDay` 1–4, `startDate`, `endDate` nullable (= ongoing), `active`. Taking a
+  dose is **not** stored here — it's an `itemLogs` row (delta −1, note `"dose"`), so
+  adherence + refill prediction reuse the usage estimator. Slot math + due-count is
+  pure in `dose.helper` (even slots across 08:00–22:00 local). Also
+  **`items.alertSnoozedUntil`** (nullable) — while future, `getItemStatus` stays
+  quiet (suppresses low/expiring, never `out`). All dose mutations go through the
+  `/api/doses` resource route (authorises the item's store per call, since the
+  reminders surface is cross-store).
 - **templates** — a reusable, shareable store **layout** (blocks only, no items):
   name, description, tags, `rows`/`cols`, `userId` (creator), `isPublic`,
   `usageCount`. Any signed-in user can create templates; public ones are visible
   to everyone. `createStoreFromTemplate` instantiates a store (copies blocks with
   fresh ids, adds the owner member, bumps `usageCount`).
 - **templateBlocks** — mirrors `blocks`, FK → template (cascade delete).
+- **nameTypeConsensus** — materialised crowd `name → itemType` map (Stage B of
+  smart capture): `name` (PK, a `canonicalNameKey`, never a raw name), `itemType`,
+  `userCount` (distinct users behind the winner), `updatedAt`. Only k-anonymous
+  aggregates land here (see the Smart-capture convention). A reserved `__lastrun__`
+  sentinel row stamps the last rebuild. Not a per-user table and no FKs — a global
+  aggregate rebuilt by `recomputeTypeConsensus`.
 - **collections** — a named set of item references for a *purpose* (DESIGN.md §7),
   distinct from the shopping list: name, description, `kind` ∈ `{packing, trade,
   custom}`, `checkedOut` (the set is taken out), `userId`, FK → store (cascade).
@@ -227,5 +269,36 @@ the client.
 - **Mobile**: `useIsMobile()` drives layout switches (e.g. the canvas becomes a
   floating `MiniMap` on mobile, full split-pane on desktop).
 - Schema changes: edit `schema.ts`, then `npx drizzle-kit generate` + `migrate`.
+- **Smart shopping-list capture** (`utils/helpers/poInference.helper.ts`): given a
+  typed/scanned name, `inferPOFields` fills the shopping-row metadata so the plain
+  name+quantity flow still yields rich, located items. Priority for the type: a
+  fuzzy-matched existing item (also links it for restock) → the user's own remembered
+  types (`getUserTypeHints`, loaded as `typeHints`) → a name lexicon → the **crowd
+  consensus** (`getCrowdTypeHints`, loaded as `crowdHints`) → `other`. It always
+  resolves a location (a type-fitting block, else the first standard block — never
+  null). Runs on manual/scanned/recipe adds, and silently backfills existing rows
+  when the shopping list opens (bulk `updatePOItems`). Quantities are always whole
+  packages — recipe cooking-amounts never become a shopping quantity.
+- **Crowd type consensus** (`buildTypeConsensus` in `poInference.helper.ts`,
+  `getCrowdTypeHints` in `queries.tsx`): the cross-user layer under the lexicon —
+  a name→type map aggregated over everyone's items + PO rows so long-tail names the
+  lexicon misses ("kombucha", "gochujang") still get a type. **Privacy is k-anonymous
+  by construction:** votes are counted as *distinct users* (not rows), and a name
+  only surfaces once ≥5 distinct users agree on a concrete type with ≥60% consensus,
+  so no individual's item names or contents can leak. Only `name → itemType` is ever
+  aggregated (never userId/quantity/store/notes). It sits **below** the curated
+  lexicon (fills gaps, never overrides a curated guess). It's **materialised**
+  (Stage B) into the `name_type_consensus` table by `recomputeTypeConsensus` and
+  read by `getCrowdTypeHints`: reads are a cheap table scan (short in-process TTL
+  over that so the 15s poll doesn't re-query), and the table is rebuilt lazily only
+  when its `__lastrun__` sentinel is older than `CROWD_REFRESH_MS` (6 h) — a
+  durable, cross-restart/cross-instance cache. Any DB trouble degrades to an empty
+  map rather than breaking the store load. Matching is
+  token-based: buckets are keyed by `canonicalNameKey` (significant tokens, deduped
+  + sorted, so "Whole Milk"/"organic milk"/"milk 2%" collapse to one "milk" bucket),
+  and `matchCrowdType` resolves a typed name by exact canonical hit else the most
+  specific bucket whose tokens are all present (a broad "chicken" bucket catches
+  "chicken thigh", but a specific bucket never hijacks a broader name). The user's
+  own memory (`typeHints`) stays exact-keyed — it's a precise past choice, not a guess.
 - The landing page (`components/home/*`) is marketing-only and GSAP-animated;
   it renders for signed-out users. The dashboard renders for signed-in users.

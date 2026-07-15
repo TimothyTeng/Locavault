@@ -8,7 +8,13 @@ export type StoreMember = {
   userId: string;
   role: StoreRole;
   joinedAt: Date | null;
+  // Derived (server-resolved via Clerk) — absent if the lookup fails/degrades.
+  displayName?: string;
+  imageUrl?: string | null;
 };
+
+/** Minimal public profile for a Clerk user id (name + avatar), server-resolved. */
+export type UserProfile = { displayName: string; imageUrl: string | null };
 
 export type StoreInvite = {
   id: string;

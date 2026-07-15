@@ -1,0 +1,1 @@
+ALTER TABLE `templates` ADD `walls` text DEFAULT '[]' NOT NULL;

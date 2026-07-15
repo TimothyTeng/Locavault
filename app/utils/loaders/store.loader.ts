@@ -1,4 +1,4 @@
-import { getAuth } from "@clerk/react-router/server";
+import { getAuth } from "~/lib/auth";
 import {
   redirect,
   type ActionFunctionArgs,
@@ -19,6 +19,7 @@ import {
   getPurchaseOrderById,
   getPurchaseOrders,
   removeMember,
+  updateMemberRole,
   updateItem,
   updateItemVisibility,
   updatePurchaseOrder,
@@ -32,10 +33,24 @@ import {
   updateCollectionItem,
   removeCollectionItem,
   setCollectionCheckedOut,
+  duplicateCollection,
   getCollectionStoreId,
   getBlockStoreId,
+  getCustomFixturesByIds,
+  getUserRecipes,
+  getScheduledMeals,
+  createScheduledMeal,
+  deleteScheduledMeal,
+  getUserTypeHints,
+  getCrowdTypeHints,
 } from "~/lib/queries";
-import { estimateUsage } from "~/utils/helpers/usage.helper";
+import {
+  estimateUsage,
+  needsRunoutConfirm,
+  suggestRestockQty,
+} from "~/utils/helpers/usage.helper";
+import { decrementForIngredient } from "~/utils/helpers/recipeCook.helper";
+import { resolveUserProfiles } from "~/lib/clerkUsers";
 import {
   requireText,
   optText,
@@ -45,9 +60,22 @@ import {
 } from "~/utils/helpers/validate.helper";
 import { toActionResult } from "~/utils/loaders/actionResult";
 import type { UsageLog } from "~/types/storeTypes";
+import type { ItemType } from "~/types/itemTypeTypes";
+import { MEAL_TYPES, type MealType } from "~/types/recipeTypes";
 
 /** Window of consumption history (days) pulled to estimate usage. */
 const USAGE_WINDOW_DAYS = 120;
+
+/** One row of a bulk quick-add payload (untrusted client JSON). */
+type QuickAddRow = {
+  name?: unknown;
+  blockId?: string | null;
+  quantity?: unknown;
+  itemType?: ItemType;
+  unit?: unknown;
+  cost?: unknown;
+  optimisticId?: string;
+};
 
 /**
  * Commit a single purchase-order row to inventory:
@@ -74,6 +102,11 @@ async function commitPurchaseOrderRow(
       storeId: poRow.storeId,
       blockId: poRow.blockId ?? undefined,
       description: poRow.description ?? undefined,
+      // Only upgrade an existing item's type if the PO carried a concrete guess —
+      // never overwrite a real type back to "other".
+      ...(poRow.itemType && poRow.itemType !== "other"
+        ? { itemType: poRow.itemType }
+        : {}),
       sku: poRow.sku ?? undefined,
       unit: poRow.unit ?? undefined,
       minQuantity: poRow.minQuantity ?? undefined,
@@ -99,6 +132,7 @@ async function commitPurchaseOrderRow(
       storeId: poRow.storeId,
       blockId: poRow.blockId ?? undefined,
       description: poRow.description ?? undefined,
+      itemType: poRow.itemType ?? undefined,
       sku: poRow.sku ?? undefined,
       unit: poRow.unit ?? undefined,
       minQuantity: poRow.minQuantity ?? undefined,
@@ -131,16 +165,44 @@ export const loader = async (args: LoaderFunctionArgs) => {
   const canEdit = accessLevel === "owner" || accessLevel === "editor";
 
   const usageSince = new Date(Date.now() - USAGE_WINDOW_DAYS * 86_400_000);
-  const [allItems, purchaseOrders, members, usageLogs, collections] =
-    await Promise.all([
-      getItemsByStore(params.id!),
-      canEdit ? getPurchaseOrders(params.id!) : Promise.resolve([]),
-      accessLevel === "owner"
-        ? getMembersByStore(params.id!)
-        : Promise.resolve([]),
-      getUsageLogsByStore(params.id!, usageSince),
-      canEdit ? getCollections(params.id!) : Promise.resolve([]),
-    ]);
+  const [
+    allItems,
+    purchaseOrders,
+    members,
+    usageLogs,
+    collections,
+    scheduledMeals,
+    typeHints,
+    crowdHints,
+  ] = await Promise.all([
+    getItemsByStore(params.id!),
+    canEdit ? getPurchaseOrders(params.id!) : Promise.resolve([]),
+    accessLevel === "owner"
+      ? getMembersByStore(params.id!)
+      : Promise.resolve([]),
+    getUsageLogsByStore(params.id!, usageSince),
+    canEdit ? getCollections(params.id!) : Promise.resolve([]),
+    canEdit ? getScheduledMeals(params.id!) : Promise.resolve([]),
+    canEdit && userId
+      ? getUserTypeHints(userId)
+      : Promise.resolve({} as Record<string, ItemType>),
+    canEdit
+      ? getCrowdTypeHints()
+      : Promise.resolve({} as Record<string, ItemType>),
+  ]);
+
+  // Resolve member userIds → names/avatars (owner-only panel; degrades to raw ids).
+  const memberProfiles = members.length
+    ? await resolveUserProfiles(
+        args,
+        members.map((m) => m.userId),
+      )
+    : {};
+  const membersWithNames = members.map((m) => ({
+    ...m,
+    displayName: memberProfiles[m.userId]?.displayName,
+    imageUrl: memberProfiles[m.userId]?.imageUrl ?? null,
+  }));
 
   // Group usage logs by item so usage can be estimated in one pass.
   const logsByItem = new Map<string, UsageLog[]>();
@@ -156,19 +218,39 @@ export const loader = async (args: LoaderFunctionArgs) => {
       : allItems;
 
   const now = new Date();
-  const items = visibleItems.map((item) => ({
-    ...item,
-    usage: estimateUsage(item, logsByItem.get(item.id) ?? [], now),
-  }));
+  const items = visibleItems.map((item) => {
+    const logs = logsByItem.get(item.id) ?? [];
+    const usage = estimateUsage(item, logs, now);
+    return {
+      ...item,
+      usage,
+      runoutConfirm: needsRunoutConfirm(item, usage, logs, now),
+    };
+  });
+
+  // Resolve any custom fixtures placed on this store's blocks (by id, so a
+  // shared/public store still renders the owner's custom fixtures).
+  const customFixtures = await getCustomFixturesByIds(
+    store.blocks.map((b) => b.fixture).filter((f): f is string => !!f),
+  );
+
+  // The signed-in user's saved recipe library — matched against this store's
+  // pantry in the Recipes panel (user-scoped, like customFixtures).
+  const userRecipes = userId ? await getUserRecipes(userId) : [];
 
   return {
     accessLevel,
     store,
     items,
-    members,
+    members: membersWithNames,
     userId,
     purchaseOrders,
     collections,
+    customFixtures,
+    userRecipes,
+    scheduledMeals,
+    typeHints,
+    crowdHints,
   };
 };
 
@@ -234,23 +316,24 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
   }
 
   if (data._action === "createItems") {
-    const rows = (Array.isArray(data.items) ? data.items : []).filter(
-      (r: any) => typeof r?.name === "string" && r.name.trim(),
-    );
+    const rows = (
+      (Array.isArray(data.items) ? data.items : []) as QuickAddRow[]
+    ).filter((r) => typeof r.name === "string" && r.name.trim());
     for (const r of rows) await ensureBlockInStore(r.blockId);
     const ids = await createItems(
-      rows.map((r: any) => ({
+      rows.map((r) => ({
         name: requireText(r.name, "Item name"),
         storeId: params.id!,
         quantity: toQty(r.quantity, 1),
         blockId: r.blockId ?? undefined,
         itemType: r.itemType ?? undefined,
         unit: optText(r.unit) ?? undefined,
+        cost: optInt(r.cost),
       })),
     );
     return {
       ok: true,
-      created: rows.map((r: any, i: number) => ({
+      created: rows.map((r, i) => ({
         optimisticId: r.optimisticId,
         id: ids[i],
       })),
@@ -301,8 +384,10 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
     }
     const existing = await getPurchaseOrders(params.id!);
     if (!existing.some((p) => p.itemId === item.id)) {
-      const fallback =
-        item.minQuantity != null ? Math.max(item.minQuantity * 2, 1) : 1;
+      // Estimate a sensible restock from history for the auto-queued row.
+      const logs = await getUsageLogsByStore(item.storeId);
+      const usage = estimateUsage(item, logs);
+      const fallback = suggestRestockQty(item, usage);
       await createPurchaseOrder({
         itemId: item.id,
         storeId: item.storeId,
@@ -323,9 +408,91 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
     return { ok: true };
   }
 
+  // Confirm-loop answer "still have it": the predicted run-out passed but stock
+  // remains. Log a zero-delta "confirmed" censor point — the estimator reads it
+  // as survival-past-prediction and lengthens the next estimate — and silence the
+  // question for this cycle. No quantity change.
+  if (data._action === "stillHave") {
+    const item = await ensureItemInStore(data.id);
+    await createItemLog(item.id, item.storeId, 0, userId, "confirmed");
+    return { ok: true };
+  }
+
+  // "Cooked this": subtract the ingredients a recipe used from stock and log the
+  // consumption (feeds run-out prediction). Measurement-aware via the shared
+  // helper; rows carry the recipe ingredient's amount/unit, the item supplies
+  // its own unit. Lenient — unmatched/incompatible units get a coarse nudge.
+  if (data._action === "cookedRecipe") {
+    const servings = toQty(data.servings, 1, { min: 1, max: 100 });
+    const rows = Array.isArray(data.items) ? data.items : [];
+    let decremented = 0;
+    for (const r of rows) {
+      if (!r || typeof r.itemId !== "string") continue;
+      const item = await ensureItemInStore(r.itemId);
+      if (item.quantity <= 0) continue;
+      const dec = decrementForIngredient(
+        {
+          amount: typeof r.amount === "number" ? r.amount : undefined,
+          unit: typeof r.unit === "string" ? r.unit : undefined,
+        },
+        item.unit,
+        servings,
+      );
+      if (dec <= 0) continue;
+      const newQty = Math.max(0, item.quantity - dec);
+      if (newQty === item.quantity) continue;
+      await updateItem(item.id, { quantity: newQty });
+      await createItemLog(
+        item.id,
+        item.storeId,
+        newQty - item.quantity,
+        userId,
+        "cooked",
+      );
+      decremented++;
+    }
+    return { ok: true, decremented };
+  }
+
+  // ── Meal plan ──
+  if (data._action === "scheduleMeal") {
+    const dateKey = String(data.dateKey ?? "");
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey))
+      throw new Response("Bad date", { status: 400 });
+    const mealType: MealType = MEAL_TYPES.includes(data.mealType)
+      ? data.mealType
+      : "dinner";
+    const row = await createScheduledMeal({
+      id: data.id ?? undefined,
+      storeId: params.id!,
+      userId,
+      recipeRef: String(data.recipeRef ?? "").slice(0, 200) || "custom",
+      recipeName: requireText(data.recipeName, "Recipe name").slice(0, 200),
+      dateKey,
+      mealType,
+    });
+    return { ok: true, id: row.id, optimisticId: data.optimisticId };
+  }
+
+  if (data._action === "unscheduleMeal") {
+    await deleteScheduledMeal(String(data.id ?? ""), params.id!);
+    return { ok: true };
+  }
+
   if (data._action === "removeMember") {
     if (!isOwner) throw new Response("Forbidden", { status: 403 });
     await removeMember(params.id!, data.userId);
+    return { ok: true };
+  }
+
+  if (data._action === "updateMemberRole") {
+    if (!isOwner) throw new Response("Forbidden", { status: 403 });
+    // Owners can toggle a member between editor/viewer, but never touch the
+    // owner role or demote themselves out of ownership.
+    const role = data.role === "viewer" ? "viewer" : "editor";
+    if (data.userId === userId)
+      throw new Response("Forbidden", { status: 403 });
+    await updateMemberRole(params.id!, String(data.userId), role);
     return { ok: true };
   }
 
@@ -367,6 +534,8 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
       expiryDate: optDate(data.expiryDate),
       useRate: optInt(data.useRate),
       useRatePeriod: data.useRatePeriod ?? null,
+      itemType: data.itemType ?? undefined,
+      packageSize: optText(data.packageSize),
       createdBy: userId ?? null,
     });
     return { ok: true, id: row.id, optimisticId: data.optimisticId };
@@ -392,6 +561,8 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
         expiryDate: optDate(r.expiryDate),
         useRate: optInt(r.useRate),
         useRatePeriod: r.useRatePeriod ?? null,
+        itemType: r.itemType ?? undefined,
+        packageSize: optText(r.packageSize),
         createdBy: userId ?? null,
       });
     }
@@ -401,9 +572,13 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
   if (data._action === "updatePOItem") {
     await ensurePOInStore(data.id);
     await ensureBlockInStore(data.blockId);
+    if (data.itemId) await ensureItemInStore(data.itemId);
     await updatePurchaseOrder(data.id, {
       name: requireText(data.name, "Item name"),
       quantity: toQty(data.quantity, 1, { min: 1 }),
+      // Only (re)link when the client sends an itemId — a plain name/qty edit
+      // omits it, preserving any existing link.
+      ...(data.itemId !== undefined ? { itemId: data.itemId } : {}),
       blockId: data.blockId ?? null,
       description: optText(data.description),
       sku: optText(data.sku),
@@ -413,7 +588,33 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
       expiryDate: optDate(data.expiryDate),
       useRate: optInt(data.useRate),
       useRatePeriod: data.useRatePeriod ?? null,
+      ...(data.itemType ? { itemType: data.itemType } : {}),
+      packageSize: optText(data.packageSize),
     });
+    return { ok: true };
+  }
+
+  // Bulk metadata backfill: fill type/location/unit (and link) on existing rows
+  // without touching name/quantity. Used to auto-fill older rows that predate
+  // inference, in one request instead of N.
+  if (data._action === "updatePOItems") {
+    const rows = Array.isArray(data.items) ? data.items : [];
+    for (const r of rows) {
+      if (!r?.id) continue;
+      await ensurePOInStore(r.id);
+      await ensureBlockInStore(r.blockId);
+      if (r.itemId) await ensureItemInStore(r.itemId);
+      await updatePurchaseOrder(r.id, {
+        ...(r.itemId !== undefined ? { itemId: r.itemId } : {}),
+        blockId: r.blockId ?? null,
+        unit: optText(r.unit),
+        minQuantity: optInt(r.minQuantity),
+        cost: optInt(r.cost),
+        useRate: optInt(r.useRate),
+        useRatePeriod: r.useRatePeriod ?? null,
+        ...(r.itemType ? { itemType: r.itemType } : {}),
+      });
+    }
     return { ok: true };
   }
 
@@ -512,6 +713,17 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
     await ensureCollectionInStore(data.id);
     await setCollectionCheckedOut(data.id, !!data.checkedOut);
     return { ok: true };
+  }
+
+  // "Save as preset" (asPreset) / "Start from preset" (fresh active) — clone a
+  // collection and its rows into a new one in the same store.
+  if (data._action === "duplicateCollection") {
+    await ensureCollectionInStore(data.id);
+    const row = await duplicateCollection(data.id, userId, {
+      asPreset: !!data.asPreset,
+      name: optText(data.name) ?? undefined,
+    });
+    return { ok: true, collection: row };
   }
 
   return { ok: false };

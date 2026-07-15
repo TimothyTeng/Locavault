@@ -4,6 +4,7 @@ import { useSubmit } from "react-router";
 import Navbar from "~/components/home/navbar";
 import StoreViewFinder from "~/components/addstore/storeViewFinder/storeViewFinder";
 import type { BlockDetails } from "~/types/storeViewFinderTypes";
+import type { Wall } from "~/types/wallTypes";
 
 export { loader, action } from "#utils/loaders/templates.new.loader";
 export { RouteErrorBoundary as ErrorBoundary } from "~/components/common/errorState";
@@ -25,6 +26,7 @@ export default function NewTemplatePage() {
     rows: number;
     cols: number;
     blocks: BlockDetails[];
+    walls: Wall[];
   }) => {
     // From-scratch templates start private; owners flip them public in the gallery.
     submit(
@@ -35,6 +37,7 @@ export default function NewTemplatePage() {
         rows: payload.rows,
         cols: payload.cols,
         blocks: payload.blocks,
+        walls: payload.walls,
         isPublic: false,
       },
       { method: "post", encType: "application/json" },

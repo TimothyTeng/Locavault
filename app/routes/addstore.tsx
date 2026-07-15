@@ -2,6 +2,7 @@ import type { Route } from "./+types/home";
 import { Show } from "@clerk/react-router";
 import Navbar from "~/components/home/navbar";
 import StoreViewFinder from "~/components/addstore/storeViewFinder/storeViewFinder";
+import { SignedOutNotice } from "~/components/common/signedOutNotice";
 export { loader, action } from "#utils/loaders/addstore.loader";
 export { RouteErrorBoundary as ErrorBoundary } from "~/components/common/errorState";
 
@@ -20,9 +21,7 @@ export default function AddStore() {
     <Show
       when="signed-in"
       fallback={
-        <div className="flex items-center justify-center h-screen text-xs font-mono text-slate-400">
-          You must be signed in to add a store.
-        </div>
+        <SignedOutNotice message="You must be signed in to add a store." />
       }
     >
       {/* md:pt-16 clears the floating pill (~64px). No padding on mobile — the

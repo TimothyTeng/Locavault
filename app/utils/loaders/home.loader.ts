@@ -1,4 +1,4 @@
-import { getAuth } from "@clerk/react-router/server";
+import { getAuth } from "~/lib/auth";
 import {
   createPurchaseOrder,
   deleteStore,
@@ -9,17 +9,34 @@ import {
   getStoresByUserWithDetails,
   getStoresMemberOf,
   getUsageLogsByStores,
+  getDoseSchedulesByUser,
+  getTodayDoseCounts,
+  getUserRecipes,
+  getIncomingOfferCount,
+  getTemplatesForGallery,
+  onboardStoreFromTemplate,
   verifyStoreAccess,
   verifyStoreOwner,
 } from "~/lib/queries";
-import { estimateUsage } from "~/utils/helpers/usage.helper";
+import type { TemplateWithBlocks } from "~/types/templateTypes";
+import type { ItemType } from "~/types/itemTypeTypes";
+import { dosesDueNow } from "~/utils/helpers/dose.helper";
+import { matchRecipes } from "~/utils/helpers/recipes.helper";
+import {
+  estimateUsage,
+  describeRunout,
+  suggestRestockQty,
+  PERIOD_DAYS,
+} from "~/utils/helpers/usage.helper";
 import {
   getItemStatus,
   itemRunoutDays,
 } from "~/utils/helpers/storeTable.helper";
 import { expiryDateRemainingDays } from "~/utils/helpers/store.helper";
+import { spentCents } from "~/utils/helpers/money.helper";
 import type { Item, ItemStatus, UsageLog } from "~/types/storeTypes";
-import type { AttentionItem } from "~/types/dashboardTypes";
+import type { AttentionItem, ItemIndexEntry } from "~/types/dashboardTypes";
+import { redirect } from "react-router";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 
 const USAGE_WINDOW_DAYS = 120;
@@ -32,7 +49,17 @@ const SEVERITY: Record<ItemStatus, number> = {
 
 export async function loader(args: LoaderFunctionArgs) {
   const { userId } = await getAuth(args);
-  if (!userId) return { stores: [], attention: [] as AttentionItem[] };
+  if (!userId)
+    return {
+      stores: [],
+      attention: [] as AttentionItem[],
+      spentThisMonthCents: 0,
+      dosesDue: 0,
+      incomingOffers: 0,
+      digest: { low: 0, expiring: 0, cookable: 0, doseEnding: 0 },
+      itemIndex: [] as ItemIndexEntry[],
+      onboardingTemplates: [] as TemplateWithBlocks[],
+    };
 
   const [ownedStores, memberStores] = await Promise.all([
     getStoresByUserWithDetails(userId),
@@ -43,6 +70,22 @@ export async function loader(args: LoaderFunctionArgs) {
     ...ownedStores.map((s) => ({ ...s, role: "owner" as const })),
     ...memberStores,
   ];
+
+  // First run: no stores yet → hand the wizard the template gallery and skip the
+  // (empty) foresight/digest pipeline entirely.
+  if (stores.length === 0) {
+    const onboardingTemplates = await getTemplatesForGallery(userId);
+    return {
+      stores: [],
+      attention: [] as AttentionItem[],
+      spentThisMonthCents: 0,
+      dosesDue: 0,
+      incomingOffers: 0,
+      digest: { low: 0, expiring: 0, cookable: 0, doseEnding: 0 },
+      itemIndex: [] as ItemIndexEntry[],
+      onboardingTemplates,
+    };
+  }
 
   // ── Foresight digest: what needs attention across every store ──
   const storeIds = stores.map((s) => s.id);
@@ -87,6 +130,7 @@ export async function loader(args: LoaderFunctionArgs) {
       zoneLabel: zone,
       status,
       runoutDays: itemRunoutDays(item),
+      runoutPhrase: usage.runoutDays != null ? describeRunout(usage) : null,
       expiryDays: expiryDateRemainingDays(raw.expiryDate),
       onList: listedSet.has(raw.id),
       canAdd: st?.role === "owner" || st?.role === "editor",
@@ -101,40 +145,144 @@ export async function loader(args: LoaderFunctionArgs) {
     return av - bv;
   });
 
-  return { stores, attention: attention.slice(0, 40) };
+  // ── Approximate spend this month: restock logs × item unit cost ──
+  const costByItem = new Map<string, number | null>(
+    rawItems.map((i) => [i.id, i.cost]),
+  );
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthLogs = logs.filter(
+    (l) => l.loggedAt != null && l.loggedAt >= monthStart,
+  );
+  const spentThisMonthCents = spentCents(monthLogs, costByItem);
+
+  // Trade offers awaiting the user's response (badge on the /trade nav link).
+  const incomingOffers = await getIncomingOfferCount(userId);
+
+  // Doses due today across all the user's tracked medications.
+  const schedules = await getDoseSchedulesByUser(userId);
+  let dosesDue = 0;
+  if (schedules.length) {
+    const todayStart = new Date(
+      now.getFullYear(),
+      now.getMonth(),
+      now.getDate(),
+    );
+    const taken = await getTodayDoseCounts(
+      schedules.map((s) => s.itemId),
+      todayStart,
+    );
+    for (const s of schedules) {
+      if (dosesDueNow(s, taken.get(s.itemId) ?? 0, now) > 0) dosesDue += 1;
+    }
+  }
+
+  // ── "What can I cook tonight?" — cookable recipe count per store ──
+  const userRecipes = await getUserRecipes(userId);
+  const itemsByStore = new Map<string, Item[]>();
+  for (const it of rawItems) {
+    const arr = itemsByStore.get(it.storeId) ?? [];
+    arr.push(it as Item);
+    itemsByStore.set(it.storeId, arr);
+  }
+  // Match once per store; derive the per-card count and a de-duped cookable set
+  // (same recipe cookable in two stores shouldn't count twice in the digest).
+  const cookableRecipeIds = new Set<string>();
+  const storesWithCookable = stores.map((s) => {
+    const matches = matchRecipes(itemsByStore.get(s.id) ?? [], userRecipes);
+    let cookableCount = 0;
+    for (const m of matches) {
+      if (!m.cookable) continue;
+      cookableCount += 1;
+      cookableRecipeIds.add(m.recipe.id);
+    }
+    return { ...s, cookableCount };
+  });
+
+  // ── Weekly digest: one habit-anchoring line over data already loaded ──
+  const weekAhead = new Date(now.getTime() + 7 * 86_400_000);
+  const digest = {
+    low: attention.filter((a) => a.status === "low" || a.status === "out")
+      .length,
+    expiring: attention.filter((a) => a.status === "expiring").length,
+    cookable: cookableRecipeIds.size,
+    doseEnding: schedules.filter(
+      (s) =>
+        s.active &&
+        s.endDate != null &&
+        s.endDate >= now &&
+        s.endDate <= weekAhead,
+    ).length,
+  };
+
+  // Lightweight cross-store item index for the ⌘K command palette.
+  const itemIndex = rawItems.map((i) => ({
+    id: i.id,
+    name: i.name,
+    storeId: i.storeId,
+    storeName: storeById.get(i.storeId)?.name ?? "Store",
+    itemType: i.itemType,
+  }));
+
+  return {
+    stores: storesWithCookable,
+    attention: attention.slice(0, 40),
+    spentThisMonthCents,
+    dosesDue,
+    incomingOffers,
+    digest,
+    itemIndex,
+    onboardingTemplates: [] as TemplateWithBlocks[],
+  };
 }
 
 // ── Action ─────────────────────────────────────────────────
 
-/** Suggested restock quantity: ~30d of a known rate, else refill to ~2× min. */
+/**
+ * Suggested restock quantity for a dashboard add-to-list — the shared
+ * `suggestRestockQty` math, fed the item's manual use-rate as the daily rate
+ * (this path has no loaded usage estimate).
+ */
 function suggestQty(item: {
   quantity: number;
   minQuantity: number | null;
   useRate: number | null;
   useRatePeriod: "day" | "week" | "month" | null;
 }): number {
-  const perDay =
+  const dailyRate =
     item.useRate && item.useRatePeriod
-      ? item.useRate /
-        (item.useRatePeriod === "day"
-          ? 1
-          : item.useRatePeriod === "week"
-            ? 7
-            : 30)
-      : 0;
-  if (perDay > 0) {
-    const horizon = Math.ceil(perDay * 30) - item.quantity;
-    const minNeed =
-      item.minQuantity != null ? item.minQuantity - item.quantity : 0;
-    return Math.max(horizon, minNeed, 1);
-  }
-  const target = item.minQuantity != null ? item.minQuantity * 2 : 1;
-  return Math.max(target - item.quantity, 1);
+      ? item.useRate / PERIOD_DAYS[item.useRatePeriod]
+      : null;
+  return suggestRestockQty(item, { dailyRate });
 }
 
 export async function action(args: ActionFunctionArgs) {
   const { userId } = await getAuth(args);
   if (!userId) throw new Response("Unauthorized", { status: 401 });
+
+  // The first-run wizard posts structured JSON; everything else is form-encoded.
+  if (args.request.headers.get("content-type")?.includes("application/json")) {
+    const body = (await args.request.json()) as Record<string, unknown>;
+    if (body._action === "onboard") {
+      const storeId = await onboardStoreFromTemplate(userId, {
+        templateId: String(body.templateId ?? ""),
+        storeName:
+          typeof body.storeName === "string" ? body.storeName : undefined,
+        zones: Array.isArray(body.zones)
+          ? (body.zones as { templateBlockId: string; label: string }[])
+          : [],
+        items: Array.isArray(body.items)
+          ? (body.items as {
+              name: string;
+              quantity: number;
+              itemType?: ItemType;
+              templateBlockId: string | null;
+            }[])
+          : [],
+      });
+      return redirect(`/store/${storeId}`);
+    }
+    throw new Response("Unknown action", { status: 400 });
+  }
 
   const formData = await args.request.formData();
   const _action = formData.get("_action");

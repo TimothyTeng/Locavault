@@ -1,16 +1,18 @@
-import { getAuth } from "@clerk/react-router/server";
+import { getAuth } from "~/lib/auth";
 import {
   redirect,
   type ActionFunctionArgs,
   type LoaderFunctionArgs,
 } from "react-router";
 import { requireAuth } from "~/lib/auth";
-import { createTemplate } from "~/lib/queries";
+import { createTemplate, getCustomFixturesByUser } from "~/lib/queries";
 import type { BlockDetails } from "~/types/storeViewFinderTypes";
+import type { Wall } from "~/types/wallTypes";
 
 export const loader = async (args: LoaderFunctionArgs) => {
   const userId = await requireAuth(args);
-  return { userId };
+  const customFixtures = await getCustomFixturesByUser(userId);
+  return { userId, customFixtures };
 };
 
 export const action = async (args: ActionFunctionArgs) => {
@@ -28,6 +30,9 @@ export const action = async (args: ActionFunctionArgs) => {
     cols: data.cols,
     isPublic: !!data.isPublic,
     blocks: (data.blocks ?? []) as BlockDetails[],
+    walls: (Array.isArray(data.walls)
+      ? data.walls.slice(0, 5000)
+      : []) as Wall[],
   });
 
   return redirect(`/templates?created=${id}`);

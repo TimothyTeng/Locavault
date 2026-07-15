@@ -7,6 +7,7 @@ import type {
   BlockDetails,
   CreateStoreInput,
 } from "#types/storeViewFinderTypes";
+import type { Wall } from "#types/wallTypes";
 
 // ── Selection ─────────────────────────────────────────────
 
@@ -99,6 +100,29 @@ export function handleGroupMovePreview(
 
 export function handleGroupMoveCommit(dragOrigin: RefObject<BlocksMap | null>) {
   dragOrigin.current = null;
+}
+
+/** Grid-line bounding box of the given block ids (a selection's footprint), or
+ *  null if none resolve. Used to decide which walls travel with a group move. */
+export function footprintBounds(
+  blocks: BlocksMap,
+  ids: Iterable<string>,
+): { x0: number; y0: number; x1: number; y1: number } | null {
+  let x0 = Infinity,
+    y0 = Infinity,
+    x1 = -Infinity,
+    y1 = -Infinity,
+    any = false;
+  for (const id of ids) {
+    const b = blocks[id];
+    if (!b) continue;
+    any = true;
+    x0 = Math.min(x0, b.x);
+    y0 = Math.min(y0, b.y);
+    x1 = Math.max(x1, b.x + b.w);
+    y1 = Math.max(y1, b.y + b.h);
+  }
+  return any ? { x0, y0, x1, y1 } : null;
 }
 
 // ── Draw ──────────────────────────────────────────────────
@@ -231,6 +255,7 @@ export function buildSubmitPayload(
   blocks: BlocksMap,
   userId: string,
   storeId?: string,
+  walls: Wall[] = [],
 ): { isEdit: boolean; data: CreateStoreInput & { userId: string } } {
   const blockArr: BlockDetails[] = Object.entries(blocks).map(([key, b]) => ({
     block_id: key,
@@ -258,6 +283,7 @@ export function buildSubmitPayload(
       rows,
       cols,
       blocks: blockArr,
+      walls,
     },
   };
 }

@@ -34,8 +34,15 @@ export function FilterSortPanel({
         onClose();
       }
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
     document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("keydown", onKey);
+    };
   }, [onClose]);
 
   const toggleStatus = (s: ItemStatus) => {
@@ -72,31 +79,43 @@ export function FilterSortPanel({
       <div>
         <p className={sectionLabel}>Sort by</p>
         <div className="flex flex-col gap-0.5">
-          {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => (
-            <button
-              key={k}
-              onClick={() => onSortKeyChange(sortKey === k ? null : k)}
-              className={[
-                "flex items-center justify-between px-2 py-1.5 rounded-md text-[11px] font-mono transition-colors w-full",
-                sortKey === k
-                  ? "bg-slate-800 text-white"
-                  : "text-slate-600 hover:bg-slate-50",
-              ].join(" ")}
-            >
-              <span>{SORT_LABELS[k]}</span>
-              {sortKey === k && (
+          {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => {
+            const activeKey = sortKey === k;
+            return (
+              // Row is a container of two sibling buttons (select + direction) —
+              // never a button nested inside a button (invalid markup).
+              <div
+                key={k}
+                className={[
+                  "flex items-center rounded-md text-[11px] font-mono transition-colors w-full",
+                  activeKey
+                    ? "bg-slate-800 text-white"
+                    : "text-slate-600 hover:bg-slate-50",
+                ].join(" ")}
+              >
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onSortDirChange(sortDir === "asc" ? "desc" : "asc");
-                  }}
-                  className="text-[10px] opacity-70 hover:opacity-100 ml-2"
+                  onClick={() => onSortKeyChange(activeKey ? null : k)}
+                  aria-pressed={activeKey}
+                  className="flex-1 text-left px-2 py-1.5"
                 >
-                  {sortDir === "asc" ? "↑ Asc" : "↓ Desc"}
+                  {SORT_LABELS[k]}
                 </button>
-              )}
-            </button>
-          ))}
+                {activeKey && (
+                  <button
+                    onClick={() =>
+                      onSortDirChange(sortDir === "asc" ? "desc" : "asc")
+                    }
+                    aria-label={`Sort direction: ${
+                      sortDir === "asc" ? "ascending" : "descending"
+                    }`}
+                    className="px-2 py-1.5 text-[10px] opacity-70 hover:opacity-100"
+                  >
+                    {sortDir === "asc" ? "↑ Asc" : "↓ Desc"}
+                  </button>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 

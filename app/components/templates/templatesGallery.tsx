@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useFetcher, useNavigate } from "react-router";
 import type { TemplateWithBlocks } from "~/types/templateTypes";
 import { TemplateCard } from "./templateCard";
+import { CloseButton } from "~/components/common/CloseButton";
+import { Button } from "~/components/common/Button";
 
 type StoreOption = { id: string; name: string };
 
@@ -128,9 +130,11 @@ export function TemplatesGallery({
 
         {/* New template menu */}
         <div className="relative self-start sm:self-auto" ref={menuRef}>
-          <button
+          <Button
+            variant="primary"
+            size="lg"
             onClick={() => setMenuOpen((v) => !v)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm"
+            className="shadow-sm"
           >
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path
@@ -141,7 +145,7 @@ export function TemplatesGallery({
               />
             </svg>
             New template
-          </button>
+          </Button>
           {menuOpen && (
             <div className="absolute top-full right-0 mt-2 z-20 w-56 bg-white border border-slate-200 rounded-xl shadow-xl py-1.5 flex flex-col">
               <button
@@ -310,19 +314,10 @@ function FromStoreModal({
           <span className="text-[11px] font-bold uppercase tracking-widest text-slate-700">
             Save store as template
           </span>
-          <button
+          <CloseButton
             onClick={onClose}
             className="w-7 h-7 rounded-full border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700"
-          >
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-              <path
-                d="M1 1l8 8M9 1L1 9"
-                stroke="currentColor"
-                strokeWidth="1.6"
-                strokeLinecap="round"
-              />
-            </svg>
-          </button>
+          />
         </div>
 
         <div className="px-5 py-4 flex flex-col gap-3">
@@ -394,13 +389,15 @@ function FromStoreModal({
         </div>
 
         <div className="px-5 py-3 border-t border-slate-100">
-          <button
+          <Button
+            variant="primary"
+            size="md"
             onClick={submit}
             disabled={submitting || !storeId}
-            className="w-full py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-sm font-semibold transition-colors"
+            className="w-full"
           >
             {submitting ? "Saving…" : "Save template"}
-          </button>
+          </Button>
         </div>
       </div>
     </div>

@@ -5,7 +5,10 @@ import {
   getItemStatus,
   itemRunoutDays,
 } from "~/utils/helpers/storeTable.helper";
-import { describeUsage } from "~/utils/helpers/usage.helper";
+import {
+  describeUsage,
+  describeRunoutRange,
+} from "~/utils/helpers/usage.helper";
 import { ItemDetailPopup } from "./ItemDetailPopup";
 
 type Props = {
@@ -16,6 +19,7 @@ type Props = {
   onSave: (updated: Item) => void;
   onDelete: (itemId: string) => void;
   onMarkOut?: (item: Item) => void;
+  onStillHave?: (item: Item) => void;
   onAddToList?: (item: Item) => void;
   isOwner: boolean;
   storeIsPublic: boolean;
@@ -47,6 +51,7 @@ export function StoreTableRow({
   onSave,
   onDelete,
   onMarkOut,
+  onStillHave,
   onAddToList,
   isOwner,
   storeIsPublic,
@@ -54,6 +59,7 @@ export function StoreTableRow({
   isMobile,
 }: Props) {
   const [showDetail, setShowDetail] = useState(false);
+  const confirmRunout = !!item.runoutConfirm && !!onMarkOut && !!onStillHave;
 
   const isLowStock =
     item.minQuantity != null && item.quantity <= item.minQuantity;
@@ -119,6 +125,7 @@ export function StoreTableRow({
           onSave={handleSaveAndClose}
           onDelete={handleDeleteAndClose}
           onMarkOut={handleMarkOutAndClose}
+          onStillHave={onStillHave}
           onAddToList={handleAddToListAndClose}
         />
       )}
@@ -184,7 +191,11 @@ export function StoreTableRow({
         {!isMobile && (
           <td
             className={`${cellClass} w-24 text-right text-[10px] font-mono tabular-nums ${depletionColor}`}
-            title={item.usage ? describeUsage(item.usage) : undefined}
+            title={
+              item.usage
+                ? `${describeUsage(item.usage)} · ${describeRunoutRange(item.usage)}`
+                : undefined
+            }
           >
             {depletionDays != null ? (
               <span className="inline-flex items-center gap-1 justify-end">
@@ -202,13 +213,27 @@ export function StoreTableRow({
           </td>
         )}
 
-        {/* Status pill */}
+        {/* Status pill — becomes a one-tap "out?" prompt once a prediction has
+            passed but stock remains (opens the detail popup's confirm loop). */}
         <td className={`${cellClass} w-24`}>
-          <span
-            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest ${pill}`}
-          >
-            {statusLabel}
-          </span>
+          {confirmRunout ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowDetail(true);
+              }}
+              title="Predicted to be running out — confirm"
+              className="inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
+            >
+              Out?
+            </button>
+          ) : (
+            <span
+              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-widest ${pill}`}
+            >
+              {statusLabel}
+            </span>
+          )}
         </td>
 
         {/* Public toggle — desktop + owner + storeIsPublic */}

@@ -66,6 +66,7 @@ export const StoreCard = memo(function StoreCard({
           rows={store.rows}
           cols={store.cols}
           name={store.name}
+          walls={store.walls}
         />
 
         {/* Pin button */}
@@ -129,6 +130,11 @@ export const StoreCard = memo(function StoreCard({
               {store.itemCount > 0 &&
                 ` · ${store.itemCount} item${store.itemCount !== 1 ? "s" : ""}`}
             </span>
+            {(store.cookableCount ?? 0) > 0 && (
+              <span className="mt-1 inline-flex w-fit items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                🍳 {store.cookableCount} to cook tonight
+              </span>
+            )}
           </div>
 
           {/* Delete button — owner only */}

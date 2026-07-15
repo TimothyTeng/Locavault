@@ -1,6 +1,5 @@
 import { text, integer, sqliteTable } from "drizzle-orm/sqlite-core";
 import { relations } from "drizzle-orm";
-import { FIXTURE_IDS } from "~/types/fixtureTypes";
 
 // ─── STORES ────────────────────────────────────────────────
 
@@ -13,6 +12,8 @@ export const stores = sqliteTable("stores", {
   description: text("description"),
   rows: integer("rows").notNull().default(10),
   cols: integer("cols").notNull().default(10),
+  // Edge-based wall layer: JSON array of { x, y, dir } segments (see wallTypes).
+  walls: text("walls").notNull().default("[]"),
   userId: text("user_id").notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
     () => new Date(),
@@ -42,7 +43,8 @@ export const blocks = sqliteTable("blocks", {
   kind: text("kind", { enum: ["standard", "divider", "stairs", "room"] })
     .notNull()
     .default("standard"),
-  fixture: text("fixture", { enum: FIXTURE_IDS }), // null = plain coloured block
+  // A built-in FixtureId or a custom "cf_<id>" (see customFixtures); null = plain.
+  fixture: text("fixture"),
 });
 
 // ─── ITEMS ─────────────────────────────────────────────────
@@ -95,6 +97,9 @@ export const items = sqliteTable("items", {
   // Bazaar. `tradeNote` is the optional "looking for…" (wants) line.
   forTrade: integer("for_trade", { mode: "boolean" }).notNull().default(false),
   tradeNote: text("trade_note"),
+  // Snooze/dismiss for this item's alerts (DESIGN.md §6): while set to a future
+  // time, getItemStatus suppresses its low/expiring/dose signals. Null = active.
+  alertSnoozedUntil: integer("alert_snoozed_until", { mode: "timestamp" }),
 });
 
 // ─── ITEM LOGS ─────────────────────────────────────────────
@@ -170,6 +175,26 @@ export const purchaseOrderItems = sqliteTable("purchase_order_items", {
   expiryDate: integer("expiry_date", { mode: "timestamp" }),
   useRate: integer("use_rate"),
   useRatePeriod: text("use_rate_period", { enum: ["day", "week", "month"] }),
+  // Mirrors items.itemType so an inferred/confirmed type flows through to the
+  // bought item (instead of always defaulting to "other"). Drives traits →
+  // recipe matching + run-out prediction.
+  itemType: text("item_type", {
+    enum: [
+      "food",
+      "medication",
+      "supplies",
+      "equipment",
+      "clothing",
+      "document",
+      "other",
+    ],
+  })
+    .notNull()
+    .default("other"),
+  // Free-text "what it comes in" (e.g. "500 g"), captured opportunistically from
+  // a barcode scan — shown so the user knows the pack amount; never parsed into
+  // the (package-count) quantity.
+  packageSize: text("package_size"),
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
     () => new Date(),
   ),
@@ -190,6 +215,32 @@ export const purchaseOrderItemsRelations = relations(
   }),
 );
 
+// ─── NAME → TYPE CONSENSUS (crowd inference cache) ─────────
+// Materialised k-anonymous name→type map — Stage B of smart shopping-list
+// capture: the durable, cross-restart/cross-instance successor to the in-process
+// crowd cache. Rebuilt by `recomputeTypeConsensus` (lazily, when stale) from
+// everyone's items + PO rows and read by `getCrowdTypeHints` to seed inference.
+// `name` is a `canonicalNameKey` (tokenised — never a raw, user-facing name). A
+// reserved "__lastrun__" sentinel row (a value canonicalNameKey can never emit)
+// records the last rebuild time so an empty result isn't mistaken for "never ran".
+export const nameTypeConsensus = sqliteTable("name_type_consensus", {
+  name: text("name").primaryKey(),
+  itemType: text("item_type", {
+    enum: [
+      "food",
+      "medication",
+      "supplies",
+      "equipment",
+      "clothing",
+      "document",
+      "other",
+    ],
+  }).notNull(),
+  // Distinct users backing the winning type — a k-anonymity/confidence witness.
+  userCount: integer("user_count").notNull().default(0),
+  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
+});
+
 // ─── TEMPLATES ─────────────────────────────────────────────
 // A reusable, shareable store layout (blocks only — no items). Any signed-in
 // user can create templates and instantiate stores from public ones.
@@ -203,6 +254,7 @@ export const templates = sqliteTable("templates", {
   tags: text("tags").notNull().default("[]"),
   rows: integer("rows").notNull().default(10),
   cols: integer("cols").notNull().default(10),
+  walls: text("walls").notNull().default("[]"), // edge-based wall layer (JSON)
   userId: text("user_id").notNull(), // creator (Clerk id)
   isPublic: integer("is_public", { mode: "boolean" }).notNull().default(false),
   usageCount: integer("usage_count").notNull().default(0),
@@ -228,7 +280,8 @@ export const templateBlocks = sqliteTable("template_blocks", {
   kind: text("kind", { enum: ["standard", "divider", "stairs", "room"] })
     .notNull()
     .default("standard"),
-  fixture: text("fixture", { enum: FIXTURE_IDS }), // null = plain coloured block
+  // A built-in FixtureId or a custom "cf_<id>" (see customFixtures); null = plain.
+  fixture: text("fixture"),
 });
 
 export const templatesRelations = relations(templates, ({ many }) => ({
@@ -241,6 +294,64 @@ export const templateBlocksRelations = relations(templateBlocks, ({ one }) => ({
     references: [templates.id],
   }),
 }));
+
+// ─── CUSTOM FIXTURES ───────────────────────────────────────
+// A user-authored fixture: a named set of base shapes (drawn in the freeform
+// editor) usable on blocks like the built-ins. `shapes` is a JSON CustomShape[]
+// in a normalised 0–100 box; colours resolve from the block's colour at render
+// time. Referenced by blocks/template_blocks via `fixture = "cf_<id>"`.
+export const customFixtures = sqliteTable("custom_fixtures", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => `cf_${crypto.randomUUID()}`),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  category: text("category", {
+    enum: ["storage", "furniture", "appliance", "object"],
+  })
+    .notNull()
+    .default("object"),
+  defaultColor: text("default_color").notNull().default("#64748b"),
+  shapes: text("shapes").notNull().default("[]"),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
+    () => new Date(),
+  ),
+});
+
+// ─── RECIPES ───────────────────────────────────────────────
+// A user's saved recipe library (DESIGN.md §7). User-scoped like customFixtures
+// (no store FK) — recipes are matched against whichever store's pantry is open.
+// Ingredients / steps / tags are JSON columns (mirrors customFixtures.shapes):
+// they always load together and we never query an individual ingredient across
+// recipes. `imageUrl` is a plain URL (no upload infra) — auto-filled by the
+// JSON-LD URL importer. See app/types/recipeTypes.ts for the JSON shapes.
+
+export const recipes = sqliteTable("recipes", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => `ur_${crypto.randomUUID()}`),
+  userId: text("user_id").notNull(),
+  name: text("name").notNull(),
+  blurb: text("blurb"),
+  imageUrl: text("image_url"),
+  sourceUrl: text("source_url"),
+  // JSON: { name: string; amount?: number; unit?: string }[]
+  ingredients: text("ingredients").notNull().default("[]"),
+  // JSON: { text: string; imageUrl?: string }[]
+  steps: text("steps").notNull().default("[]"),
+  // JSON: string[]
+  tags: text("tags").notNull().default("[]"),
+  minutes: integer("minutes"),
+  serves: integer("serves"),
+  // Recipe sharing ("template recipes", DESIGN §7 / templates pattern): a public
+  // recipe is visible to everyone and copyable; `usageCount` bumps on each copy.
+  // Only name/photo/steps/ingredients are shared — never inventory.
+  isPublic: integer("is_public", { mode: "boolean" }).notNull().default(false),
+  usageCount: integer("usage_count").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
+    () => new Date(),
+  ),
+});
 
 // ─── COLLECTIONS / PACKING ─────────────────────────────────
 // A named set of item references for a purpose (packing a trip, a trade pile,
@@ -264,6 +375,9 @@ export const collections = sqliteTable("collections", {
   checkedOut: integer("checked_out", { mode: "boolean" })
     .notNull()
     .default(false),
+  // A reusable template list ("camping kit") — never checks out; you "start from"
+  // it to spawn a fresh active collection.
+  isPreset: integer("is_preset", { mode: "boolean" }).notNull().default(false),
   userId: text("user_id").notNull(), // creator (Clerk id)
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
     () => new Date(),
@@ -310,6 +424,73 @@ export const collectionItemsRelations = relations(
   }),
 );
 
+// ─── MEAL PLAN ─────────────────────────────────────────────
+// A recipe scheduled on a day (DESIGN.md §7). Per-store planning data (like
+// collections / shopping list — owner/editor only). `recipeRef` is a recipe id
+// (a `ur_*` user recipe or a seeded id) so it is intentionally NOT a FK;
+// `recipeName` is denormalised so the entry still reads if the recipe is deleted.
+
+export const scheduledMeals = sqliteTable("scheduled_meals", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  storeId: text("store_id")
+    .notNull()
+    .references(() => stores.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  recipeRef: text("recipe_ref").notNull(),
+  recipeName: text("recipe_name").notNull(),
+  // Local "YYYY-MM-DD" — date-only, so a planned day never drifts by timezone.
+  dateKey: text("date_key").notNull(),
+  mealType: text("meal_type", {
+    enum: ["breakfast", "lunch", "dinner", "snack"],
+  })
+    .notNull()
+    .default("dinner"),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
+    () => new Date(),
+  ),
+});
+
+export const scheduledMealsRelations = relations(scheduledMeals, ({ one }) => ({
+  store: one(stores, {
+    fields: [scheduledMeals.storeId],
+    references: [stores.id],
+  }),
+}));
+
+// ─── DOSE SCHEDULES (reminders v1) ─────────────────────────
+// An opt-in "take N times a day" schedule for a medication item (DESIGN.md §4/§6).
+// User-scoped (whoever tracks it) but FK'd to the item so it's removed with it.
+// `timesPerDay` slots are spread evenly across waking hours (see dose.helper);
+// `endDate` null = ongoing/indefinite. Taking a dose is recorded as an itemLogs
+// row (delta −1, note "dose"), so adherence + refill prediction reuse existing
+// machinery rather than a second store of truth.
+
+export const doseSchedules = sqliteTable("dose_schedules", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  itemId: text("item_id")
+    .notNull()
+    .references(() => items.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull(),
+  timesPerDay: integer("times_per_day").notNull().default(1),
+  startDate: integer("start_date", { mode: "timestamp" }).notNull(),
+  endDate: integer("end_date", { mode: "timestamp" }), // null = ongoing
+  active: integer("active", { mode: "boolean" }).notNull().default(true),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
+    () => new Date(),
+  ),
+});
+
+export const doseSchedulesRelations = relations(doseSchedules, ({ one }) => ({
+  item: one(items, {
+    fields: [doseSchedules.itemId],
+    references: [items.id],
+  }),
+}));
+
 // ─── TRADE OFFERS ──────────────────────────────────────────
 // Steam-style trade offers on a Bazaar listing: a requester proposes a swap for
 // someone else's listed item, optionally offering one of their own listings in
@@ -335,16 +516,18 @@ export const tradeOffers = sqliteTable("trade_offers", {
   toUserId: text("to_user_id").notNull(), // listing owner
   message: text("message"),
   status: text("status", {
-    enum: ["pending", "accepted", "declined", "cancelled"],
+    enum: ["pending", "accepted", "declined", "cancelled", "completed"],
   })
     .notNull()
     .default("pending"),
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
     () => new Date(),
   ),
+  // Set when either party marks an accepted swap as physically done.
+  completedAt: integer("completed_at", { mode: "timestamp" }),
 });
 
-export const tradeOffersRelations = relations(tradeOffers, ({ one }) => ({
+export const tradeOffersRelations = relations(tradeOffers, ({ one, many }) => ({
   listingItem: one(items, {
     fields: [tradeOffers.listingItemId],
     references: [items.id],
@@ -352,6 +535,33 @@ export const tradeOffersRelations = relations(tradeOffers, ({ one }) => ({
   listingStore: one(stores, {
     fields: [tradeOffers.listingStoreId],
     references: [stores.id],
+  }),
+  messages: many(tradeMessages),
+}));
+
+// ─── TRADE MESSAGES ────────────────────────────────────────
+// A per-offer contact thread. The swap itself is physical/offline — this is how
+// the two parties arrange the handoff once an offer is accepted. Only the two
+// participants of an accepted offer may read/post (authorised in the action).
+
+export const tradeMessages = sqliteTable("trade_messages", {
+  id: text("id")
+    .primaryKey()
+    .$defaultFn(() => crypto.randomUUID()),
+  offerId: text("offer_id")
+    .notNull()
+    .references(() => tradeOffers.id, { onDelete: "cascade" }),
+  fromUserId: text("from_user_id").notNull(),
+  body: text("body").notNull(),
+  createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
+    () => new Date(),
+  ),
+});
+
+export const tradeMessagesRelations = relations(tradeMessages, ({ one }) => ({
+  offer: one(tradeOffers, {
+    fields: [tradeMessages.offerId],
+    references: [tradeOffers.id],
   }),
 }));
 
@@ -365,6 +575,7 @@ export const storesRelations = relations(stores, ({ many }) => ({
   itemLogs: many(itemLogs),
   purchaseOrderItems: many(purchaseOrderItems),
   collections: many(collections),
+  scheduledMeals: many(scheduledMeals),
 }));
 
 export const blocksRelations = relations(blocks, ({ one }) => ({

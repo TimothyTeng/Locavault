@@ -1,9 +1,13 @@
-import { useEffect } from "react";
+import { useMemo, useState } from "react";
 import type { PurchaseOrderItem } from "~/types/purchaseOrderTypes";
 import type { BlocksMap } from "~/types/storeViewFinderTypes";
 import type { BarcodeInfo } from "~/utils/helpers/barcode.helper";
+import type { MealNeed } from "~/types/recipeTypes";
 import { PurchaseOrderList } from "./purchaseOrderList";
+import { PurchaseOrderUpcoming } from "./purchaseOrderUpcoming";
 import type { Item } from "~/types/storeTypes";
+import { SidePanel } from "~/components/common/SidePanel";
+import { SegmentedTabs } from "~/components/common/SegmentedTabs";
 
 type Props = {
   isOpen: boolean;
@@ -19,8 +23,17 @@ type Props = {
   onAdd: () => void;
   onAddScanned: (info: BarcodeInfo) => void;
   onUpdate: (item: PurchaseOrderItem) => void;
+  /** Fill in best-guess metadata once a fresh row gets a real name. */
+  onInfer: (item: PurchaseOrderItem) => void;
   onDelete: (id: string) => void;
   onBuy: (id: string) => void;
+  /** Enter full-screen shopping mode. */
+  onStartShopping?: () => void;
+  /** Per-meal upcoming needs — powers the "Upcoming" tab. */
+  mealNeeds?: MealNeed[];
+  onAddNames?: (names: string[]) => void;
+  /** Block label an Upcoming ingredient would be shelved to (the hint). */
+  destinationFor?: (name: string) => string | null;
   isMobile?: boolean;
 };
 
@@ -38,108 +51,92 @@ export function PurchaseOrderPanel({
   onAdd,
   onAddScanned,
   onUpdate,
+  onInfer,
   onDelete,
   onBuy,
+  onStartShopping,
+  mealNeeds = [],
+  onAddNames,
+  destinationFor,
   isMobile = false,
 }: Props) {
-  useEffect(() => {
-    if (!isOpen) return;
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [isOpen, onClose]);
+  const [tab, setTab] = useState<"list" | "upcoming">("list");
 
-  const header = (
-    <div className="flex items-center justify-between px-4 md:px-6 h-12 md:h-14 border-b border-slate-200 shrink-0">
-      <div className="flex items-center gap-2">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
-          <path
-            d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-          <path
-            d="M3 6h18M16 10a4 4 0 01-8 0"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        <span className="text-[10px] font-bold uppercase tracking-widest text-slate-800">
-          Shopping List
-        </span>
-        {items.length > 0 && (
-          <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-[9px] font-bold text-slate-500">
-            {items.length}
-          </span>
-        )}
-      </div>
-      <button
-        onClick={onClose}
-        className="w-7 h-7 rounded-full border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:border-slate-400 transition-all"
-      >
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-          <path
-            d="M1 1l8 8M9 1L1 9"
-            stroke="currentColor"
-            strokeWidth="1.6"
-            strokeLinecap="round"
-          />
-        </svg>
-      </button>
-    </div>
+  // Distinct ingredients upcoming meals need but the store + list don't cover —
+  // the "Upcoming" tab badge.
+  const existingLower = useMemo(
+    () => new Set(items.map((i) => i.name.toLowerCase())),
+    [items],
+  );
+  const upcomingBadge = useMemo(() => {
+    const s = new Set<string>();
+    for (const need of mealNeeds)
+      for (const name of need.names)
+        if (!existingLower.has(name.toLowerCase())) s.add(name.toLowerCase());
+    return s.size;
+  }, [mealNeeds, existingLower]);
+
+  const showUpcoming = !!onAddNames;
+  const activeTab = tab === "upcoming" && showUpcoming ? "upcoming" : "list";
+
+  const icon = (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none">
+      <path
+        d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M3 6h18M16 10a4 4 0 01-8 0"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 
-  if (isMobile) {
-    return (
-      <div
-        className={[
-          "fixed top-10 left-0 right-0 z-20",
-          "h-[calc(57vh-7rem)] bg-white border-b border-slate-200 shadow-2xl",
-          "flex flex-col transition-transform duration-300 ease-out",
-          isOpen
-            ? "translate-y-0"
-            : "-translate-y-full invisible pointer-events-none",
-        ].join(" ")}
-      >
-        {header}
-        <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-          <PurchaseOrderList
-            items={items}
-            blocks={blocks}
-            storeItems={storeItems}
-            checkedIds={checkedIds}
-            onToggleChecked={onToggleChecked}
-            onCommitChecked={onCommitChecked}
-            onAdd={onAdd}
-            onAddScanned={onAddScanned}
-            onAddFromSuggestion={onAddFromSuggestion}
-            onAddAll={onAddAll}
-            onUpdate={onUpdate}
-            onDelete={onDelete}
-            onBuy={onBuy}
-          />
-        </div>
-      </div>
-    );
-  }
+  const tabBar = showUpcoming ? (
+    <SegmentedTabs<"list" | "upcoming">
+      ariaLabel="Shopping list view"
+      variant="underline"
+      className="shrink-0 border-b border-slate-200"
+      value={activeTab}
+      onChange={setTab}
+      tabs={[
+        { id: "list", label: "List", badge: items.length },
+        {
+          id: "upcoming",
+          label: "Upcoming",
+          badge: upcomingBadge,
+          badgeClassName:
+            "px-1.5 py-0.5 rounded-full text-[9px] bg-indigo-100 text-indigo-700",
+        },
+      ]}
+    />
+  ) : null;
 
   return (
-    <div
-      className={[
-        "fixed top-16 right-0 h-[calc(100vh-4rem)] z-50 w-1/2",
-        "bg-white border-l border-slate-200 shadow-2xl",
-        "flex flex-col transition-transform duration-300 ease-out",
-        isOpen ? "translate-x-0" : "translate-x-full",
-      ].join(" ")}
+    <SidePanel
+      isOpen={isOpen}
+      onClose={onClose}
+      isMobile={isMobile}
+      mobileVariant="sheet"
+      ariaLabel="Shopping List"
+      title="Shopping List"
+      icon={icon}
+      belowHeader={tabBar}
     >
-      {header}
-      <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
+      {activeTab === "upcoming" && onAddNames ? (
+        <PurchaseOrderUpcoming
+          mealNeeds={mealNeeds}
+          existingNames={existingLower}
+          onAdd={onAddNames}
+          destinationFor={destinationFor}
+        />
+      ) : (
         <PurchaseOrderList
           items={items}
           blocks={blocks}
@@ -152,10 +149,12 @@ export function PurchaseOrderPanel({
           onAddFromSuggestion={onAddFromSuggestion}
           onAddAll={onAddAll}
           onUpdate={onUpdate}
+          onInfer={onInfer}
           onDelete={onDelete}
           onBuy={onBuy}
+          onStartShopping={onStartShopping}
         />
-      </div>
-    </div>
+      )}
+    </SidePanel>
   );
 }
