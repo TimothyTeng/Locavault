@@ -903,12 +903,46 @@ export default function StorePage() {
     );
   };
 
+  const recreatePOItem = (removed: PurchaseOrderItem) => {
+    const optimisticId = crypto.randomUUID();
+    setPurchaseOrder((prev) => [...prev, { ...removed, id: optimisticId }]);
+    fetcher.submit(
+      {
+        _action: "createPOItem",
+        name: removed.name,
+        quantity: removed.quantity,
+        itemId: removed.itemId ?? null,
+        blockId: removed.blockId ?? null,
+        description: removed.description ?? null,
+        sku: removed.sku ?? null,
+        unit: removed.unit ?? null,
+        minQuantity: removed.minQuantity ?? null,
+        cost: removed.cost ?? null,
+        useRate: removed.useRate ?? null,
+        useRatePeriod: removed.useRatePeriod ?? null,
+        itemType: removed.itemType,
+        packageSize: removed.packageSize ?? null,
+        expiryDate: removed.expiryDate
+          ? removed.expiryDate.toISOString()
+          : null,
+        optimisticId,
+      },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
   const handleDeletePOItem = (poId: string) => {
+    const removed = purchaseOrder.find((p) => p.id === poId);
     setPurchaseOrder((prev) => prev.filter((p) => p.id !== poId));
     fetcher.submit(
       { _action: "deletePOItem", id: poId },
       { method: "POST", encType: "application/json" },
     );
+    if (removed) {
+      toast(`Removed “${removed.name}”`, {
+        action: { label: "Undo", onClick: () => recreatePOItem(removed) },
+      });
+    }
   };
 
   // Apply the optimistic inventory + list changes for buying one PO row
@@ -1313,9 +1347,49 @@ export default function StorePage() {
     submitCollection({ _action: "updateCollection", id: cid, kind });
   };
 
+  // Recreate a just-deleted collection with its items in one server call — a
+  // per-item loop would clobber on the single collectionFetcher.
+  const recreateCollection = (removed: Collection) => {
+    const newCid = crypto.randomUUID();
+    const items = removed.items.map((it) => ({
+      ...it,
+      id: crypto.randomUUID(),
+      collectionId: newCid,
+      checked: false,
+    }));
+    setCollections((prev) => [
+      { ...removed, id: newCid, checkedOut: false, items },
+      ...prev,
+    ]);
+    collectionFetcher.submit(
+      {
+        _action: "recreateCollection",
+        id: newCid,
+        name: removed.name,
+        kind: removed.kind,
+        description: removed.description ?? null,
+        isPreset: removed.isPreset,
+        items: items.map((it) => ({
+          id: it.id,
+          itemId: it.itemId,
+          name: it.name,
+          desiredQty: it.desiredQty,
+          checked: it.checked,
+        })),
+      },
+      { method: "POST", encType: "application/json" },
+    );
+  };
+
   const handleDeleteCollection = (cid: string) => {
+    const removed = collections.find((c) => c.id === cid);
     setCollections((prev) => prev.filter((c) => c.id !== cid));
     submitCollection({ _action: "deleteCollection", id: cid });
+    if (removed) {
+      toast(`Deleted “${removed.name}”`, {
+        action: { label: "Undo", onClick: () => recreateCollection(removed) },
+      });
+    }
   };
 
   const handleAddCollectionItem = (

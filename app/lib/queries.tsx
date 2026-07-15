@@ -1553,6 +1553,53 @@ async function getCollectionsByIds(ids: string[]): Promise<Collection[]> {
   }));
 }
 
+/**
+ * Recreate a just-deleted collection (and its item rows) from a client snapshot
+ * — powers the delete → Undo toast. Honors the client-supplied ids so the
+ * optimistic UI reconciles without a refetch. The caller (store.loader) has
+ * already authorised the store.
+ */
+export async function recreateCollectionWithItems(data: {
+  id: string;
+  storeId: string;
+  name: string;
+  kind: CollectionKind;
+  description?: string | null;
+  isPreset?: boolean;
+  userId: string;
+  items: {
+    id: string;
+    itemId: string | null;
+    name: string;
+    desiredQty: number;
+    checked: boolean;
+  }[];
+}) {
+  await db.insert(collections).values({
+    id: data.id,
+    storeId: data.storeId,
+    name: data.name,
+    kind: data.kind,
+    description: data.description ?? null,
+    isPreset: data.isPreset ?? false,
+    checkedOut: false,
+    userId: data.userId,
+  });
+  if (data.items.length) {
+    await db.insert(collectionItems).values(
+      data.items.map((r) => ({
+        id: r.id,
+        collectionId: data.id,
+        itemId: r.itemId,
+        name: r.name,
+        desiredQty: r.desiredQty,
+        checked: r.checked,
+      })),
+    );
+  }
+  return { id: data.id };
+}
+
 export async function updateCollection(
   id: string,
   data: Partial<{
