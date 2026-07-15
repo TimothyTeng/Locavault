@@ -746,6 +746,7 @@ export async function createItems(
     blockId?: string | null;
     itemType?: ItemType;
     unit?: string | null;
+    cost?: number | null;
   }>,
 ): Promise<string[]> {
   if (!rows.length) return [];
@@ -757,6 +758,7 @@ export async function createItems(
     blockId: r.blockId ?? undefined,
     itemType: r.itemType ?? "other",
     unit: r.unit ?? null,
+    cost: r.cost ?? null,
   }));
   await db.insert(items).values(values);
   return values.map((v) => v.id);

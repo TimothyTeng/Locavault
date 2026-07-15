@@ -1,5 +1,39 @@
 import { describe, it, expect } from "vitest";
-import { formatMoney, basketTotal, spentCents } from "./money.helper";
+import {
+  formatMoney,
+  basketTotal,
+  spentCents,
+  parseMoneyToCents,
+} from "./money.helper";
+
+describe("parseMoneyToCents", () => {
+  it("parses dollar-formatted prices", () => {
+    expect(parseMoneyToCents("$12.34")).toBe(1234);
+    expect(parseMoneyToCents("12.34")).toBe(1234);
+    expect(parseMoneyToCents("0.05")).toBe(5);
+    expect(parseMoneyToCents("3.49")).toBe(349);
+  });
+  it("handles comma decimals and thousands separators", () => {
+    expect(parseMoneyToCents("12,34")).toBe(1234); // euro-style decimal
+    expect(parseMoneyToCents("1,234.56")).toBe(123456); // thousands + decimal
+    expect(parseMoneyToCents("1.234,56")).toBe(123456); // continental
+  });
+  it("treats a bare integer as whole units", () => {
+    expect(parseMoneyToCents("12")).toBe(1200);
+    expect(parseMoneyToCents("5")).toBe(500);
+  });
+  it("strips currency symbols and trailing tax codes", () => {
+    expect(parseMoneyToCents("£2.00")).toBe(200);
+    expect(parseMoneyToCents("4.29 F")).toBe(429);
+  });
+  it("preserves sign for refunds", () => {
+    expect(parseMoneyToCents("-5.00")).toBe(-500);
+  });
+  it("returns null when there's no number", () => {
+    expect(parseMoneyToCents("")).toBeNull();
+    expect(parseMoneyToCents("TOTAL")).toBeNull();
+  });
+});
 
 describe("formatMoney", () => {
   it("formats cents as dollars", () => {

@@ -72,6 +72,7 @@ type QuickAddRow = {
   quantity?: unknown;
   itemType?: ItemType;
   unit?: unknown;
+  cost?: unknown;
   optimisticId?: string;
 };
 
@@ -326,6 +327,7 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
         blockId: r.blockId ?? undefined,
         itemType: r.itemType ?? undefined,
         unit: optText(r.unit) ?? undefined,
+        cost: optInt(r.cost),
       })),
     );
     return {

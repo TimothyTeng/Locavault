@@ -326,6 +326,22 @@ export default function StorePage() {
     )
     .map(([id, b]) => ({ id, label: b.label }));
 
+  // The store's own frequent names → quick-add tiles (Phase 9 capture).
+  const frequentNames = useMemo(() => {
+    const counts = new Map<string, { name: string; n: number }>();
+    for (const it of items) {
+      const key = it.name.trim().toLowerCase();
+      if (!key) continue;
+      const e = counts.get(key) ?? { name: it.name.trim(), n: 0 };
+      e.n += 1;
+      counts.set(key, e);
+    }
+    return [...counts.values()]
+      .sort((a, b) => b.n - a.n)
+      .map((e) => e.name)
+      .slice(0, 12);
+  }, [items]);
+
   // id → label for every block, so the item-detail popup can render a real
   // location instead of a raw block id.
   const blockLabels = Object.fromEntries(
@@ -641,6 +657,7 @@ export default function StorePage() {
     if (!entries.length) return;
     const built = entries.map((e) => {
       const optimisticId = crypto.randomUUID();
+      const cost = e.costCents ?? null;
       const item: Item = {
         id: optimisticId,
         name: e.name,
@@ -654,7 +671,7 @@ export default function StorePage() {
         sku: null,
         unit: null,
         minQuantity: null,
-        cost: null,
+        cost,
         expiryDate: null,
         useRate: null,
         useRatePeriod: null,
@@ -667,6 +684,7 @@ export default function StorePage() {
           quantity: e.quantity,
           blockId: blockId ?? null,
           itemType: e.itemType,
+          cost,
         },
       };
     });
@@ -1831,6 +1849,7 @@ export default function StorePage() {
               onSubmit={handleQuickAdd}
               categories={categories}
               defaultBlockId={highlightedCell}
+              suggestions={frequentNames}
             />
           )}
           {canEdit && (

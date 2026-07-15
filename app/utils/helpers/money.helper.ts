@@ -1,6 +1,39 @@
 // Money is stored in cents everywhere (items.cost, purchaseOrderItems.cost). These
 // helpers keep the cents→display and roll-up math in one tested place.
 
+/**
+ * Parse a price token into cents. Handles "$12.34", "12.34", "12,34" (comma
+ * decimal), "1,234.56" (thousands), and a bare "12" (→ 1200). Returns null if
+ * there's no parseable number. Sign is preserved so callers can reject refunds.
+ */
+export function parseMoneyToCents(raw: string): number | null {
+  if (typeof raw !== "string") return null;
+  const neg = /-/.test(raw);
+  // Keep digits and separators only.
+  const s = raw.replace(/[^\d.,]/g, "");
+  if (!s) return null;
+
+  const lastDot = s.lastIndexOf(".");
+  const lastComma = s.lastIndexOf(",");
+  // The right-most separator is the decimal point; the other is a thousands sep.
+  const decPos = Math.max(lastDot, lastComma);
+  let cents: number;
+  if (decPos === -1) {
+    // No separator at all → whole units.
+    const n = parseInt(s, 10);
+    if (!Number.isFinite(n)) return null;
+    cents = n * 100;
+  } else {
+    const decimals = s.slice(decPos + 1).replace(/\D/g, "");
+    const whole = s.slice(0, decPos).replace(/\D/g, "");
+    if (!whole && !decimals) return null;
+    const frac = (decimals + "00").slice(0, 2);
+    cents = parseInt(whole || "0", 10) * 100 + parseInt(frac, 10);
+  }
+  if (!Number.isFinite(cents)) return null;
+  return neg ? -cents : cents;
+}
+
 /** Format a cents amount as "$12.34"; null/undefined → "—". */
 export function formatMoney(cents: number | null | undefined): string {
   if (cents == null) return "—";
