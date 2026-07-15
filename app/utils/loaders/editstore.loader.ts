@@ -4,6 +4,7 @@ import {
   updateStoreWithBlocks,
   verifyStoreAccess,
   getCustomFixturesByUser,
+  getCustomFixturesByIds,
 } from "~/lib/queries";
 import type { BlockDetails, BlocksMap } from "~/types/storeViewFinderTypes";
 import type { Wall } from "~/types/wallTypes";
@@ -42,7 +43,18 @@ export const loader = async (args: LoaderFunctionArgs) => {
     ]),
   );
 
-  const customFixtures = await getCustomFixturesByUser(userId);
+  // The editor's own fixture palette PLUS any custom fixtures already placed on
+  // this store's blocks (owned by whoever created the store) — resolved by id so
+  // an editor of a shared store sees the existing fixtures, not blank tiles.
+  const [ownFixtures, placedFixtures] = await Promise.all([
+    getCustomFixturesByUser(userId),
+    getCustomFixturesByIds(
+      store.blocks.map((b) => b.fixture).filter((f): f is string => !!f),
+    ),
+  ]);
+  const byId = new Map(ownFixtures.map((f) => [f.id, f]));
+  for (const f of placedFixtures) if (!byId.has(f.id)) byId.set(f.id, f);
+  const customFixtures = [...byId.values()];
 
   return {
     userId,

@@ -1287,6 +1287,7 @@ export default function StorePage() {
         description: null,
         kind,
         checkedOut: false,
+        isPreset: false,
         userId: userId ?? "",
         createdAt: new Date(),
         items: [],
@@ -1294,6 +1295,12 @@ export default function StorePage() {
       ...prev,
     ]);
     submitCollection({ _action: "createCollection", id: cid, name, kind });
+  };
+
+  // Save-as-preset / start-from-preset. The server clones the rows; the next
+  // revalidation (collectionFetcher → idle) brings the new collection in.
+  const handleDuplicateCollection = (cid: string, asPreset: boolean) => {
+    submitCollection({ _action: "duplicateCollection", id: cid, asPreset });
   };
 
   const handleRenameCollection = (cid: string, name: string) => {
@@ -1773,6 +1780,7 @@ export default function StorePage() {
                 onTogglePacked={handleToggleCollectionPacked}
                 onRemoveItem={handleRemoveCollectionItem}
                 onCheckout={handleCheckoutCollection}
+                onDuplicate={handleDuplicateCollection}
                 onAddGapsToList={canEdit ? handleAddMissingToList : undefined}
                 onLocate={handleJumpToItem}
                 isMobile={isMobile}

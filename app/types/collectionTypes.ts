@@ -17,6 +17,8 @@ export type Collection = {
   description: string | null;
   kind: CollectionKind;
   checkedOut: boolean;
+  /** A reusable template list — never checks out; "start from" it for a fresh set. */
+  isPreset: boolean;
   userId: string;
   createdAt: Date | null;
   items: CollectionItem[];

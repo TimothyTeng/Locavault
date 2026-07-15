@@ -375,6 +375,9 @@ export const collections = sqliteTable("collections", {
   checkedOut: integer("checked_out", { mode: "boolean" })
     .notNull()
     .default(false),
+  // A reusable template list ("camping kit") — never checks out; you "start from"
+  // it to spawn a fresh active collection.
+  isPreset: integer("is_preset", { mode: "boolean" }).notNull().default(false),
   userId: text("user_id").notNull(), // creator (Clerk id)
   createdAt: integer("created_at", { mode: "timestamp" }).$defaultFn(
     () => new Date(),

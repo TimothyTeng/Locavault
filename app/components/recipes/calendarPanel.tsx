@@ -92,6 +92,16 @@ export function CalendarPanel({
   const [query, setQuery] = useState("");
   const [dayDetail, setDayDetail] = useState<string | null>(null); // dateKey
   const [showNeeds, setShowNeeds] = useState(false);
+  // Drag-to-move: the meal being dragged + the day being hovered (week view).
+  const [dragMeal, setDragMeal] = useState<ScheduledMeal | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+
+  // Move a meal to another day = delete + recreate (recipeRef isn't an FK).
+  const moveMeal = (meal: ScheduledMeal, newKey: string) => {
+    if (meal.dateKey === newKey) return;
+    onUnschedule(meal.id);
+    onSchedule(meal.recipeRef, meal.recipeName, newKey, meal.mealType);
+  };
 
   // The full pickable library: the user's saved recipes first, then the seeds.
   const library = useMemo<Recipe[]>(
@@ -377,7 +387,31 @@ export function CalendarPanel({
                 const p = dayParts(d);
                 const isToday = isSameDay(d, today);
                 return (
-                  <div key={key} className="border-b border-slate-100 py-2">
+                  <div
+                    key={key}
+                    onDragOver={(e) => {
+                      if (dragMeal) {
+                        e.preventDefault();
+                        setDragOverKey(key);
+                      }
+                    }}
+                    onDragLeave={() =>
+                      setDragOverKey((k) => (k === key ? null : k))
+                    }
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (dragMeal) moveMeal(dragMeal, key);
+                      setDragMeal(null);
+                      setDragOverKey(null);
+                    }}
+                    className={`border-b border-slate-100 py-2 transition-colors ${
+                      dragOverKey === key &&
+                      dragMeal &&
+                      dragMeal.dateKey !== key
+                        ? "rounded-lg bg-indigo-50/70 ring-1 ring-indigo-200"
+                        : ""
+                    }`}
+                  >
                     <div className="mb-1 flex items-center justify-between px-1">
                       <span
                         className={`text-[11px] font-bold ${
@@ -403,7 +437,18 @@ export function CalendarPanel({
                         {dayMeals.map((meal) => (
                           <div
                             key={meal.id}
-                            className="flex items-center gap-2 rounded-lg bg-slate-50 px-2 py-1.5"
+                            draggable
+                            onDragStart={(e) => {
+                              setDragMeal(meal);
+                              e.dataTransfer.effectAllowed = "move";
+                            }}
+                            onDragEnd={() => {
+                              setDragMeal(null);
+                              setDragOverKey(null);
+                            }}
+                            className={`flex items-center gap-2 rounded-lg bg-slate-50 px-2 py-1.5 ${
+                              dragMeal?.id === meal.id ? "opacity-40" : ""
+                            } cursor-grab active:cursor-grabbing`}
                           >
                             <span
                               className={`h-2 w-2 shrink-0 rounded-full ${MEAL_TONE[meal.mealType]}`}

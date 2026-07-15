@@ -1384,11 +1384,18 @@ export async function deleteTemplate(id: string) {
 
 /** Fetch a store's collections, each with its items (newest collection first). */
 export async function getCollections(storeId: string): Promise<Collection[]> {
-  const cols = await db
-    .select()
-    .from(collections)
-    .where(eq(collections.storeId, storeId))
-    .orderBy(collections.createdAt);
+  let cols;
+  try {
+    cols = await db
+      .select()
+      .from(collections)
+      .where(eq(collections.storeId, storeId))
+      .orderBy(collections.createdAt);
+  } catch {
+    // is_preset column may not exist pre-migration — degrade to no collections
+    // rather than breaking the store load.
+    return [];
+  }
   if (!cols.length) return [];
 
   const ids = cols.map((c) => c.id);
@@ -1413,6 +1420,7 @@ export async function getCollections(storeId: string): Promise<Collection[]> {
       description: c.description,
       kind: c.kind as CollectionKind,
       checkedOut: c.checkedOut,
+      isPreset: c.isPreset ?? false,
       userId: c.userId,
       createdAt: c.createdAt,
       items: (byCollection.get(c.id) ?? []).map((r) => ({
@@ -1434,6 +1442,7 @@ export async function createCollection(data: {
   name: string;
   kind?: CollectionKind;
   description?: string | null;
+  isPreset?: boolean;
   userId: string;
 }) {
   const [row] = await db
@@ -1444,10 +1453,104 @@ export async function createCollection(data: {
       name: data.name,
       kind: data.kind ?? "packing",
       description: data.description ?? null,
+      isPreset: data.isPreset ?? false,
       userId: data.userId,
     })
     .returning();
   return row;
+}
+
+/**
+ * Clone a collection (and its item rows) into a new one in the same store.
+ * "Save as preset" → `asPreset: true` (a reusable template that never checks
+ * out); "Start from preset" → `asPreset: false` (a fresh active set). Copies keep
+ * the item links but reset the packed ticks; the new collection starts checked-in.
+ */
+export async function duplicateCollection(
+  sourceId: string,
+  userId: string,
+  opts: { asPreset: boolean; name?: string },
+): Promise<Collection | null> {
+  const [src] = await db
+    .select()
+    .from(collections)
+    .where(eq(collections.id, sourceId));
+  if (!src) return null;
+
+  const srcItems = await db
+    .select()
+    .from(collectionItems)
+    .where(eq(collectionItems.collectionId, sourceId))
+    .orderBy(collectionItems.createdAt);
+
+  const newId = crypto.randomUUID();
+  const suffix = opts.asPreset ? " (preset)" : "";
+  await db.insert(collections).values({
+    id: newId,
+    storeId: src.storeId,
+    name: opts.name?.trim() || `${src.name}${suffix}`,
+    kind: src.kind,
+    description: src.description,
+    isPreset: opts.asPreset,
+    checkedOut: false,
+    userId,
+  });
+
+  if (srcItems.length) {
+    await db.insert(collectionItems).values(
+      srcItems.map((r) => ({
+        id: crypto.randomUUID(),
+        collectionId: newId,
+        itemId: r.itemId,
+        name: r.name,
+        desiredQty: r.desiredQty,
+        checked: false,
+      })),
+    );
+  }
+
+  const [created] = await getCollectionsByIds([newId]);
+  return created ?? null;
+}
+
+/** Fetch specific collections (with items) by id — used after a duplicate. */
+async function getCollectionsByIds(ids: string[]): Promise<Collection[]> {
+  if (!ids.length) return [];
+  const cols = await db
+    .select()
+    .from(collections)
+    .where(inArray(collections.id, ids));
+  const ciRows = await db
+    .select()
+    .from(collectionItems)
+    .where(inArray(collectionItems.collectionId, ids))
+    .orderBy(collectionItems.createdAt);
+  const byCollection = new Map<string, typeof ciRows>();
+  for (const r of ciRows) {
+    const arr = byCollection.get(r.collectionId);
+    if (arr) arr.push(r);
+    else byCollection.set(r.collectionId, [r]);
+  }
+  return cols.map((c) => ({
+    id: c.id,
+    storeId: c.storeId,
+    name: c.name,
+    description: c.description,
+    kind: c.kind as CollectionKind,
+    checkedOut: c.checkedOut,
+    isPreset: c.isPreset ?? false,
+    userId: c.userId,
+    createdAt: c.createdAt,
+    items: (byCollection.get(c.id) ?? []).map((r) => ({
+      id: r.id,
+      collectionId: r.collectionId,
+      itemId: r.itemId,
+      name: r.name,
+      desiredQty: r.desiredQty,
+      checked: r.checked,
+      createdAt: r.createdAt,
+    })),
+  }));
 }
 
 export async function updateCollection(

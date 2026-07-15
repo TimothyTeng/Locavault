@@ -33,6 +33,7 @@ import {
   updateCollectionItem,
   removeCollectionItem,
   setCollectionCheckedOut,
+  duplicateCollection,
   getCollectionStoreId,
   getBlockStoreId,
   getCustomFixturesByIds,
@@ -712,6 +713,17 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
     await ensureCollectionInStore(data.id);
     await setCollectionCheckedOut(data.id, !!data.checkedOut);
     return { ok: true };
+  }
+
+  // "Save as preset" (asPreset) / "Start from preset" (fresh active) — clone a
+  // collection and its rows into a new one in the same store.
+  if (data._action === "duplicateCollection") {
+    await ensureCollectionInStore(data.id);
+    const row = await duplicateCollection(data.id, userId, {
+      asPreset: !!data.asPreset,
+      name: optText(data.name) ?? undefined,
+    });
+    return { ok: true, collection: row };
   }
 
   return { ok: false };

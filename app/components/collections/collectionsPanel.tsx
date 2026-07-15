@@ -10,6 +10,8 @@ import {
   PackageCheck,
   PackageOpen,
   Luggage,
+  Copy,
+  BookmarkPlus,
 } from "lucide-react";
 import type { Item } from "~/types/storeTypes";
 import { EmptyState } from "~/components/common/EmptyState";
@@ -45,6 +47,7 @@ export function CollectionsPanel({
   onTogglePacked,
   onRemoveItem,
   onCheckout,
+  onDuplicate,
   onAddGapsToList,
   onLocate,
   isMobile = false,
@@ -70,6 +73,7 @@ export function CollectionsPanel({
   ) => void;
   onRemoveItem: (collectionId: string, itemId: string) => void;
   onCheckout: (collectionId: string, checkedOut: boolean) => void;
+  onDuplicate: (collectionId: string, asPreset: boolean) => void;
   onAddGapsToList?: (names: string[]) => void;
   onLocate: (item: Item) => void;
   isMobile?: boolean;
@@ -144,6 +148,7 @@ export function CollectionsPanel({
             onTogglePacked={onTogglePacked}
             onRemoveItem={onRemoveItem}
             onCheckout={onCheckout}
+            onDuplicate={onDuplicate}
             onAddGapsToList={onAddGapsToList}
             onLocate={(item) => {
               onLocate(item);
@@ -194,6 +199,11 @@ export function CollectionsPanel({
                           <span className="truncate text-[13px] font-bold text-slate-800">
                             {c.name}
                           </span>
+                          {c.isPreset && (
+                            <span className="shrink-0 rounded-full bg-violet-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-violet-700">
+                              Preset
+                            </span>
+                          )}
                           {c.checkedOut && (
                             <span className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-700">
                               Out
@@ -234,6 +244,7 @@ function CollectionDetail({
   onTogglePacked,
   onRemoveItem,
   onCheckout,
+  onDuplicate,
   onAddGapsToList,
   onLocate,
 }: {
@@ -255,6 +266,7 @@ function CollectionDetail({
   ) => void;
   onRemoveItem: (collectionId: string, itemId: string) => void;
   onCheckout: (collectionId: string, checkedOut: boolean) => void;
+  onDuplicate: (collectionId: string, asPreset: boolean) => void;
   onAddGapsToList?: (names: string[]) => void;
   onLocate: (item: Item) => void;
 }) {
@@ -307,7 +319,17 @@ function CollectionDetail({
           </div>
         )}
 
-        {canEdit && (
+        {canEdit && collection.isPreset && (
+          <button
+            onClick={() => onDuplicate(collection.id, false)}
+            disabled={collection.items.length === 0}
+            className="flex w-full items-center justify-center gap-2 rounded-lg bg-violet-600 py-2.5 text-[11px] font-bold uppercase tracking-widest text-white transition-colors hover:bg-violet-500 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <Copy size={14} /> Start a set from this preset
+          </button>
+        )}
+
+        {canEdit && !collection.isPreset && (
           <button
             onClick={() => onCheckout(collection.id, !collection.checkedOut)}
             disabled={collection.items.length === 0}
@@ -334,7 +356,24 @@ function CollectionDetail({
             put them back.
           </p>
         )}
+
+        {collection.isPreset && (
+          <p className="-mt-1 text-center text-[10px] text-violet-600">
+            A reusable preset — it never checks out. Start a set to pack it for
+            real.
+          </p>
+        )}
       </div>
+
+      {/* Put-away guide — while checked out, where each item goes home */}
+      {collection.checkedOut && (
+        <PutAwayGuide
+          collection={collection}
+          itemById={itemById}
+          blocks={blocks}
+          onLocate={onLocate}
+        />
+      )}
 
       {/* Items */}
       <div className="flex-1 overflow-auto px-4 py-3">
@@ -438,6 +477,15 @@ function CollectionDetail({
               list
             </button>
           )}
+          {canEdit && !collection.isPreset && collection.items.length > 0 && (
+            <button
+              onClick={() => onDuplicate(collection.id, true)}
+              className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-violet-200 py-1.5 text-[10px] font-bold uppercase tracking-widest text-violet-600 hover:bg-violet-50"
+            >
+              <BookmarkPlus size={11} />
+              Save as preset
+            </button>
+          )}
           {canEdit && (
             <button
               onClick={() => onDelete(collection.id)}
@@ -521,6 +569,77 @@ function AddItemRow({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Put-away guide — shown while a collection is checked out. Groups its linked
+ * items by home zone so check-in is a quick "put these back here" pass; each zone
+ * jumps to the map. Unplaced/untracked entries fall under "No home zone".
+ */
+function PutAwayGuide({
+  collection,
+  itemById,
+  blocks,
+  onLocate,
+}: {
+  collection: Collection;
+  itemById: Map<string, Item>;
+  blocks: BlocksMap;
+  onLocate: (item: Item) => void;
+}) {
+  const groups = useMemo(() => {
+    const byZone = new Map<
+      string,
+      { label: string; sample: Item; items: Item[] }
+    >();
+    let unplaced = 0;
+    for (const ci of collection.items) {
+      const it = ci.itemId ? itemById.get(ci.itemId) : null;
+      const zoneLabel = it?.blockId ? blocks[it.blockId]?.label : null;
+      if (!it || !zoneLabel) {
+        unplaced += 1;
+        continue;
+      }
+      const g = byZone.get(zoneLabel) ?? {
+        label: zoneLabel,
+        sample: it,
+        items: [],
+      };
+      g.items.push(it);
+      byZone.set(zoneLabel, g);
+    }
+    return { zones: [...byZone.values()], unplaced };
+  }, [collection.items, itemById, blocks]);
+
+  if (groups.zones.length === 0 && groups.unplaced === 0) return null;
+
+  return (
+    <div className="shrink-0 border-b border-slate-100 bg-slate-50/60 px-4 py-3">
+      <p className="mb-1.5 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+        <MapPin size={11} /> Put back
+      </p>
+      <div className="flex flex-wrap gap-1.5">
+        {groups.zones.map((g) => (
+          <button
+            key={g.label}
+            onClick={() => onLocate(g.sample)}
+            className="flex items-center gap-1 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] text-slate-600 hover:border-emerald-300 hover:text-emerald-700"
+          >
+            <MapPin size={10} />
+            {g.label}
+            <span className="rounded-full bg-slate-100 px-1 text-[9px] font-bold text-slate-500">
+              {g.items.length}
+            </span>
+          </button>
+        ))}
+        {groups.unplaced > 0 && (
+          <span className="rounded-full border border-slate-100 px-2.5 py-1 text-[11px] text-slate-400">
+            {groups.unplaced} no home zone
+          </span>
+        )}
+      </div>
     </div>
   );
 }
