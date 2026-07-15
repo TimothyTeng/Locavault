@@ -116,6 +116,10 @@ export const itemLogs = sqliteTable("item_logs", {
     .references(() => stores.id, { onDelete: "cascade" }),
   delta: integer("delta").notNull(), // negative = consumed, positive = restocked
   note: text("note"),
+  // Total spend for this event, in cents (snapshot of unit cost × delta at the
+  // time of purchase). Only set on restock/buy rows; null everywhere else. Lets
+  // spend be reconstructed historically even after an item's `cost` changes.
+  costCents: integer("cost_cents"),
   loggedAt: integer("logged_at", { mode: "timestamp" }).$defaultFn(
     () => new Date(),
   ),

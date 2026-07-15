@@ -121,6 +121,13 @@ async function commitPurchaseOrderRow(
   // Cross-store guard: the PO row must belong to the acting store.
   if (poRow.storeId !== expectedStoreId) return false;
 
+  // Snapshot the spend for this purchase (unit cost × qty) so spend history
+  // survives later changes to the item's `cost`. Null when no cost was captured.
+  const spendCents =
+    poRow.cost != null && poRow.quantity > 0
+      ? poRow.cost * poRow.quantity
+      : null;
+
   if (poRow.itemId) {
     const existing = await getItemById(poRow.itemId);
     if (!existing) return false;
@@ -143,7 +150,7 @@ async function commitPurchaseOrderRow(
       useRate: poRow.useRate ?? undefined,
       useRatePeriod: poRow.useRatePeriod ?? undefined,
     });
-    // Record the restock (positive delta) so usage history stays complete.
+    // Record the restock (positive delta) so usage + spend history stay complete.
     if (poRow.quantity > 0) {
       await createItemLog(
         poRow.itemId,
@@ -151,10 +158,11 @@ async function commitPurchaseOrderRow(
         poRow.quantity,
         loggedBy,
         "restock",
+        spendCents,
       );
     }
   } else {
-    await createItem({
+    const created = await createItem({
       name: poRow.name,
       quantity: poRow.quantity,
       storeId: poRow.storeId,
@@ -169,6 +177,17 @@ async function commitPurchaseOrderRow(
       useRate: poRow.useRate ?? undefined,
       useRatePeriod: poRow.useRatePeriod ?? undefined,
     });
+    // Log the initial purchase as a restock so its spend is captured too.
+    if (poRow.quantity > 0) {
+      await createItemLog(
+        created.id,
+        poRow.storeId,
+        poRow.quantity,
+        loggedBy,
+        "restock",
+        spendCents,
+      );
+    }
   }
 
   await deletePurchaseOrder(poRow.id);
