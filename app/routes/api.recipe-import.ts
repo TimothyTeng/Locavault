@@ -1,51 +1,29 @@
 import type { ActionFunctionArgs } from "react-router";
 import { getAuth } from "@clerk/react-router/server";
 import { parseRecipeFromJsonLd } from "~/utils/helpers/recipeImport.helper";
+import { checkUrl } from "~/utils/helpers/ssrfGuard.helper";
+import { createRateLimiter } from "~/utils/helpers/rateLimit.helper";
 
 /**
  * Import a recipe from a URL (resource route, no UI). POST `{ url }`; we fetch the
  * page server-side, pull its schema.org/Recipe JSON-LD, and return a normalised
  * draft for the editor to confirm. No API key — license-clean structured data.
  *
- * SSRF guard: http(s) only, blocked private/loopback/link-local hosts, manual
- * redirect following (each hop re-validated), an 8s timeout, and a read cap. The
- * host check is by hostname pattern (best-effort) — it does not resolve DNS, so a
- * public name pointing at a private IP is not caught; acceptable for a signed-in
- * user importing their own recipe.
+ * SSRF guard (`ssrfGuard.helper`): http(s) only, no userinfo, and every host is
+ * DNS-resolved and rejected if any resolved address is private/loopback/
+ * link-local — so numeric-host encodings and IPv4-mapped IPv6 can't slip past.
+ * Each redirect hop is re-validated. Plus a per-user rate limit (this route makes
+ * authed outbound fetches), an 8s timeout, and a read cap. Residual DNS-rebinding
+ * TOCTOU is documented in the guard and accepted for a self-service importer.
  */
 
 const FETCH_TIMEOUT_MS = 8000;
 const READ_CAP_CHARS = 2_000_000;
 const MAX_REDIRECTS = 4;
 
-function isBlockedHost(hostname: string): boolean {
-  const h = hostname.toLowerCase().replace(/^\[|\]$/g, "");
-  if (h === "localhost" || h.endsWith(".localhost") || h.endsWith(".local"))
-    return true;
-  if (h === "::1" || h === "0.0.0.0") return true;
-  const m = h.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
-  if (m) {
-    const a = Number(m[1]);
-    const b = Number(m[2]);
-    if (a === 0 || a === 127 || a === 10) return true;
-    if (a === 169 && b === 254) return true; // link-local + cloud metadata
-    if (a === 192 && b === 168) return true;
-    if (a === 172 && b >= 16 && b <= 31) return true;
-  }
-  return false;
-}
-
-function validateUrl(raw: string): URL | null {
-  let u: URL;
-  try {
-    u = new URL(raw);
-  } catch {
-    return null;
-  }
-  if (u.protocol !== "http:" && u.protocol !== "https:") return null;
-  if (isBlockedHost(u.hostname)) return null;
-  return u;
-}
+// Per-process limiter (see rateLimit.helper for the scaling caveat). Stricter
+// than barcode: each call is an outbound fetch, so keep the ceiling low.
+const limiter = createRateLimiter({ max: 20, windowMs: 60_000 });
 
 async function readCapped(res: Response): Promise<string> {
   const reader = res.body?.getReader();
@@ -94,15 +72,15 @@ async function fetchHtml(start: URL): Promise<FetchResult> {
     if (res.status >= 300 && res.status < 400) {
       const loc = res.headers.get("location");
       if (!loc) return { error: "fetch_failed" };
-      let next: URL | null;
+      let next: URL;
       try {
         next = new URL(loc, url);
       } catch {
         return { error: "fetch_failed" };
       }
-      const validated = validateUrl(next.href);
-      if (!validated) return { error: "blocked" };
-      url = validated;
+      const validated = await checkUrl(next.href);
+      if (!validated.ok) return { error: "blocked" };
+      url = validated.url;
       continue;
     }
 
@@ -117,14 +95,21 @@ export async function action(args: ActionFunctionArgs) {
   const { userId } = await getAuth(args);
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
 
+  if (!limiter.take(userId))
+    return Response.json({ error: "rate_limited" }, { status: 429 });
+
   const body = (await args.request.json().catch(() => ({}))) as Record<
     string,
     unknown
   >;
-  const url = validateUrl(String(body.url ?? "").trim());
-  if (!url) return Response.json({ error: "invalid_url" }, { status: 400 });
+  const guard = await checkUrl(String(body.url ?? "").trim());
+  if (!guard.ok)
+    return Response.json(
+      { error: guard.reason },
+      { status: guard.reason === "invalid_url" ? 400 : 422 },
+    );
 
-  const result = await fetchHtml(url);
+  const result = await fetchHtml(guard.url);
   if ("error" in result)
     return Response.json({ error: result.error }, { status: 422 });
 

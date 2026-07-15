@@ -6,9 +6,14 @@ import {
   getCustomFixturesByUser,
   getCustomFixturesByIds,
 } from "~/lib/queries";
-import type { BlockDetails, BlocksMap } from "~/types/storeViewFinderTypes";
+import type { BlocksMap } from "~/types/storeViewFinderTypes";
 import type { Wall } from "~/types/wallTypes";
 import { clampGridDim } from "~/lib/gridLimits";
+import {
+  requireText,
+  optText,
+  validateBlocks,
+} from "~/utils/helpers/validate.helper";
 
 // ── Loader ─────────────────────────────────────────────────
 
@@ -86,13 +91,15 @@ export const action = async (args: ActionFunctionArgs) => {
 
   const data = await request.json();
 
+  // Mirror addstore's validation: a store can't be edited nameless, with an
+  // absurd grid, or with an unbounded/malformed block array.
   await updateStoreWithBlocks(params.id!, {
-    name: data.name,
-    tags: data.tags,
-    description: data.description,
+    name: requireText(data.name, "Store name", 120),
+    tags: typeof data.tags === "string" ? data.tags.slice(0, 2000) : "[]",
+    description: optText(data.description) ?? undefined,
     rows: clampGridDim(data.rows),
     cols: clampGridDim(data.cols),
-    blocks: data.blocks as BlockDetails[],
+    blocks: validateBlocks(data.blocks),
     walls: Array.isArray(data.walls)
       ? (data.walls.slice(0, 5000) as Wall[])
       : [],

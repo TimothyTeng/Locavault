@@ -1,6 +1,7 @@
 import type { ActionFunctionArgs } from "react-router";
 import { getAuth } from "@clerk/react-router/server";
 import { mealsToResults } from "~/utils/helpers/mealdb.helper";
+import { createRateLimiter } from "~/utils/helpers/rateLimit.helper";
 
 /**
  * Search public recipes (resource route, no UI). POST `{ q }`; we query TheMealDB
@@ -15,9 +16,16 @@ import { mealsToResults } from "~/utils/helpers/mealdb.helper";
 const FETCH_TIMEOUT_MS = 8000;
 const MAX_RESULTS = 25;
 
+// Per-process limiter (see rateLimit.helper for the scaling caveat) — each call
+// is an outbound fetch to TheMealDB.
+const limiter = createRateLimiter({ max: 30, windowMs: 60_000 });
+
 export async function action(args: ActionFunctionArgs) {
   const { userId } = await getAuth(args);
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
+
+  if (!limiter.take(userId))
+    return Response.json({ error: "rate_limited" }, { status: 429 });
 
   const body = (await args.request.json().catch(() => ({}))) as Record<
     string,

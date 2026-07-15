@@ -19,6 +19,11 @@ import {
 import type { TradeMessage, TradeOfferStatus } from "~/types/tradeTypes";
 import { optText, requireText } from "~/utils/helpers/validate.helper";
 import { toActionResult } from "~/utils/loaders/actionResult";
+import { createRateLimiter } from "~/utils/helpers/rateLimit.helper";
+
+// Per-process limiter (see rateLimit.helper for the scaling caveat) — bounds how
+// fast a user can spray trade offers across the Bazaar.
+const offerLimiter = createRateLimiter({ max: 30, windowMs: 60_000 });
 
 // ── Loader ─────────────────────────────────────────────────
 
@@ -61,7 +66,11 @@ export const loader = async (args: LoaderFunctionArgs) => {
 
   return {
     userId,
-    bazaar: listings.filter((l) => l.ownerUserId !== userId),
+    // Other people's listings: blank the owner's Clerk id — the client never
+    // needs it (offers resolve the owner server-side) and it shouldn't leak.
+    bazaar: listings
+      .filter((l) => l.ownerUserId !== userId)
+      .map((l) => ({ ...l, ownerUserId: "" })),
     myListings: listings.filter((l) => l.ownerUserId === userId),
     offers,
     myItems,
@@ -91,6 +100,8 @@ const runTradeAction = async (args: ActionFunctionArgs) => {
 
   // Propose a trade on someone else's listing.
   if (data._action === "makeOffer") {
+    if (!offerLimiter.take(userId))
+      throw new Response("Too many offers, slow down", { status: 429 });
     const ctx = await getItemOwnerContext(data.listingItemId);
     if (!ctx) throw new Response("Listing not found", { status: 404 });
     if (ctx.ownerUserId === userId)
@@ -126,6 +137,11 @@ const runTradeAction = async (args: ActionFunctionArgs) => {
   if (data._action === "respondOffer") {
     const offer = await getTradeOfferById(data.id);
     if (!offer) throw new Response("Offer not found", { status: 404 });
+    // Only a still-pending offer can be responded to — otherwise an owner could
+    // re-accept an already-cancelled offer (re-unlisting the item), or two
+    // responses could race.
+    if (offer.status !== "pending")
+      throw new Response("Offer is no longer pending", { status: 409 });
     const status = data.status as TradeOfferStatus;
 
     if (status === "accepted" || status === "declined") {
