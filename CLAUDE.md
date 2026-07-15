@@ -222,8 +222,10 @@ All ids are `text` UUIDs (`crypto.randomUUID()`). Timestamps are `integer` epoch
   aggregate rebuilt by `recomputeTypeConsensus`.
 - **collections** — a named set of item references for a *purpose* (DESIGN.md §7),
   distinct from the shopping list: name, description, `kind` ∈ `{packing, trade,
-  custom}`, `checkedOut` (the set is taken out), `userId`, FK → store (cascade).
-  Per-store v1 but the model is store-agnostic for a future global layer.
+  custom}`, `checkedOut` (the set is taken out), `isPreset` (a reusable template
+  that never checks out — "Save as preset"/"Start from preset" clone rows via
+  `duplicateCollection`), `userId`, FK → store (cascade). Per-store v1 but the
+  model is store-agnostic for a future global layer.
 - **collectionItems** — a row in a collection: `name` (denormalised), `desiredQty`,
   `checked` ("packed" tick), optional `itemId` linking an owned item (`set null`;
   null = a free-text gap). FK → collection (cascade delete).
@@ -233,9 +235,15 @@ All ids are `text` UUIDs (`crypto.randomUUID()`). Timestamps are `integer` epoch
   with an optional "looking for…" wants note (cleared on unlist).
 - **tradeOffers** — a Steam-style offer on a listing: `listingItemId` (requested),
   optional `offeredItemId` (offered in return), `fromUserId`/`toUserId`, `message`,
-  `status` ∈ `{pending, accepted, declined, cancelled}`. Item names are
-  denormalised so an offer still reads after an item is deleted/unlisted.
-  Accepting unlists the item and auto-declines competing pending offers.
+  `status` ∈ `{pending, accepted, declined, cancelled, completed}`, `completedAt`
+  (nullable). Item names are denormalised so an offer still reads after an item is
+  deleted/unlisted. Accepting unlists the item and auto-declines competing pending
+  offers; either party can then mark an accepted offer `completed` (the swap is
+  physical/offline — no inventory transfer).
+- **tradeMessages** — a per-offer chat line for the contact handoff after an offer
+  is accepted (DESIGN.md §7): `offerId` (FK → tradeOffers, cascade), `fromUserId`,
+  `body`, `createdAt`. Only participants of an `accepted`/`completed` offer can post;
+  there's no inventory transfer, so the thread *is* the completion mechanism.
 
 Relations are declared at the bottom of `schema.ts`. FKs cascade on store delete;
 item/block references on PO and collection rows use `set null`.

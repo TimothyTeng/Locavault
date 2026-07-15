@@ -27,6 +27,7 @@ import {
   verifyStoreAccess,
   getCollections,
   createCollection,
+  recreateCollectionWithItems,
   updateCollection,
   deleteCollection,
   addCollectionItem,
@@ -656,6 +657,32 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
       userId,
     });
     return { ok: true, id: row.id };
+  }
+
+  if (data._action === "recreateCollection") {
+    const rawItems = Array.isArray(data.items) ? data.items : [];
+    await recreateCollectionWithItems({
+      id: typeof data.id === "string" ? data.id : crypto.randomUUID(),
+      storeId: params.id!,
+      name: optText(data.name) ?? "Untitled",
+      kind: data.kind ?? "packing",
+      description: optText(data.description),
+      isPreset: !!data.isPreset,
+      userId,
+      items: rawItems
+        .filter(
+          (r: { name?: unknown }) =>
+            typeof r?.name === "string" && r.name.trim(),
+        )
+        .map((r: Record<string, unknown>) => ({
+          id: typeof r.id === "string" ? r.id : crypto.randomUUID(),
+          itemId: typeof r.itemId === "string" ? r.itemId : null,
+          name: r.name as string,
+          desiredQty: toQty(r.desiredQty, 1, { min: 1 }),
+          checked: !!r.checked,
+        })),
+    });
+    return { ok: true, id: data.id };
   }
 
   if (data._action === "updateCollection") {
