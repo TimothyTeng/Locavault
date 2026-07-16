@@ -1,7 +1,14 @@
 // Minimal service worker — enough for installability + a fast, resilient shell.
 // Deliberately conservative for an SSR app: navigations are network-first (so
 // loader data / auth are never served stale), only static build assets are
-// cached. No offline write queue (that's a later, explicit feature).
+// cached.
+//
+// Offline WRITES are handled one layer up, in the page: `~/utils/useOutbox`
+// queues the two in-scope mutations ("we're out" taps + quick-adds) in IndexedDB
+// and replays them on reconnect. That lives in the app rather than here because
+// the queue is per-signed-in-user, and this cache is shared across everyone who
+// uses the browser — which is also why authenticated loader responses are never
+// cached for offline reads.
 const CACHE = "locavault-v1";
 const SHELL = ["/", "/icon.svg", "/manifest.webmanifest"];
 

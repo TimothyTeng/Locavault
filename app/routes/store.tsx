@@ -22,6 +22,8 @@ import type { ItemType, Condition, Season } from "~/types/itemTypeTypes";
 import type { StoreMember } from "~/types/memberTypes";
 import { handlesForMode } from "~/components/addstore/storeViewFinder/ModeToggle";
 import { useZoom } from "~/utils/useZoom";
+import { useOutbox } from "~/utils/useOutbox";
+import { OfflineChip } from "~/components/store/offlineChip";
 import { GridCanvas } from "~/components/addstore/storeViewFinder/GridCanvas";
 import Navbar from "~/components/home/navbar";
 import { AddItemPanel } from "~/components/addItem/addItemPanel";
@@ -93,6 +95,9 @@ export default function StorePage() {
   const { id } = useParams();
   const { revalidate } = useRevalidator();
   const isMobile = useIsMobile();
+  // Offline outbox: queues "we're out" taps + quick-adds while offline and
+  // replays them on reconnect, then revalidates to reconcile with the server.
+  const outbox = useOutbox(revalidate);
 
   const navStore: CreateStoreInput | null = state?.storeData ?? null;
   const initial = navStore ?? dbStore;
@@ -588,10 +593,22 @@ export default function StorePage() {
       const { optimistic } = buildPOFromItem(item);
       setPurchaseOrder((prev) => [...prev, optimistic]);
     }
-    fetcher.submit(
-      { _action: "markItemOut", id: item.id, restockQty, wasted },
-      { method: "POST", encType: "application/json" },
-    );
+    const body = { _action: "markItemOut", id: item.id, restockQty, wasted };
+    // The empty-fridge tap is exactly where the phone has no signal — queue it
+    // and replay on reconnect. Falls through to a live submit if it can't queue.
+    if (!outbox.online) {
+      void outbox
+        .queue(`/store/${id}`, body, `${item.name} — we're out`)
+        .then((queued) => {
+          if (!queued)
+            fetcher.submit(body, {
+              method: "POST",
+              encType: "application/json",
+            });
+        });
+      return;
+    }
+    fetcher.submit(body, { method: "POST", encType: "application/json" });
   };
 
   // Confirm-loop answer "still have it": the predicted run-out passed but stock
@@ -725,10 +742,24 @@ export default function StorePage() {
       };
     });
     setItems((prev) => [...prev, ...built.map((b) => b.item)]);
-    createFetcher.submit(
-      { _action: "createItems", items: built.map((b) => b.payload) },
-      { method: "POST", encType: "application/json" },
-    );
+    const body = {
+      _action: "createItems",
+      items: built.map((b) => b.payload),
+    };
+    if (!outbox.online) {
+      const n = built.length;
+      void outbox
+        .queue(`/store/${id}`, body, `${n} item${n === 1 ? "" : "s"} added`)
+        .then((queued) => {
+          if (!queued)
+            createFetcher.submit(body, {
+              method: "POST",
+              encType: "application/json",
+            });
+        });
+      return;
+    }
+    createFetcher.submit(body, { method: "POST", encType: "application/json" });
   };
 
   const handleRemoveMember = (memberId: string) => {
@@ -1594,6 +1625,11 @@ export default function StorePage() {
                 onJump={handleJumpToItem}
               />
               <div className="flex-1" />
+              <OfflineChip
+                online={outbox.online}
+                syncing={outbox.syncing}
+                pending={outbox.pending}
+              />
               {showCanvas && (
                 <div className="flex items-center rounded-md border border-slate-200 overflow-hidden shrink-0">
                   <SurfaceBtn
