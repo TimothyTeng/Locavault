@@ -57,7 +57,7 @@ import type { AccessLevel, StoreRole } from "~/types/memberTypes";
 import type { BlockKind } from "~/types/BlockTypes";
 import type { Wall } from "~/types/wallTypes";
 import { parseWalls, serializeWalls } from "~/utils/helpers/wall.helper";
-import type { ItemType } from "~/types/itemTypeTypes";
+import type { ItemType, Condition } from "~/types/itemTypeTypes";
 import { computeConsensus } from "~/utils/helpers/poInference.helper";
 
 // ─── Helpers ───────────────────────────────────────────────
@@ -727,6 +727,11 @@ export async function createItem(data: {
   expiryDate?: Date;
   useRate?: number;
   useRatePeriod?: "day" | "week" | "month";
+  warrantyUntil?: Date | null;
+  serialNumber?: string | null;
+  condition?: Condition | null;
+  maintenanceIntervalDays?: number | null;
+  lastMaintainedAt?: Date | null;
 }) {
   const id = crypto.randomUUID();
   await db.insert(items).values({
@@ -744,6 +749,11 @@ export async function createItem(data: {
     expiryDate: data.expiryDate ?? null,
     useRate: data.useRate ?? null,
     useRatePeriod: data.useRatePeriod ?? null,
+    warrantyUntil: data.warrantyUntil ?? null,
+    serialNumber: data.serialNumber ?? null,
+    condition: data.condition ?? null,
+    maintenanceIntervalDays: data.maintenanceIntervalDays ?? null,
+    lastMaintainedAt: data.lastMaintainedAt ?? null,
   });
   return { id };
 }
@@ -792,6 +802,11 @@ export async function updateItem(
     expiryDate: Date | null;
     useRate: number | null;
     useRatePeriod: "day" | "week" | "month" | null;
+    warrantyUntil: Date | null;
+    serialNumber: string | null;
+    condition: Condition | null;
+    maintenanceIntervalDays: number | null;
+    lastMaintainedAt: Date | null;
   }>,
 ) {
   return db.update(items).set(data).where(eq(items.id, id));

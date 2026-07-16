@@ -20,3 +20,6 @@ export type ItemType =
   | "clothing"
   | "document"
   | "other";
+
+/** Physical condition of a durable item (equipment etc.). */
+export type Condition = "new" | "good" | "worn" | "broken";

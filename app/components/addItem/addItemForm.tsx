@@ -12,7 +12,9 @@ import {
   inferTypeFromLabel,
   ITEM_TYPES,
   TYPE_META,
+  CONDITIONS,
   type ItemType,
+  type Condition,
 } from "~/lib/itemTypes";
 import { inferItemFields } from "~/utils/helpers/poInference.helper";
 import type { Item } from "~/types/storeTypes";
@@ -41,6 +43,10 @@ type Props = {
     expiryDate?: Date | null;
     useRate?: number | null;
     useRatePeriod?: "day" | "week" | "month" | null;
+    warrantyUntil?: Date | null;
+    serialNumber?: string | null;
+    condition?: Condition | null;
+    maintenanceIntervalDays?: number | null;
   }) => void;
   /** Restock a matched existing item instead of creating a duplicate. */
   onRestock?: (itemId: string, qty: number) => void;
@@ -92,6 +98,10 @@ export function AddItemForm({
   const [cost, setCost] = useState("");
   const [expiryDate, setExpiryDate] = useState("");
   const [useRate, setUseRate] = useState("");
+  const [warrantyUntil, setWarrantyUntil] = useState("");
+  const [serialNumber, setSerialNumber] = useState("");
+  const [condition, setCondition] = useState<Condition | "">("");
+  const [maintenanceInterval, setMaintenanceInterval] = useState("");
   const [useRatePeriod, setUseRatePeriod] = useState<"day" | "week" | "month">(
     "week",
   );
@@ -270,6 +280,10 @@ export function AddItemForm({
     setExpiryDate("");
     setUseRate("");
     setUseRatePeriod("week");
+    setWarrantyUntil("");
+    setSerialNumber("");
+    setCondition("");
+    setMaintenanceInterval("");
     setShowExtra(false);
     setShowDatePicker(false);
     setLookupNote(null);
@@ -406,6 +420,11 @@ export function AddItemForm({
           expiryDate: expiryDate ? new Date(expiryDate) : null,
           useRate: useRate !== "" ? Number(useRate) : null,
           useRatePeriod: useRate !== "" ? useRatePeriod : null,
+          warrantyUntil: warrantyUntil ? new Date(warrantyUntil) : null,
+          serialNumber: serialNumber || null,
+          condition: condition || null,
+          maintenanceIntervalDays:
+            maintenanceInterval !== "" ? Number(maintenanceInterval) : null,
         });
         resetForm();
         // Rapid entry: keep the panel open, remember what was added, refocus.
@@ -609,6 +628,66 @@ export function AddItemForm({
       {/* Tracking fields relevant to the chosen type, promoted inline */}
       {fields.expiry && expiryField}
       {fields.useRate && useRateField}
+
+      {/* Durable-trait fields (equipment): warranty, serial, condition, service */}
+      {fields.warranty && (
+        <div className="flex flex-col gap-4 rounded-md border border-slate-200 bg-slate-50/60 p-3">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+            Ownership &amp; upkeep
+          </div>
+          <div className="flex gap-3">
+            <div className="flex flex-1 flex-col gap-2">
+              <FieldLabel>Warranty until</FieldLabel>
+              <input
+                type="date"
+                value={warrantyUntil}
+                onChange={(e) => setWarrantyUntil(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+            <div className="flex w-32 flex-col gap-2">
+              <FieldLabel>Condition</FieldLabel>
+              <select
+                value={condition}
+                onChange={(e) => setCondition(e.target.value as Condition | "")}
+                className={inputClass}
+              >
+                <option value="">—</option>
+                {CONDITIONS.map((c) => (
+                  <option key={c} value={c}>
+                    {c[0].toUpperCase() + c.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <div className="flex flex-1 flex-col gap-2">
+              <FieldLabel>Serial number</FieldLabel>
+              <input
+                type="text"
+                value={serialNumber}
+                placeholder="for registration / claims"
+                onChange={(e) => setSerialNumber(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+            <div className="flex w-32 flex-col gap-2">
+              <FieldLabel>Service every</FieldLabel>
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  value={maintenanceInterval}
+                  placeholder="days"
+                  onChange={(e) => setMaintenanceInterval(e.target.value)}
+                  className={inputClass}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Description */}
       <div className="flex flex-col gap-2">

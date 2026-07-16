@@ -67,8 +67,8 @@ import {
   toPublicItem,
 } from "~/utils/helpers/publicShape.helper";
 import type { UsageLog } from "~/types/storeTypes";
-import type { ItemType } from "~/types/itemTypeTypes";
-import { ITEM_TYPES } from "~/lib/itemTypes";
+import type { ItemType, Condition } from "~/types/itemTypeTypes";
+import { ITEM_TYPES, CONDITIONS } from "~/lib/itemTypes";
 
 // Per-process limiter (see rateLimit.helper for the scaling caveat) — bounds
 // invite-token minting per owner.
@@ -87,6 +87,13 @@ function optItemType(v: unknown): ItemType | undefined {
 function optUseRatePeriod(v: unknown): UseRatePeriod | null {
   return v != null && USE_RATE_PERIODS.includes(v as UseRatePeriod)
     ? (v as UseRatePeriod)
+    : null;
+}
+
+/** A valid durable condition, or null when absent/unrecognised. */
+function optCondition(v: unknown): Condition | null {
+  return v != null && CONDITIONS.includes(v as Condition)
+    ? (v as Condition)
     : null;
 }
 import { MEAL_TYPES, type MealType } from "~/types/recipeTypes";
@@ -362,6 +369,11 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
       expiryDate: optDate(data.expiryDate) ?? undefined,
       useRate: optInt(data.useRate) ?? undefined,
       useRatePeriod: optUseRatePeriod(data.useRatePeriod) ?? undefined,
+      warrantyUntil: optDate(data.warrantyUntil),
+      serialNumber: optText(data.serialNumber),
+      condition: optCondition(data.condition),
+      maintenanceIntervalDays: optInt(data.maintenanceIntervalDays),
+      lastMaintainedAt: optDate(data.lastMaintainedAt),
     });
     return { ok: true, id: newItem.id, optimisticId: data.optimisticId };
   }
@@ -410,6 +422,11 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
       expiryDate: optDate(data.expiryDate),
       useRate: optInt(data.useRate),
       useRatePeriod: optUseRatePeriod(data.useRatePeriod),
+      warrantyUntil: optDate(data.warrantyUntil),
+      serialNumber: optText(data.serialNumber),
+      condition: optCondition(data.condition),
+      maintenanceIntervalDays: optInt(data.maintenanceIntervalDays),
+      lastMaintainedAt: optDate(data.lastMaintainedAt),
     });
     const delta = newQty - prev.quantity;
     if (delta !== 0) {

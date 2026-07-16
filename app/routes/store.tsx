@@ -18,7 +18,7 @@ import { StoreToolbar } from "~/components/store/storeToolbar";
 import { PanelRail, type RailPanel } from "~/components/store/panelRail";
 import { StoreTable } from "~/components/store/storeTable";
 import { type Item, type ItemStatus } from "~/types/storeTypes";
-import type { ItemType } from "~/types/itemTypeTypes";
+import type { ItemType, Condition } from "~/types/itemTypeTypes";
 import type { StoreMember } from "~/types/memberTypes";
 import { handlesForMode } from "~/components/addstore/storeViewFinder/ModeToggle";
 import { useZoom } from "~/utils/useZoom";
@@ -480,6 +480,15 @@ export default function StorePage() {
           : null,
         useRate: updated.useRate ?? null,
         useRatePeriod: updated.useRatePeriod ?? null,
+        warrantyUntil: updated.warrantyUntil
+          ? updated.warrantyUntil.toISOString()
+          : null,
+        serialNumber: updated.serialNumber ?? null,
+        condition: updated.condition ?? null,
+        maintenanceIntervalDays: updated.maintenanceIntervalDays ?? null,
+        lastMaintainedAt: updated.lastMaintainedAt
+          ? updated.lastMaintainedAt.toISOString()
+          : null,
       },
       { method: "POST", encType: "application/json" },
     );
@@ -608,6 +617,10 @@ export default function StorePage() {
     expiryDate?: Date | null;
     useRate?: number | null;
     useRatePeriod?: "day" | "week" | "month" | null;
+    warrantyUntil?: Date | null;
+    serialNumber?: string | null;
+    condition?: Condition | null;
+    maintenanceIntervalDays?: number | null;
   }) => {
     const optimisticId = crypto.randomUUID();
     const newItem: Item = {
@@ -627,6 +640,11 @@ export default function StorePage() {
       expiryDate: data.expiryDate ?? null,
       useRate: data.useRate ?? null,
       useRatePeriod: data.useRatePeriod ?? null,
+      warrantyUntil: data.warrantyUntil ?? null,
+      serialNumber: data.serialNumber ?? null,
+      condition: data.condition ?? null,
+      maintenanceIntervalDays: data.maintenanceIntervalDays ?? null,
+      lastMaintainedAt: null,
     };
     setItems((prev) => [...prev, newItem]);
     // Keep the panel open for rapid entry (the form refocuses its name field and
@@ -647,6 +665,12 @@ export default function StorePage() {
         expiryDate: data.expiryDate ? data.expiryDate.toISOString() : null,
         useRate: data.useRate ?? null,
         useRatePeriod: data.useRatePeriod ?? null,
+        warrantyUntil: data.warrantyUntil
+          ? data.warrantyUntil.toISOString()
+          : null,
+        serialNumber: data.serialNumber ?? null,
+        condition: data.condition ?? null,
+        maintenanceIntervalDays: data.maintenanceIntervalDays ?? null,
       },
       { method: "POST", encType: "application/json" },
     );

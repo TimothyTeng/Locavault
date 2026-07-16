@@ -100,6 +100,17 @@ export const items = sqliteTable("items", {
   // Snooze/dismiss for this item's alerts (DESIGN.md §6): while set to a future
   // time, getItemStatus suppresses its low/expiring/dose signals. Null = active.
   alertSnoozedUntil: integer("alert_snoozed_until", { mode: "timestamp" }),
+  // ── Durable-trait fields (equipment & other long-lived goods) ──
+  // Warranty expiry (surfaces as an info alert as it approaches), a serial number
+  // for registration/claims, physical condition, and a maintenance cadence:
+  // `maintenanceIntervalDays` + `lastMaintainedAt` drive a "service due" signal.
+  warrantyUntil: integer("warranty_until", { mode: "timestamp" }),
+  serialNumber: text("serial_number"),
+  condition: text("condition", {
+    enum: ["new", "good", "worn", "broken"],
+  }),
+  maintenanceIntervalDays: integer("maintenance_interval_days"),
+  lastMaintainedAt: integer("last_maintained_at", { mode: "timestamp" }),
 });
 
 // ─── ITEM LOGS ─────────────────────────────────────────────
