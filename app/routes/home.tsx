@@ -46,6 +46,7 @@ export default function Home() {
     incomingOffers,
     digest,
     itemIndex,
+    insights,
     onboardingTemplates,
   } = useLoaderData<typeof loader>();
 
@@ -183,6 +184,7 @@ export default function Home() {
             incomingOffers={incomingOffers ?? 0}
             digest={digest}
             itemIndex={itemIndex ?? []}
+            insights={insights}
           />
         )}
       </Show>

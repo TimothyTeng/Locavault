@@ -13,6 +13,8 @@ import {
   getTodayDoseCounts,
   getUserRecipes,
   getIncomingOfferCount,
+  getSpendLogsByStores,
+  getSpendByType,
   getTemplatesForGallery,
   onboardStoreFromTemplate,
   verifyStoreAccess,
@@ -33,18 +35,32 @@ import {
   itemRunoutDays,
 } from "~/utils/helpers/storeTable.helper";
 import { expiryDateRemainingDays } from "~/utils/helpers/store.helper";
-import { spentCents } from "~/utils/helpers/money.helper";
+import { spentCents, bucketSpend } from "~/utils/helpers/money.helper";
+import { monthlySpendSeries } from "~/utils/helpers/insights.helper";
 import type { Item, ItemStatus, UsageLog } from "~/types/storeTypes";
-import type { AttentionItem, ItemIndexEntry } from "~/types/dashboardTypes";
+import type {
+  AttentionItem,
+  ItemIndexEntry,
+  Insights,
+} from "~/types/dashboardTypes";
 import { redirect } from "react-router";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 
 const USAGE_WINDOW_DAYS = 120;
+const INSIGHTS_MONTHS = 6;
 const SEVERITY: Record<ItemStatus, number> = {
   out: 0,
   low: 1,
   expiring: 2,
   ok: 3,
+};
+
+const EMPTY_INSIGHTS: Insights = {
+  itemsTracked: 0,
+  runoutsThisWeek: 0,
+  spendThisMonthCents: 0,
+  spendByMonth: [],
+  spendByType: [],
 };
 
 export async function loader(args: LoaderFunctionArgs) {
@@ -58,6 +74,7 @@ export async function loader(args: LoaderFunctionArgs) {
       incomingOffers: 0,
       digest: { low: 0, expiring: 0, cookable: 0, doseEnding: 0 },
       itemIndex: [] as ItemIndexEntry[],
+      insights: EMPTY_INSIGHTS,
       onboardingTemplates: [] as TemplateWithBlocks[],
     };
 
@@ -83,6 +100,7 @@ export async function loader(args: LoaderFunctionArgs) {
       incomingOffers: 0,
       digest: { low: 0, expiring: 0, cookable: 0, doseEnding: 0 },
       itemIndex: [] as ItemIndexEntry[],
+      insights: EMPTY_INSIGHTS,
       onboardingTemplates,
     };
   }
@@ -223,6 +241,35 @@ export async function loader(args: LoaderFunctionArgs) {
     itemType: i.itemType,
   }));
 
+  // ── Insights: accurate spend from itemLogs.costCents over the last 6 months ──
+  const insightsSince = new Date(
+    now.getFullYear(),
+    now.getMonth() - (INSIGHTS_MONTHS - 1),
+    1,
+  );
+  const [spendRows, spendByTypeRaw] = await Promise.all([
+    getSpendLogsByStores(storeIds, insightsSince),
+    getSpendByType(storeIds, insightsSince),
+  ]);
+  const spendByMonth = monthlySpendSeries(
+    bucketSpend(spendRows, "month"),
+    INSIGHTS_MONTHS,
+    now,
+  );
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const insights: Insights = {
+    itemsTracked: rawItems.length,
+    runoutsThisWeek: attention.filter(
+      (a) => a.runoutDays != null && a.runoutDays <= 7,
+    ).length,
+    spendThisMonthCents:
+      spendByMonth.find((m) => m.key === monthKey)?.cents ?? 0,
+    spendByMonth,
+    spendByType: spendByTypeRaw
+      .filter((r) => r.cents > 0)
+      .sort((a, b) => b.cents - a.cents),
+  };
+
   return {
     stores: storesWithCookable,
     attention: attention.slice(0, 40),
@@ -231,6 +278,7 @@ export async function loader(args: LoaderFunctionArgs) {
     incomingOffers,
     digest,
     itemIndex,
+    insights,
     onboardingTemplates: [] as TemplateWithBlocks[],
   };
 }

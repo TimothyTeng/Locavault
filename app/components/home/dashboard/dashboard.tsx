@@ -10,11 +10,13 @@ import type {
   AttentionItem,
   Digest,
   ItemIndexEntry,
+  Insights,
 } from "#types/dashboardTypes";
 import { StoreCard } from "./storecard";
 import { EmptyState } from "./emptystate";
 import { AttentionDigest } from "./attentionDigest";
 import { WeeklyDigest } from "./weeklyDigest";
+import { InsightsPanel } from "./insightsPanel";
 import { CommandPalette } from "./commandPalette";
 import { Button } from "~/components/common/Button";
 import { CountUp } from "#components/common/countUp";
@@ -30,6 +32,7 @@ type Props = {
   incomingOffers?: number;
   digest?: Digest;
   itemIndex?: ItemIndexEntry[];
+  insights?: Insights;
 };
 
 export default function Dashboard({
@@ -40,6 +43,7 @@ export default function Dashboard({
   incomingOffers = 0,
   digest,
   itemIndex = [],
+  insights,
 }: Props) {
   const { user } = useUser();
   const navigate = useNavigate();
@@ -220,6 +224,9 @@ export default function Dashboard({
 
       {/* ── Weekly digest (habit anchor) ── */}
       {digest && stores.length > 0 && <WeeklyDigest digest={digest} />}
+
+      {/* ── Insights (spend + headline counts) ── */}
+      {insights && stores.length > 0 && <InsightsPanel insights={insights} />}
 
       {/* ── Action chips (doses / trade offers) ── */}
       {(dosesDue > 0 || incomingOffers > 0) && (
