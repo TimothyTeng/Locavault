@@ -39,6 +39,29 @@ export type Digest = {
   doseEnding: number;
 };
 
+/** Spend for one item type over the insights window. */
+export type SpendByType = {
+  itemType: import("./itemTypeTypes").ItemType;
+  cents: number;
+};
+
+/**
+ * Dashboard insights (accurate spend from itemLogs.costCents snapshots + a couple
+ * of headline counts). Distinct from the header's rough "~spent" estimate.
+ */
+export type Insights = {
+  itemsTracked: number;
+  runoutsThisWeek: number;
+  /** Items thrown away this calendar month (waste digest). */
+  wasteThisMonth: number;
+  /** Tracked spend (actual snapshots) in the current calendar month, cents. */
+  spendThisMonthCents: number;
+  /** Continuous last-6-months series (oldest → newest), cents per month. */
+  spendByMonth: { key: string; label: string; cents: number }[];
+  /** Spend grouped by item type over the window, highest first. */
+  spendByType: SpendByType[];
+};
+
 /** A cross-store item that needs attention (out / low / expiring / predicted). */
 export type AttentionItem = {
   id: string;

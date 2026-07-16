@@ -1,4 +1,4 @@
-import type { ItemType } from "./itemTypeTypes";
+import type { ItemType, Condition, Season } from "./itemTypeTypes";
 
 export type Item = {
   id: string;
@@ -26,6 +26,18 @@ export type Item = {
   // Snooze/dismiss for this item's alerts — while in the future, getItemStatus
   // stays quiet (DESIGN.md §6).
   alertSnoozedUntil?: Date | null;
+  // Durable-trait fields (equipment etc.) — see schema. Optional on the type so
+  // optimistic/partial rows stay valid.
+  warrantyUntil?: Date | null;
+  serialNumber?: string | null;
+  condition?: Condition | null;
+  maintenanceIntervalDays?: number | null;
+  lastMaintainedAt?: Date | null;
+  // Sized-trait fields (clothing etc.) — see schema. Optional on the type so
+  // optimistic/partial rows stay valid.
+  size?: string | null;
+  season?: Season | null;
+  variant?: string | null;
   // Derived (server-computed) — usage prediction. Absent on optimistic rows.
   usage?: UsageEstimate;
   // Derived — the predicted run-out has passed but stock remains: show the

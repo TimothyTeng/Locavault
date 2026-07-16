@@ -1,7 +1,7 @@
-import { useLoaderData } from "react-router";
+import { Form, useLoaderData, useNavigation } from "react-router";
 import { useClerk } from "@clerk/react-router";
 import Navbar from "~/components/home/navbar";
-export { loader } from "#utils/loaders/invite.loader";
+export { loader, action } from "#utils/loaders/invite.loader";
 export { RouteErrorBoundary as ErrorBoundary } from "~/components/common/errorState";
 import type { loader } from "#utils/loaders/invite.loader";
 
@@ -9,6 +9,8 @@ import type { loader } from "#utils/loaders/invite.loader";
 export default function InvitePage() {
   const data = useLoaderData<typeof loader>();
   const { openSignIn } = useClerk();
+  const navigation = useNavigation();
+  const joining = navigation.state !== "idle";
 
   const errorMessages = {
     not_found: {
@@ -24,6 +26,32 @@ export default function InvitePage() {
       body: "This invite link has expired. Ask the store owner to generate a new one.",
     },
   };
+
+  if (data.status === "ready") {
+    return (
+      <div>
+        <Navbar />
+        <div className="flex flex-col items-center justify-center h-screen w-full gap-4">
+          <p className="text-slate-800 font-mono text-sm font-bold">
+            You've been invited
+          </p>
+          <p className="text-slate-400 font-mono text-[11px]">
+            Join <span className="text-slate-600">{data.storeName}</span> as an
+            editor?
+          </p>
+          <Form method="post">
+            <button
+              type="submit"
+              disabled={joining}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-md border border-slate-300 text-[10px] font-bold uppercase tracking-widest text-slate-600 hover:bg-slate-800 hover:text-white hover:border-slate-800 transition-all duration-150 disabled:opacity-50"
+            >
+              {joining ? "Joining…" : "Join store"}
+            </button>
+          </Form>
+        </div>
+      </div>
+    );
+  }
 
   if (data.status === "requires_auth") {
     return (

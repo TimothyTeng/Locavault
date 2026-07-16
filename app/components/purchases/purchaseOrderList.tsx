@@ -10,6 +10,8 @@ import { PurchaseOrderRow } from "./purchaseOrderRow";
 import { PurchaseOrderSuggestions } from "./purchaseOrderSuggestions";
 import { BarcodeScanner } from "../addItem/BarcodeScanner";
 import { basketTotal, formatMoney } from "~/utils/helpers/money.helper";
+import { sortByWalk } from "~/utils/helpers/pickPath.helper";
+import { Footprints } from "lucide-react";
 
 type Props = {
   items: PurchaseOrderItem[];
@@ -48,6 +50,15 @@ export function PurchaseOrderList({
 }: Props) {
   const [scanOpen, setScanOpen] = useState(false);
   const [looking, setLooking] = useState(false);
+  const [walkSort, setWalkSort] = useState(false);
+
+  // Walk-order sorting only helps once the list spans ≥2 distinct located blocks.
+  const locatedBlocks = new Set(
+    items.filter((i) => i.blockId && blocks[i.blockId]).map((i) => i.blockId),
+  );
+  const canWalkSort = locatedBlocks.size >= 2;
+  const displayItems =
+    walkSort && canWalkSort ? sortByWalk(items, blocks) : items;
 
   const handleScan = async (raw: string) => {
     setScanOpen(false);
@@ -106,6 +117,23 @@ export function PurchaseOrderList({
         </div>
       ) : (
         <div className="flex-1 overflow-y-auto">
+          {canWalkSort && (
+            <div className="flex items-center justify-end px-3 pt-2">
+              <button
+                onClick={() => setWalkSort((v) => !v)}
+                aria-pressed={walkSort}
+                title="Reorder the list into the shortest walk across your floor plan"
+                className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[9px] font-bold uppercase tracking-widest transition-colors ${
+                  walkSort
+                    ? "border-slate-800 bg-slate-800 text-white"
+                    : "border-slate-300 text-slate-500 hover:border-slate-400 hover:text-slate-700"
+                }`}
+              >
+                <Footprints size={11} />
+                Walk order
+              </button>
+            </div>
+          )}
           <table className="w-full border-collapse">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
@@ -120,7 +148,7 @@ export function PurchaseOrderList({
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => (
+              {displayItems.map((item) => (
                 <PurchaseOrderRow
                   key={item.id}
                   item={item}

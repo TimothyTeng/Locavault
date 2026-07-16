@@ -10,6 +10,8 @@ import {
 } from "~/lib/queries";
 import type { RecipeIngredient, RecipeStep } from "~/types/recipeTypes";
 import { normalizeUnit } from "~/utils/helpers/units";
+import { createRateLimiter } from "~/utils/helpers/rateLimit.helper";
+import { safeUrl } from "~/utils/helpers/url.helper";
 
 /**
  * User-recipe CRUD (resource route, no UI). Client posts JSON with an `_action`
@@ -24,18 +26,6 @@ const MAX_TAGS = 20;
 
 const str = (v: unknown, max: number): string =>
   typeof v === "string" ? v.trim().slice(0, max) : "";
-
-/** Keep a value only if it's a plausible http(s) URL. */
-function safeUrl(v: unknown): string | null {
-  const s = str(v, 2048);
-  if (!s) return null;
-  try {
-    const u = new URL(s);
-    return u.protocol === "http:" || u.protocol === "https:" ? s : null;
-  } catch {
-    return null;
-  }
-}
 
 function sanitizeIngredients(raw: unknown): RecipeIngredient[] {
   if (!Array.isArray(raw)) return [];
@@ -102,9 +92,16 @@ export async function loader(args: LoaderFunctionArgs) {
   return Response.json({ recipes });
 }
 
+// Per-process limiter (see rateLimit.helper for the scaling caveat) — bounds
+// write abuse on this CRUD route.
+const limiter = createRateLimiter({ max: 60, windowMs: 60_000 });
+
 export async function action(args: ActionFunctionArgs) {
   const { userId } = await getAuth(args);
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
+
+  if (!limiter.take(userId))
+    return Response.json({ error: "rate_limited" }, { status: 429 });
 
   const body = (await args.request.json()) as Record<string, unknown>;
   const act = body._action;

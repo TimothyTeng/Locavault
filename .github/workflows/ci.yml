@@ -40,3 +40,20 @@ jobs:
           CLERK_SECRET_KEY: sk_test_ci_placeholder
           TURSO_DATABASE_URL: libsql://ci-placeholder.turso.io
           TURSO_AUTH_TOKEN: ci-placeholder
+
+  # Dependency vulnerability scan. Non-blocking for now (npm audit is noisy and
+  # can flag transitive dev-only advisories with no fix); promote to a hard gate
+  # once it's been clean for a stretch. Runs in parallel with `check`.
+  audit:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install
+        run: npm ci
+      - name: Audit (production deps, high+ severity)
+        run: npm audit --omit=dev --audit-level=high

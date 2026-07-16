@@ -4,6 +4,10 @@ import {
   basketTotal,
   spentCents,
   parseMoneyToCents,
+  sumCents,
+  bucketSpend,
+  periodKey,
+  type SpendPoint,
 } from "./money.helper";
 
 describe("parseMoneyToCents", () => {
@@ -89,5 +93,52 @@ describe("spentCents", () => {
       { itemId: "b", delta: 4 }, // no cost
     ];
     expect(spentCents(logs, cost)).toBe(0);
+  });
+});
+
+describe("sumCents", () => {
+  it("sums, treating null/undefined as 0", () => {
+    expect(sumCents([100, 250, null, undefined, 50])).toBe(400);
+    expect(sumCents([])).toBe(0);
+  });
+});
+
+describe("periodKey", () => {
+  const d = new Date(2026, 2, 5); // 2026-03-05 (local)
+  it("keys by month/day", () => {
+    expect(periodKey(d, "month")).toBe("2026-03");
+    expect(periodKey(d, "day")).toBe("2026-03-05");
+  });
+  it("keys by ISO week", () => {
+    // 2026-01-01 is a Thursday → ISO week 1 of 2026.
+    expect(periodKey(new Date(2026, 0, 1), "week")).toBe("2026-W01");
+    // 2025-12-29 (Mon) belongs to ISO week 1 of 2026.
+    expect(periodKey(new Date(2025, 11, 29), "week")).toBe("2026-W01");
+  });
+});
+
+describe("bucketSpend", () => {
+  const rows: SpendPoint[] = [
+    { costCents: 500, loggedAt: new Date(2026, 0, 10) }, // Jan
+    { costCents: 250, loggedAt: new Date(2026, 0, 20) }, // Jan
+    { costCents: 900, loggedAt: new Date(2026, 1, 3) }, // Feb
+    { costCents: null, loggedAt: new Date(2026, 1, 5) }, // skipped (no cost)
+    { costCents: 100, loggedAt: null }, // skipped (no date)
+  ];
+
+  it("buckets by month and sums, in chronological order", () => {
+    expect(bucketSpend(rows, "month")).toEqual([
+      { key: "2026-01", cents: 750 },
+      { key: "2026-02", cents: 900 },
+    ]);
+  });
+
+  it("skips rows lacking a cost or timestamp", () => {
+    const total = bucketSpend(rows, "month").reduce((s, b) => s + b.cents, 0);
+    expect(total).toBe(1650);
+  });
+
+  it("returns [] for empty input", () => {
+    expect(bucketSpend([], "day")).toEqual([]);
   });
 });

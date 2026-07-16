@@ -10,7 +10,9 @@ export type ItemHistoryEntry = {
 };
 
 const NOTE_LABEL: Record<string, string> = {
-  out: "Marked out",
+  out: "Used up",
+  "out:used": "Used up",
+  "out:wasted": "Thrown away",
   edit: "Adjusted",
   cooked: "Cooked with",
   dose: "Dose taken",

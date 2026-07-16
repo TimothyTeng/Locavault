@@ -17,10 +17,11 @@ export function itemNeedsDetails(item: Item): boolean {
   return false;
 }
 
-export function formatCost(cents: number | null) {
-  if (cents == null) return "—";
-  return `$${(cents / 100).toFixed(2)}`;
-}
+// Single source of truth lives in money.helper; re-exported here for the
+// existing store-table call sites.
+// `formatCost` is the store-table's historical name for the canonical
+// `formatMoney` (cents → "$12.34"); aliased so existing call sites keep working.
+export { formatMoney as formatCost } from "./money.helper";
 
 export function formatExpiry(
   date: Date | null,

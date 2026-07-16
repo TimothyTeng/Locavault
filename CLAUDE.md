@@ -168,8 +168,13 @@ All ids are `text` UUIDs (`crypto.randomUUID()`). Timestamps are `integer` epoch
   `{day, week, month}`. `itemType` maps to **traits** (`app/lib/itemTypes.ts`)
   that drive which form fields/behaviours apply — see `DESIGN.md` §5.
 - **itemLogs** — append-only quantity changes: `delta` (negative = consumed,
-  positive = restocked), `note`, `loggedBy`. Feeds the usage estimator
-  (`estimateUsage` / `getUsageLogsByStore`) that predicts run-out.
+  positive = restocked), `note`, `loggedBy`, and `costCents` (total spend for
+  the event = unit cost × delta, snapshotted at purchase time; set only on
+  restock/buy rows, null elsewhere — so spend reconstructs even after an item's
+  `cost` changes). Feeds the usage estimator (`estimateUsage` /
+  `getUsageLogsByStore`) that predicts run-out, and the spend roll-ups
+  (`getSpendTotalByStores` / `getSpendByType` / `getSpendLogsByStores` +
+  `money.helper`'s `bucketSpend`).
 - **storeMembers** — `(storeId, userId, role)` with role ∈ `{owner, editor, viewer}`.
   The owner is auto-inserted as a member on store creation.
 - **storeInvites** — shareable `token`, role `editor` only, 7-day expiry,

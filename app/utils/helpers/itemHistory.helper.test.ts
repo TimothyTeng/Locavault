@@ -10,7 +10,9 @@ const daysAgo = (n: number) => new Date(NOW.getTime() - n * 86_400_000);
 
 describe("describeLogNote", () => {
   it("maps known notes to labels", () => {
-    expect(describeLogNote("out", -5)).toBe("Marked out");
+    expect(describeLogNote("out", -5)).toBe("Used up");
+    expect(describeLogNote("out:used", -5)).toBe("Used up");
+    expect(describeLogNote("out:wasted", -5)).toBe("Thrown away");
     expect(describeLogNote("cooked", -1)).toBe("Cooked with");
     expect(describeLogNote("confirmed", 0)).toBe("Confirmed still have");
   });

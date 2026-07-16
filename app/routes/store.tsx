@@ -18,10 +18,12 @@ import { StoreToolbar } from "~/components/store/storeToolbar";
 import { PanelRail, type RailPanel } from "~/components/store/panelRail";
 import { StoreTable } from "~/components/store/storeTable";
 import { type Item, type ItemStatus } from "~/types/storeTypes";
-import type { ItemType } from "~/types/itemTypeTypes";
+import type { ItemType, Condition, Season } from "~/types/itemTypeTypes";
 import type { StoreMember } from "~/types/memberTypes";
 import { handlesForMode } from "~/components/addstore/storeViewFinder/ModeToggle";
 import { useZoom } from "~/utils/useZoom";
+import { useOutbox } from "~/utils/useOutbox";
+import { OfflineChip } from "~/components/store/offlineChip";
 import { GridCanvas } from "~/components/addstore/storeViewFinder/GridCanvas";
 import Navbar from "~/components/home/navbar";
 import { AddItemPanel } from "~/components/addItem/addItemPanel";
@@ -93,6 +95,9 @@ export default function StorePage() {
   const { id } = useParams();
   const { revalidate } = useRevalidator();
   const isMobile = useIsMobile();
+  // Offline outbox: queues "we're out" taps + quick-adds while offline and
+  // replays them on reconnect, then revalidates to reconcile with the server.
+  const outbox = useOutbox(revalidate);
 
   const navStore: CreateStoreInput | null = state?.storeData ?? null;
   const initial = navStore ?? dbStore;
@@ -480,6 +485,18 @@ export default function StorePage() {
           : null,
         useRate: updated.useRate ?? null,
         useRatePeriod: updated.useRatePeriod ?? null,
+        warrantyUntil: updated.warrantyUntil
+          ? updated.warrantyUntil.toISOString()
+          : null,
+        serialNumber: updated.serialNumber ?? null,
+        condition: updated.condition ?? null,
+        maintenanceIntervalDays: updated.maintenanceIntervalDays ?? null,
+        lastMaintainedAt: updated.lastMaintainedAt
+          ? updated.lastMaintainedAt.toISOString()
+          : null,
+        size: updated.size ?? null,
+        season: updated.season ?? null,
+        variant: updated.variant ?? null,
       },
       { method: "POST", encType: "application/json" },
     );
@@ -567,7 +584,7 @@ export default function StorePage() {
 
   // One-tap "we're out": zero the quantity locally, queue a restock, and let the
   // server log the depletion (which trains the usage estimate).
-  const handleMarkItemOut = (item: Item) => {
+  const handleMarkItemOut = (item: Item, wasted = false) => {
     const restockQty = suggestedQty(item);
     setItems((prev) =>
       prev.map((i) => (i.id === item.id ? { ...i, quantity: 0 } : i)),
@@ -576,10 +593,22 @@ export default function StorePage() {
       const { optimistic } = buildPOFromItem(item);
       setPurchaseOrder((prev) => [...prev, optimistic]);
     }
-    fetcher.submit(
-      { _action: "markItemOut", id: item.id, restockQty },
-      { method: "POST", encType: "application/json" },
-    );
+    const body = { _action: "markItemOut", id: item.id, restockQty, wasted };
+    // The empty-fridge tap is exactly where the phone has no signal — queue it
+    // and replay on reconnect. Falls through to a live submit if it can't queue.
+    if (!outbox.online) {
+      void outbox
+        .queue(`/store/${id}`, body, `${item.name} — we're out`)
+        .then((queued) => {
+          if (!queued)
+            fetcher.submit(body, {
+              method: "POST",
+              encType: "application/json",
+            });
+        });
+      return;
+    }
+    fetcher.submit(body, { method: "POST", encType: "application/json" });
   };
 
   // Confirm-loop answer "still have it": the predicted run-out passed but stock
@@ -608,6 +637,13 @@ export default function StorePage() {
     expiryDate?: Date | null;
     useRate?: number | null;
     useRatePeriod?: "day" | "week" | "month" | null;
+    warrantyUntil?: Date | null;
+    serialNumber?: string | null;
+    condition?: Condition | null;
+    maintenanceIntervalDays?: number | null;
+    size?: string | null;
+    season?: Season | null;
+    variant?: string | null;
   }) => {
     const optimisticId = crypto.randomUUID();
     const newItem: Item = {
@@ -627,6 +663,14 @@ export default function StorePage() {
       expiryDate: data.expiryDate ?? null,
       useRate: data.useRate ?? null,
       useRatePeriod: data.useRatePeriod ?? null,
+      warrantyUntil: data.warrantyUntil ?? null,
+      serialNumber: data.serialNumber ?? null,
+      condition: data.condition ?? null,
+      maintenanceIntervalDays: data.maintenanceIntervalDays ?? null,
+      lastMaintainedAt: null,
+      size: data.size ?? null,
+      season: data.season ?? null,
+      variant: data.variant ?? null,
     };
     setItems((prev) => [...prev, newItem]);
     // Keep the panel open for rapid entry (the form refocuses its name field and
@@ -647,6 +691,15 @@ export default function StorePage() {
         expiryDate: data.expiryDate ? data.expiryDate.toISOString() : null,
         useRate: data.useRate ?? null,
         useRatePeriod: data.useRatePeriod ?? null,
+        warrantyUntil: data.warrantyUntil
+          ? data.warrantyUntil.toISOString()
+          : null,
+        serialNumber: data.serialNumber ?? null,
+        condition: data.condition ?? null,
+        maintenanceIntervalDays: data.maintenanceIntervalDays ?? null,
+        size: data.size ?? null,
+        season: data.season ?? null,
+        variant: data.variant ?? null,
       },
       { method: "POST", encType: "application/json" },
     );
@@ -689,10 +742,24 @@ export default function StorePage() {
       };
     });
     setItems((prev) => [...prev, ...built.map((b) => b.item)]);
-    createFetcher.submit(
-      { _action: "createItems", items: built.map((b) => b.payload) },
-      { method: "POST", encType: "application/json" },
-    );
+    const body = {
+      _action: "createItems",
+      items: built.map((b) => b.payload),
+    };
+    if (!outbox.online) {
+      const n = built.length;
+      void outbox
+        .queue(`/store/${id}`, body, `${n} item${n === 1 ? "" : "s"} added`)
+        .then((queued) => {
+          if (!queued)
+            createFetcher.submit(body, {
+              method: "POST",
+              encType: "application/json",
+            });
+        });
+      return;
+    }
+    createFetcher.submit(body, { method: "POST", encType: "application/json" });
   };
 
   const handleRemoveMember = (memberId: string) => {
@@ -1558,6 +1625,11 @@ export default function StorePage() {
                 onJump={handleJumpToItem}
               />
               <div className="flex-1" />
+              <OfflineChip
+                online={outbox.online}
+                syncing={outbox.syncing}
+                pending={outbox.pending}
+              />
               {showCanvas && (
                 <div className="flex items-center rounded-md border border-slate-200 overflow-hidden shrink-0">
                   <SurfaceBtn

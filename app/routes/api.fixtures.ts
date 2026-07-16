@@ -7,6 +7,7 @@ import {
 } from "~/lib/queries";
 import type { CustomShape } from "~/types/customFixtureTypes";
 import type { FixtureCategory } from "~/types/fixtureTypes";
+import { createRateLimiter } from "~/utils/helpers/rateLimit.helper";
 
 /**
  * Custom-fixture CRUD (resource route, no UI). Client posts JSON with an
@@ -40,9 +41,15 @@ function sanitizeShapes(raw: unknown): CustomShape[] {
   return out;
 }
 
+// Per-process limiter (see rateLimit.helper for the scaling caveat).
+const limiter = createRateLimiter({ max: 60, windowMs: 60_000 });
+
 export async function action(args: ActionFunctionArgs) {
   const { userId } = await getAuth(args);
   if (!userId) return Response.json({ error: "unauthorized" }, { status: 401 });
+
+  if (!limiter.take(userId))
+    return Response.json({ error: "rate_limited" }, { status: 429 });
 
   const body = (await args.request.json()) as Record<string, unknown>;
   const act = body._action;

@@ -1,4 +1,15 @@
-import { eq, sql, inArray, and, isNull, gt, gte, desc, ne } from "drizzle-orm";
+import {
+  eq,
+  sql,
+  inArray,
+  and,
+  isNull,
+  isNotNull,
+  gt,
+  gte,
+  desc,
+  ne,
+} from "drizzle-orm";
 import { db } from "./db";
 import {
   stores,
@@ -46,7 +57,7 @@ import type { AccessLevel, StoreRole } from "~/types/memberTypes";
 import type { BlockKind } from "~/types/BlockTypes";
 import type { Wall } from "~/types/wallTypes";
 import { parseWalls, serializeWalls } from "~/utils/helpers/wall.helper";
-import type { ItemType } from "~/types/itemTypeTypes";
+import type { ItemType, Condition, Season } from "~/types/itemTypeTypes";
 import { computeConsensus } from "~/utils/helpers/poInference.helper";
 
 // ─── Helpers ───────────────────────────────────────────────
@@ -716,6 +727,14 @@ export async function createItem(data: {
   expiryDate?: Date;
   useRate?: number;
   useRatePeriod?: "day" | "week" | "month";
+  warrantyUntil?: Date | null;
+  serialNumber?: string | null;
+  condition?: Condition | null;
+  maintenanceIntervalDays?: number | null;
+  lastMaintainedAt?: Date | null;
+  size?: string | null;
+  season?: Season | null;
+  variant?: string | null;
 }) {
   const id = crypto.randomUUID();
   await db.insert(items).values({
@@ -733,6 +752,14 @@ export async function createItem(data: {
     expiryDate: data.expiryDate ?? null,
     useRate: data.useRate ?? null,
     useRatePeriod: data.useRatePeriod ?? null,
+    warrantyUntil: data.warrantyUntil ?? null,
+    serialNumber: data.serialNumber ?? null,
+    condition: data.condition ?? null,
+    maintenanceIntervalDays: data.maintenanceIntervalDays ?? null,
+    lastMaintainedAt: data.lastMaintainedAt ?? null,
+    size: data.size ?? null,
+    season: data.season ?? null,
+    variant: data.variant ?? null,
   });
   return { id };
 }
@@ -781,6 +808,14 @@ export async function updateItem(
     expiryDate: Date | null;
     useRate: number | null;
     useRatePeriod: "day" | "week" | "month" | null;
+    warrantyUntil: Date | null;
+    serialNumber: string | null;
+    condition: Condition | null;
+    maintenanceIntervalDays: number | null;
+    lastMaintainedAt: Date | null;
+    size: string | null;
+    season: Season | null;
+    variant: string | null;
   }>,
 ) {
   return db.update(items).set(data).where(eq(items.id, id));
@@ -809,8 +844,11 @@ export async function createItemLog(
   delta: number,
   loggedBy?: string,
   note?: string,
+  costCents?: number | null,
 ) {
-  return db.insert(itemLogs).values({ itemId, storeId, delta, loggedBy, note });
+  return db
+    .insert(itemLogs)
+    .values({ itemId, storeId, delta, loggedBy, note, costCents });
 }
 
 /** Fetch all logs for an item, newest first */
@@ -857,6 +895,94 @@ export async function getUsageLogsByStores(storeIds: string[], since?: Date) {
     })
     .from(itemLogs)
     .where(and(...conds))
+    .orderBy(sql`${itemLogs.loggedAt} asc`);
+}
+
+// ─── SPEND ─────────────────────────────────────────────────
+// Spend is reconstructed from restock item-logs that carry a `costCents`
+// snapshot. Raw rows are returned for JS-side bucketing (see money.helper), and
+// a compact per-type roll-up is aggregated in SQL.
+
+/** Restock spend rows across stores in a window: `{ costCents, loggedAt }`. */
+export async function getSpendLogsByStores(storeIds: string[], since?: Date) {
+  if (!storeIds.length) return [];
+  const conds = [
+    inArray(itemLogs.storeId, storeIds),
+    isNotNull(itemLogs.costCents),
+  ];
+  if (since) conds.push(gt(itemLogs.loggedAt, since));
+  return db
+    .select({ costCents: itemLogs.costCents, loggedAt: itemLogs.loggedAt })
+    .from(itemLogs)
+    .where(and(...conds))
+    .orderBy(sql`${itemLogs.loggedAt} asc`);
+}
+
+/** Total spend across stores in a window (cents). */
+export async function getSpendTotalByStores(
+  storeIds: string[],
+  since?: Date,
+): Promise<number> {
+  if (!storeIds.length) return 0;
+  const conds = [
+    inArray(itemLogs.storeId, storeIds),
+    isNotNull(itemLogs.costCents),
+  ];
+  if (since) conds.push(gt(itemLogs.loggedAt, since));
+  const [row] = await db
+    .select({ cents: sql<number>`coalesce(sum(${itemLogs.costCents}), 0)` })
+    .from(itemLogs)
+    .where(and(...conds));
+  return row?.cents ?? 0;
+}
+
+/** Spend grouped by item type across stores in a window: `{ itemType, cents }`. */
+export async function getSpendByType(storeIds: string[], since?: Date) {
+  if (!storeIds.length) return [];
+  const conds = [
+    inArray(itemLogs.storeId, storeIds),
+    isNotNull(itemLogs.costCents),
+  ];
+  if (since) conds.push(gt(itemLogs.loggedAt, since));
+  return db
+    .select({
+      itemType: items.itemType,
+      cents: sql<number>`coalesce(sum(${itemLogs.costCents}), 0)`,
+    })
+    .from(itemLogs)
+    .innerJoin(items, eq(itemLogs.itemId, items.id))
+    .where(and(...conds))
+    .groupBy(items.itemType);
+}
+
+/** Count of "thrown away" events across stores in a window (waste digest). */
+export async function getWasteCountByStores(
+  storeIds: string[],
+  since?: Date,
+): Promise<number> {
+  if (!storeIds.length) return 0;
+  const conds = [
+    inArray(itemLogs.storeId, storeIds),
+    eq(itemLogs.note, "out:wasted"),
+  ];
+  if (since) conds.push(gt(itemLogs.loggedAt, since));
+  const [row] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(itemLogs)
+    .where(and(...conds));
+  return row?.n ?? 0;
+}
+
+/** An item's restock price points over time (for a price-history sparkline). */
+export async function getItemPriceHistory(itemId: string) {
+  return db
+    .select({
+      costCents: itemLogs.costCents,
+      delta: itemLogs.delta,
+      loggedAt: itemLogs.loggedAt,
+    })
+    .from(itemLogs)
+    .where(and(eq(itemLogs.itemId, itemId), isNotNull(itemLogs.costCents)))
     .orderBy(sql`${itemLogs.loggedAt} asc`);
 }
 

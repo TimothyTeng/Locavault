@@ -28,6 +28,7 @@ import {
   type RecipeMatch,
 } from "~/utils/helpers/recipes.helper";
 import { formatAmount } from "~/utils/helpers/units";
+import { safeUrl } from "~/utils/helpers/url.helper";
 import {
   dateKey,
   parseDateKey,
@@ -684,9 +685,9 @@ function RecipeDetail({
       </div>
 
       <div className="flex-1 overflow-auto">
-        {recipe.imageUrl && !broken && (
+        {safeUrl(recipe.imageUrl) && !broken && (
           <img
-            src={recipe.imageUrl}
+            src={safeUrl(recipe.imageUrl)!}
             alt={recipe.name}
             className="h-40 w-full object-cover"
             onError={() => setBroken(true)}
@@ -984,9 +985,9 @@ function RecipeDetail({
                       <p className="text-[12px] leading-relaxed text-slate-600">
                         {step.text}
                       </p>
-                      {step.imageUrl && (
+                      {safeUrl(step.imageUrl) && (
                         <img
-                          src={step.imageUrl}
+                          src={safeUrl(step.imageUrl)!}
                           alt={`Step ${i + 1}`}
                           className="max-h-40 w-full rounded-lg object-cover"
                         />
@@ -998,9 +999,9 @@ function RecipeDetail({
             </div>
           )}
 
-          {recipe.sourceUrl && (
+          {safeUrl(recipe.sourceUrl) && (
             <a
-              href={recipe.sourceUrl}
+              href={safeUrl(recipe.sourceUrl)!}
               target="_blank"
               rel="noreferrer"
               className="inline-flex items-center gap-1.5 text-[11px] text-slate-400 transition-colors hover:text-slate-700"

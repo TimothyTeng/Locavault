@@ -13,6 +13,9 @@ import {
   getTodayDoseCounts,
   getUserRecipes,
   getIncomingOfferCount,
+  getSpendLogsByStores,
+  getSpendByType,
+  getWasteCountByStores,
   getTemplatesForGallery,
   onboardStoreFromTemplate,
   verifyStoreAccess,
@@ -33,18 +36,40 @@ import {
   itemRunoutDays,
 } from "~/utils/helpers/storeTable.helper";
 import { expiryDateRemainingDays } from "~/utils/helpers/store.helper";
-import { spentCents } from "~/utils/helpers/money.helper";
+import { spentCents, bucketSpend } from "~/utils/helpers/money.helper";
+import { monthlySpendSeries } from "~/utils/helpers/insights.helper";
+import { hasTrait } from "~/lib/itemTypes";
+import {
+  warrantyDaysLeft,
+  maintenanceDueDays,
+  describeMaintenance,
+} from "~/utils/helpers/durable.helper";
+import { seasonRotation } from "~/utils/helpers/seasons.helper";
 import type { Item, ItemStatus, UsageLog } from "~/types/storeTypes";
-import type { AttentionItem, ItemIndexEntry } from "~/types/dashboardTypes";
+import type {
+  AttentionItem,
+  ItemIndexEntry,
+  Insights,
+} from "~/types/dashboardTypes";
 import { redirect } from "react-router";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "react-router";
 
 const USAGE_WINDOW_DAYS = 120;
+const INSIGHTS_MONTHS = 6;
 const SEVERITY: Record<ItemStatus, number> = {
   out: 0,
   low: 1,
   expiring: 2,
   ok: 3,
+};
+
+const EMPTY_INSIGHTS: Insights = {
+  itemsTracked: 0,
+  runoutsThisWeek: 0,
+  wasteThisMonth: 0,
+  spendThisMonthCents: 0,
+  spendByMonth: [],
+  spendByType: [],
 };
 
 export async function loader(args: LoaderFunctionArgs) {
@@ -58,6 +83,7 @@ export async function loader(args: LoaderFunctionArgs) {
       incomingOffers: 0,
       digest: { low: 0, expiring: 0, cookable: 0, doseEnding: 0 },
       itemIndex: [] as ItemIndexEntry[],
+      insights: EMPTY_INSIGHTS,
       onboardingTemplates: [] as TemplateWithBlocks[],
     };
 
@@ -83,6 +109,7 @@ export async function loader(args: LoaderFunctionArgs) {
       incomingOffers: 0,
       digest: { low: 0, expiring: 0, cookable: 0, doseEnding: 0 },
       itemIndex: [] as ItemIndexEntry[],
+      insights: EMPTY_INSIGHTS,
       onboardingTemplates,
     };
   }
@@ -134,6 +161,69 @@ export async function loader(args: LoaderFunctionArgs) {
       expiryDays: expiryDateRemainingDays(raw.expiryDate),
       onList: listedSet.has(raw.id),
       canAdd: st?.role === "owner" || st?.role === "editor",
+    });
+  }
+
+  // ── Durable upkeep signals (independent of stock): warranty ending soon or a
+  // service coming due. Surfaced as "expiring" (time-based) with a specific phrase.
+  for (const raw of rawItems) {
+    if (!hasTrait(raw.itemType, "durable")) continue;
+    const w = warrantyDaysLeft(raw, now);
+    const m = maintenanceDueDays(raw, now);
+    const serviceDue = m != null && m <= 7;
+    const warrantyEnding = w != null && w >= 0 && w <= 30;
+    if (!serviceDue && !warrantyEnding) continue;
+
+    const st = storeById.get(raw.storeId);
+    const zone = raw.blockId
+      ? (st?.blocks?.find((b) => b.block_id === raw.blockId)?.label ?? null)
+      : null;
+    attention.push({
+      id: raw.id,
+      name: raw.name,
+      itemType: raw.itemType,
+      quantity: raw.quantity,
+      unit: raw.unit ?? null,
+      storeId: raw.storeId,
+      storeName: st?.name ?? "Store",
+      zoneLabel: zone,
+      status: "expiring",
+      runoutDays: null,
+      runoutPhrase: serviceDue
+        ? (describeMaintenance(raw, now)?.text ?? "Service due")
+        : `Warranty ends in ${w}d`,
+      expiryDays: serviceDue ? m : w,
+      onList: true, // suppress the "add to list" action — upkeep isn't a restock
+      canAdd: false,
+    });
+  }
+
+  // ── Seasonal rotation (sized items): as a season turns, nudge to bring the
+  // right clothes out or pack last season's away. Only fires near the boundary.
+  for (const raw of rawItems) {
+    if (!hasTrait(raw.itemType, "sized")) continue;
+    const rot = seasonRotation(raw.season, now);
+    if (!rot) continue;
+
+    const st = storeById.get(raw.storeId);
+    const zone = raw.blockId
+      ? (st?.blocks?.find((b) => b.block_id === raw.blockId)?.label ?? null)
+      : null;
+    attention.push({
+      id: raw.id,
+      name: raw.name,
+      itemType: raw.itemType,
+      quantity: raw.quantity,
+      unit: raw.unit ?? null,
+      storeId: raw.storeId,
+      storeName: st?.name ?? "Store",
+      zoneLabel: zone,
+      status: "expiring",
+      runoutDays: null,
+      runoutPhrase: rot.phrase,
+      expiryDays: rot.days,
+      onList: true, // not a restock — it's a put-away/bring-out nudge
+      canAdd: false,
     });
   }
 
@@ -223,6 +313,38 @@ export async function loader(args: LoaderFunctionArgs) {
     itemType: i.itemType,
   }));
 
+  // ── Insights: accurate spend from itemLogs.costCents over the last 6 months ──
+  const insightsSince = new Date(
+    now.getFullYear(),
+    now.getMonth() - (INSIGHTS_MONTHS - 1),
+    1,
+  );
+  const monthStartForWaste = new Date(now.getFullYear(), now.getMonth(), 1);
+  const [spendRows, spendByTypeRaw, wasteThisMonth] = await Promise.all([
+    getSpendLogsByStores(storeIds, insightsSince),
+    getSpendByType(storeIds, insightsSince),
+    getWasteCountByStores(storeIds, monthStartForWaste),
+  ]);
+  const spendByMonth = monthlySpendSeries(
+    bucketSpend(spendRows, "month"),
+    INSIGHTS_MONTHS,
+    now,
+  );
+  const monthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  const insights: Insights = {
+    itemsTracked: rawItems.length,
+    runoutsThisWeek: attention.filter(
+      (a) => a.runoutDays != null && a.runoutDays <= 7,
+    ).length,
+    wasteThisMonth,
+    spendThisMonthCents:
+      spendByMonth.find((m) => m.key === monthKey)?.cents ?? 0,
+    spendByMonth,
+    spendByType: spendByTypeRaw
+      .filter((r) => r.cents > 0)
+      .sort((a, b) => b.cents - a.cents),
+  };
+
   return {
     stores: storesWithCookable,
     attention: attention.slice(0, 40),
@@ -231,6 +353,7 @@ export async function loader(args: LoaderFunctionArgs) {
     incomingOffers,
     digest,
     itemIndex,
+    insights,
     onboardingTemplates: [] as TemplateWithBlocks[],
   };
 }

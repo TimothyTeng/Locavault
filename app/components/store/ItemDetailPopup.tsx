@@ -8,8 +8,13 @@ import {
   hasTrait,
   ITEM_TYPES,
   TYPE_META,
+  CONDITIONS,
+  SEASONS,
   type ItemType,
+  type Condition,
+  type Season,
 } from "~/lib/itemTypes";
+import { describeMaintenance } from "~/utils/helpers/durable.helper";
 import {
   formatCost,
   formatExpiry,
@@ -41,7 +46,7 @@ export function ItemDetailPopup({
   onClose: () => void;
   onSave: (updated: Item) => void;
   onDelete: (itemId: string) => void;
-  onMarkOut?: (item: Item) => void;
+  onMarkOut?: (item: Item, wasted?: boolean) => void;
   onStillHave?: (item: Item) => void;
   onAddToList?: (item: Item) => void;
 }) {
@@ -84,6 +89,23 @@ export function ItemDetailPopup({
   const [useRatePeriod, setUseRatePeriod] = useState<
     "day" | "week" | "month" | ""
   >(item.useRatePeriod ?? "");
+  const [warrantyUntil, setWarrantyUntil] = useState(
+    item.warrantyUntil
+      ? new Date(item.warrantyUntil).toISOString().split("T")[0]
+      : "",
+  );
+  const [serialNumber, setSerialNumber] = useState(item.serialNumber ?? "");
+  const [condition, setCondition] = useState<Condition | "">(
+    item.condition ?? "",
+  );
+  const [maintenanceInterval, setMaintenanceInterval] = useState(
+    item.maintenanceIntervalDays != null
+      ? String(item.maintenanceIntervalDays)
+      : "",
+  );
+  const [size, setSize] = useState(item.size ?? "");
+  const [season, setSeason] = useState<Season | "">(item.season ?? "");
+  const [variant, setVariant] = useState(item.variant ?? "");
 
   const expiry = formatExpiry(item.expiryDate);
   const runoutDaysVal = itemRunoutDays(item);
@@ -95,6 +117,18 @@ export function ItemDetailPopup({
   const showMin = fields.minQuantity || item.minQuantity != null;
   const showExpiry = fields.expiry || item.expiryDate != null;
   const showUseRate = fields.useRate || item.useRate != null;
+  const showDurable =
+    fields.warranty ||
+    item.warrantyUntil != null ||
+    item.serialNumber != null ||
+    item.condition != null ||
+    item.maintenanceIntervalDays != null;
+  const showSized =
+    fields.size ||
+    item.size != null ||
+    item.season != null ||
+    item.variant != null;
+  const maintenance = describeMaintenance(item, new Date());
 
   const handleSave = () => {
     onSave({
@@ -111,6 +145,14 @@ export function ItemDetailPopup({
       expiryDate: expiryDate ? new Date(expiryDate) : null,
       useRate: useRate !== "" ? Number(useRate) : null,
       useRatePeriod: useRatePeriod || null,
+      warrantyUntil: warrantyUntil ? new Date(warrantyUntil) : null,
+      serialNumber: serialNumber || null,
+      condition: condition || null,
+      maintenanceIntervalDays:
+        maintenanceInterval !== "" ? Number(maintenanceInterval) : null,
+      size: size || null,
+      season: season || null,
+      variant: variant || null,
     });
     setIsEditing(false);
   };
@@ -132,6 +174,21 @@ export function ItemDetailPopup({
     );
     setUseRate(item.useRate != null ? String(item.useRate) : "");
     setUseRatePeriod(item.useRatePeriod ?? "");
+    setWarrantyUntil(
+      item.warrantyUntil
+        ? new Date(item.warrantyUntil).toISOString().split("T")[0]
+        : "",
+    );
+    setSerialNumber(item.serialNumber ?? "");
+    setCondition(item.condition ?? "");
+    setMaintenanceInterval(
+      item.maintenanceIntervalDays != null
+        ? String(item.maintenanceIntervalDays)
+        : "",
+    );
+    setSize(item.size ?? "");
+    setSeason(item.season ?? "");
+    setVariant(item.variant ?? "");
     setIsEditing(false);
   };
 
@@ -392,6 +449,153 @@ export function ItemDetailPopup({
               }
             />
           )}
+          {showDurable && (
+            <>
+              <DetailRow
+                label="Warranty"
+                value={
+                  item.warrantyUntil
+                    ? new Date(item.warrantyUntil).toLocaleDateString()
+                    : "—"
+                }
+                editContent={
+                  <input
+                    className={inputClass}
+                    type="date"
+                    value={warrantyUntil}
+                    onChange={(e) => setWarrantyUntil(e.target.value)}
+                  />
+                }
+              />
+              <DetailRow
+                label="Condition"
+                value={
+                  item.condition
+                    ? item.condition[0].toUpperCase() + item.condition.slice(1)
+                    : "—"
+                }
+                editContent={
+                  <select
+                    className={inputClass}
+                    value={condition}
+                    onChange={(e) =>
+                      setCondition(e.target.value as Condition | "")
+                    }
+                  >
+                    <option value="">—</option>
+                    {CONDITIONS.map((c) => (
+                      <option key={c} value={c}>
+                        {c[0].toUpperCase() + c.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                }
+              />
+              <DetailRow
+                label="Serial"
+                value={item.serialNumber ?? "—"}
+                editContent={
+                  <input
+                    className={inputClass}
+                    value={serialNumber}
+                    onChange={(e) => setSerialNumber(e.target.value)}
+                    placeholder="serial number"
+                  />
+                }
+              />
+              <DetailRow
+                label="Service"
+                value={
+                  maintenance ? (
+                    <span className="flex items-center justify-end gap-2">
+                      <span
+                        className={
+                          maintenance.overdue
+                            ? "text-amber-600"
+                            : "text-slate-600"
+                        }
+                      >
+                        {maintenance.text}
+                      </span>
+                      {!isEditing && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onSave({ ...item, lastMaintainedAt: new Date() })
+                          }
+                          className="rounded border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700 hover:bg-emerald-100"
+                        >
+                          Maintained ✓
+                        </button>
+                      )}
+                    </span>
+                  ) : (
+                    "—"
+                  )
+                }
+                editContent={
+                  <input
+                    className={inputClass}
+                    type="number"
+                    min="0"
+                    value={maintenanceInterval}
+                    onChange={(e) => setMaintenanceInterval(e.target.value)}
+                    placeholder="service every N days"
+                  />
+                }
+              />
+            </>
+          )}
+          {showSized && (
+            <>
+              <DetailRow
+                label="Size"
+                value={item.size ?? "—"}
+                editContent={
+                  <input
+                    className={inputClass}
+                    value={size}
+                    onChange={(e) => setSize(e.target.value)}
+                    placeholder="M, EU 42, 32W…"
+                  />
+                }
+              />
+              <DetailRow
+                label="Season"
+                value={
+                  item.season
+                    ? item.season[0].toUpperCase() + item.season.slice(1)
+                    : "—"
+                }
+                editContent={
+                  <select
+                    className={inputClass}
+                    value={season}
+                    onChange={(e) => setSeason(e.target.value as Season | "")}
+                  >
+                    <option value="">—</option>
+                    {SEASONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s[0].toUpperCase() + s.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                }
+              />
+              <DetailRow
+                label="Variant"
+                value={item.variant ?? "—"}
+                editContent={
+                  <input
+                    className={inputClass}
+                    value={variant}
+                    onChange={(e) => setVariant(e.target.value)}
+                    placeholder="colour / style"
+                  />
+                }
+              />
+            </>
+          )}
           <DetailRow
             label="Runs Out"
             value={
@@ -546,18 +750,38 @@ export function ItemDetailPopup({
           </div>
         )}
 
-        {/* Restock actions — one-tap "we're out" + add to the shopping list */}
+        {/* Restock actions — one-tap "we're out" + add to the shopping list. For
+            perishables we split it into used-up vs thrown-away (feeds the waste
+            digest); everything else keeps a single "we're out". */}
         {!isEditing && (onMarkOut || onAddToList) && (
           <div className="flex gap-2">
-            {onMarkOut && (
-              <button
-                onClick={() => onMarkOut(item)}
-                title="Mark as finished and add to your shopping list"
-                className="flex-1 px-4 py-2 rounded-md border border-amber-200 bg-amber-50 text-amber-700 text-[10px] font-bold uppercase tracking-widest hover:bg-amber-100 transition-all"
-              >
-                We're out
-              </button>
-            )}
+            {onMarkOut &&
+              (hasTrait(item.itemType, "perishable") ? (
+                <>
+                  <button
+                    onClick={() => onMarkOut(item, false)}
+                    title="Finished it — add to your shopping list"
+                    className="flex-1 px-3 py-2 rounded-md border border-amber-200 bg-amber-50 text-amber-700 text-[10px] font-bold uppercase tracking-widest hover:bg-amber-100 transition-all"
+                  >
+                    Used it up
+                  </button>
+                  <button
+                    onClick={() => onMarkOut(item, true)}
+                    title="Thrown away — tracked as waste"
+                    className="flex-1 px-3 py-2 rounded-md border border-rose-200 bg-rose-50 text-rose-700 text-[10px] font-bold uppercase tracking-widest hover:bg-rose-100 transition-all"
+                  >
+                    Tossed it
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => onMarkOut(item)}
+                  title="Mark as finished and add to your shopping list"
+                  className="flex-1 px-4 py-2 rounded-md border border-amber-200 bg-amber-50 text-amber-700 text-[10px] font-bold uppercase tracking-widest hover:bg-amber-100 transition-all"
+                >
+                  We're out
+                </button>
+              ))}
             {onAddToList && (
               <button
                 onClick={() => onAddToList(item)}

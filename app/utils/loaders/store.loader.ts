@@ -58,10 +58,49 @@ import {
   optInt,
   toQty,
   optDate,
+  oneOf,
 } from "~/utils/helpers/validate.helper";
 import { toActionResult } from "~/utils/loaders/actionResult";
+import { createRateLimiter } from "~/utils/helpers/rateLimit.helper";
+import {
+  toPublicStore,
+  toPublicItem,
+} from "~/utils/helpers/publicShape.helper";
 import type { UsageLog } from "~/types/storeTypes";
-import type { ItemType } from "~/types/itemTypeTypes";
+import type { ItemType, Condition, Season } from "~/types/itemTypeTypes";
+import { ITEM_TYPES, CONDITIONS, SEASONS } from "~/lib/itemTypes";
+
+// Per-process limiter (see rateLimit.helper for the scaling caveat) — bounds
+// invite-token minting per owner.
+const inviteLimiter = createRateLimiter({ max: 20, windowMs: 60_000 });
+
+// Client-supplied enums must be allow-listed before they reach the DB.
+const USE_RATE_PERIODS = ["day", "week", "month"] as const;
+type UseRatePeriod = (typeof USE_RATE_PERIODS)[number];
+
+/** A valid ItemType (defaults to "other" when present), or undefined if absent. */
+function optItemType(v: unknown): ItemType | undefined {
+  return v == null || v === "" ? undefined : oneOf(v, ITEM_TYPES, "other");
+}
+
+/** A valid use-rate period, or null when absent/unrecognised. */
+function optUseRatePeriod(v: unknown): UseRatePeriod | null {
+  return v != null && USE_RATE_PERIODS.includes(v as UseRatePeriod)
+    ? (v as UseRatePeriod)
+    : null;
+}
+
+/** A valid durable condition, or null when absent/unrecognised. */
+function optCondition(v: unknown): Condition | null {
+  return v != null && CONDITIONS.includes(v as Condition)
+    ? (v as Condition)
+    : null;
+}
+
+/** A valid seasonal bucket, or null when absent/unrecognised. */
+function optSeason(v: unknown): Season | null {
+  return v != null && SEASONS.includes(v as Season) ? (v as Season) : null;
+}
 import { MEAL_TYPES, type MealType } from "~/types/recipeTypes";
 
 /** Window of consumption history (days) pulled to estimate usage. */
@@ -94,6 +133,13 @@ async function commitPurchaseOrderRow(
   // Cross-store guard: the PO row must belong to the acting store.
   if (poRow.storeId !== expectedStoreId) return false;
 
+  // Snapshot the spend for this purchase (unit cost × qty) so spend history
+  // survives later changes to the item's `cost`. Null when no cost was captured.
+  const spendCents =
+    poRow.cost != null && poRow.quantity > 0
+      ? poRow.cost * poRow.quantity
+      : null;
+
   if (poRow.itemId) {
     const existing = await getItemById(poRow.itemId);
     if (!existing) return false;
@@ -116,7 +162,7 @@ async function commitPurchaseOrderRow(
       useRate: poRow.useRate ?? undefined,
       useRatePeriod: poRow.useRatePeriod ?? undefined,
     });
-    // Record the restock (positive delta) so usage history stays complete.
+    // Record the restock (positive delta) so usage + spend history stay complete.
     if (poRow.quantity > 0) {
       await createItemLog(
         poRow.itemId,
@@ -124,10 +170,11 @@ async function commitPurchaseOrderRow(
         poRow.quantity,
         loggedBy,
         "restock",
+        spendCents,
       );
     }
   } else {
-    await createItem({
+    const created = await createItem({
       name: poRow.name,
       quantity: poRow.quantity,
       storeId: poRow.storeId,
@@ -142,6 +189,17 @@ async function commitPurchaseOrderRow(
       useRate: poRow.useRate ?? undefined,
       useRatePeriod: poRow.useRatePeriod ?? undefined,
     });
+    // Log the initial purchase as a restock so its spend is captured too.
+    if (poRow.quantity > 0) {
+      await createItemLog(
+        created.id,
+        poRow.storeId,
+        poRow.quantity,
+        loggedBy,
+        "restock",
+        spendCents,
+      );
+    }
   }
 
   await deletePurchaseOrder(poRow.id);
@@ -213,17 +271,21 @@ export const loader = async (args: LoaderFunctionArgs) => {
     else logsByItem.set(log.itemId, [log]);
   }
 
-  const visibleItems =
-    accessLevel === "public" || accessLevel === "viewer"
-      ? allItems.filter((i) => i.isPublic)
-      : allItems;
+  // Public visitors + invited viewers see only public items, and only a redacted
+  // shape (no owner id, no cost/sku/reorder economics) — see publicShape.helper.
+  const isRestricted = accessLevel === "public" || accessLevel === "viewer";
+  const visibleItems = isRestricted
+    ? allItems.filter((i) => i.isPublic)
+    : allItems;
 
   const now = new Date();
   const items = visibleItems.map((item) => {
     const logs = logsByItem.get(item.id) ?? [];
     const usage = estimateUsage(item, logs, now);
     return {
-      ...item,
+      // Compute usage/confirm from the full item, then project the returned
+      // shape for public/viewer visitors (strips owner id + cost/sku).
+      ...(isRestricted ? toPublicItem(item) : item),
       usage,
       runoutConfirm: needsRunoutConfirm(item, usage, logs, now),
     };
@@ -241,7 +303,7 @@ export const loader = async (args: LoaderFunctionArgs) => {
 
   return {
     accessLevel,
-    store,
+    store: isRestricted ? toPublicStore(store) : store,
     items,
     members: membersWithNames,
     userId,
@@ -304,14 +366,22 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
       quantity: toQty(data.quantity, 1),
       description: optText(data.description) ?? undefined,
       blockId: data.blockId ?? undefined,
-      itemType: data.itemType ?? undefined,
+      itemType: optItemType(data.itemType),
       sku: optText(data.sku) ?? undefined,
       unit: optText(data.unit) ?? undefined,
       minQuantity: optInt(data.minQuantity) ?? undefined,
       cost: optInt(data.cost) ?? undefined,
       expiryDate: optDate(data.expiryDate) ?? undefined,
       useRate: optInt(data.useRate) ?? undefined,
-      useRatePeriod: data.useRatePeriod ?? undefined,
+      useRatePeriod: optUseRatePeriod(data.useRatePeriod) ?? undefined,
+      warrantyUntil: optDate(data.warrantyUntil),
+      serialNumber: optText(data.serialNumber),
+      condition: optCondition(data.condition),
+      maintenanceIntervalDays: optInt(data.maintenanceIntervalDays),
+      lastMaintainedAt: optDate(data.lastMaintainedAt),
+      size: optText(data.size),
+      season: optSeason(data.season),
+      variant: optText(data.variant),
     });
     return { ok: true, id: newItem.id, optimisticId: data.optimisticId };
   }
@@ -327,7 +397,7 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
         storeId: params.id!,
         quantity: toQty(r.quantity, 1),
         blockId: r.blockId ?? undefined,
-        itemType: r.itemType ?? undefined,
+        itemType: optItemType(r.itemType),
         unit: optText(r.unit) ?? undefined,
         cost: optInt(r.cost),
       })),
@@ -352,14 +422,22 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
       description: optText(data.description) ?? undefined,
       storeId: params.id!, // never let the client move an item across stores
       blockId: data.blockId,
-      ...(data.itemType ? { itemType: data.itemType } : {}),
+      ...(data.itemType ? { itemType: optItemType(data.itemType) } : {}),
       sku: optText(data.sku),
       unit: optText(data.unit),
       minQuantity: optInt(data.minQuantity),
       cost: optInt(data.cost),
       expiryDate: optDate(data.expiryDate),
       useRate: optInt(data.useRate),
-      useRatePeriod: data.useRatePeriod ?? null,
+      useRatePeriod: optUseRatePeriod(data.useRatePeriod),
+      warrantyUntil: optDate(data.warrantyUntil),
+      serialNumber: optText(data.serialNumber),
+      condition: optCondition(data.condition),
+      maintenanceIntervalDays: optInt(data.maintenanceIntervalDays),
+      lastMaintainedAt: optDate(data.lastMaintainedAt),
+      size: optText(data.size),
+      season: optSeason(data.season),
+      variant: optText(data.variant),
     });
     const delta = newQty - prev.quantity;
     if (delta !== 0) {
@@ -380,7 +458,10 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
   if (data._action === "markItemOut") {
     const item = await ensureItemInStore(data.id);
     if (item.quantity > 0) {
-      await createItemLog(item.id, item.storeId, -item.quantity, userId, "out");
+      // "out" = used up (default); "out:wasted" = thrown away — feeds the waste
+      // digest. Both are the same -delta so prediction is unaffected.
+      const note = data.wasted ? "out:wasted" : "out";
+      await createItemLog(item.id, item.storeId, -item.quantity, userId, note);
       await updateItem(item.id, { quantity: 0 });
     }
     const existing = await getPurchaseOrders(params.id!);
@@ -499,6 +580,8 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
 
   if (data._action === "createInvite") {
     if (!isOwner) throw new Response("Forbidden", { status: 403 });
+    if (!inviteLimiter.take(userId))
+      throw new Response("Too many invites, slow down", { status: 429 });
     const token = await createInvite(params.id!, "editor", userId);
     return { ok: true, token };
   }
@@ -534,8 +617,8 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
       cost: optInt(data.cost),
       expiryDate: optDate(data.expiryDate),
       useRate: optInt(data.useRate),
-      useRatePeriod: data.useRatePeriod ?? null,
-      itemType: data.itemType ?? undefined,
+      useRatePeriod: optUseRatePeriod(data.useRatePeriod),
+      itemType: optItemType(data.itemType),
       packageSize: optText(data.packageSize),
       createdBy: userId ?? null,
     });
@@ -561,8 +644,8 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
         cost: optInt(r.cost),
         expiryDate: optDate(r.expiryDate),
         useRate: optInt(r.useRate),
-        useRatePeriod: r.useRatePeriod ?? null,
-        itemType: r.itemType ?? undefined,
+        useRatePeriod: optUseRatePeriod(r.useRatePeriod),
+        itemType: optItemType(r.itemType),
         packageSize: optText(r.packageSize),
         createdBy: userId ?? null,
       });
@@ -588,8 +671,8 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
       cost: optInt(data.cost),
       expiryDate: optDate(data.expiryDate),
       useRate: optInt(data.useRate),
-      useRatePeriod: data.useRatePeriod ?? null,
-      ...(data.itemType ? { itemType: data.itemType } : {}),
+      useRatePeriod: optUseRatePeriod(data.useRatePeriod),
+      ...(data.itemType ? { itemType: optItemType(data.itemType) } : {}),
       packageSize: optText(data.packageSize),
     });
     return { ok: true };

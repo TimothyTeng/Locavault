@@ -1,0 +1,1 @@
+ALTER TABLE `item_logs` ADD `cost_cents` integer;

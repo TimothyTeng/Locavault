@@ -100,6 +100,25 @@ export const items = sqliteTable("items", {
   // Snooze/dismiss for this item's alerts (DESIGN.md §6): while set to a future
   // time, getItemStatus suppresses its low/expiring/dose signals. Null = active.
   alertSnoozedUntil: integer("alert_snoozed_until", { mode: "timestamp" }),
+  // ── Durable-trait fields (equipment & other long-lived goods) ──
+  // Warranty expiry (surfaces as an info alert as it approaches), a serial number
+  // for registration/claims, physical condition, and a maintenance cadence:
+  // `maintenanceIntervalDays` + `lastMaintainedAt` drive a "service due" signal.
+  warrantyUntil: integer("warranty_until", { mode: "timestamp" }),
+  serialNumber: text("serial_number"),
+  condition: text("condition", {
+    enum: ["new", "good", "worn", "broken"],
+  }),
+  maintenanceIntervalDays: integer("maintenance_interval_days"),
+  lastMaintainedAt: integer("last_maintained_at", { mode: "timestamp" }),
+  // ── Sized-trait fields (clothing & other seasonal goods) ──
+  // Free-text `size` ("M", "EU 42"), a `season` bucket driving seasonal-rotation
+  // suggestions, and a `variant` (colour/style) to tell near-duplicates apart.
+  size: text("size"),
+  season: text("season", {
+    enum: ["all", "summer", "winter", "transitional"],
+  }),
+  variant: text("variant"),
 });
 
 // ─── ITEM LOGS ─────────────────────────────────────────────
@@ -116,6 +135,10 @@ export const itemLogs = sqliteTable("item_logs", {
     .references(() => stores.id, { onDelete: "cascade" }),
   delta: integer("delta").notNull(), // negative = consumed, positive = restocked
   note: text("note"),
+  // Total spend for this event, in cents (snapshot of unit cost × delta at the
+  // time of purchase). Only set on restock/buy rows; null everywhere else. Lets
+  // spend be reconstructed historically even after an item's `cost` changes.
+  costCents: integer("cost_cents"),
   loggedAt: integer("logged_at", { mode: "timestamp" }).$defaultFn(
     () => new Date(),
   ),

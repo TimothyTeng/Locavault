@@ -3,9 +3,15 @@
 // traits (e.g. "items with the `edible` trait"), never the type label, so adding
 // a future type is just a new bundle here. See DESIGN.md §5.
 
-import type { ItemType, Trait } from "~/types/itemTypeTypes";
+import type { ItemType, Trait, Condition, Season } from "~/types/itemTypeTypes";
 
-export type { ItemType, Trait };
+export type { ItemType, Trait, Condition, Season };
+
+/** Allowed physical-condition values (for `oneOf` validation + a select). */
+export const CONDITIONS: Condition[] = ["new", "good", "worn", "broken"];
+
+/** Allowed seasonal buckets (for `oneOf` validation + a select). */
+export const SEASONS: Season[] = ["all", "summer", "winter", "transitional"];
 
 /** Ordered list for dropdowns. `other` last as the catch-all. */
 export const ITEM_TYPES: ItemType[] = [
@@ -67,23 +73,40 @@ export const TYPE_RUNOUT_THRESHOLD_DAYS: Record<ItemType, number> = {
 };
 
 /**
- * Which of the form's currently-supported fields apply to a type. (Trait-driven:
- * `edible`→unit, `perishable`→expiry, `depletes`→use-rate + min qty.) The
- * dedicated fields for `dosed`/`durable`/`sized` arrive in a later slice.
+ * Which of the form's fields apply to a type. Trait-driven: `edible`→unit,
+ * `perishable`→expiry, `depletes`→use-rate + min qty, `durable`→warranty,
+ * serial, condition, and maintenance cadence, and `sized`→size, season &
+ * variant (clothing and other seasonal goods). (`dosed` fields still to come.)
  */
 export type FormFields = {
   unit: boolean;
   expiry: boolean;
   useRate: boolean;
   minQuantity: boolean;
+  warranty: boolean;
+  serial: boolean;
+  condition: boolean;
+  maintenance: boolean;
+  size: boolean;
+  season: boolean;
+  variant: boolean;
 };
 
 export function fieldsForType(type: ItemType): FormFields {
+  const durable = hasTrait(type, "durable");
+  const sized = hasTrait(type, "sized");
   return {
     unit: hasTrait(type, "edible"),
     expiry: hasTrait(type, "perishable"),
     useRate: hasTrait(type, "depletes"),
     minQuantity: hasTrait(type, "depletes"),
+    warranty: durable,
+    serial: durable,
+    condition: durable,
+    maintenance: durable,
+    size: sized,
+    season: sized,
+    variant: sized,
   };
 }
 
