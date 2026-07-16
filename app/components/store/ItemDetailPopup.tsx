@@ -44,7 +44,7 @@ export function ItemDetailPopup({
   onClose: () => void;
   onSave: (updated: Item) => void;
   onDelete: (itemId: string) => void;
-  onMarkOut?: (item: Item) => void;
+  onMarkOut?: (item: Item, wasted?: boolean) => void;
   onStillHave?: (item: Item) => void;
   onAddToList?: (item: Item) => void;
 }) {
@@ -684,18 +684,38 @@ export function ItemDetailPopup({
           </div>
         )}
 
-        {/* Restock actions — one-tap "we're out" + add to the shopping list */}
+        {/* Restock actions — one-tap "we're out" + add to the shopping list. For
+            perishables we split it into used-up vs thrown-away (feeds the waste
+            digest); everything else keeps a single "we're out". */}
         {!isEditing && (onMarkOut || onAddToList) && (
           <div className="flex gap-2">
-            {onMarkOut && (
-              <button
-                onClick={() => onMarkOut(item)}
-                title="Mark as finished and add to your shopping list"
-                className="flex-1 px-4 py-2 rounded-md border border-amber-200 bg-amber-50 text-amber-700 text-[10px] font-bold uppercase tracking-widest hover:bg-amber-100 transition-all"
-              >
-                We're out
-              </button>
-            )}
+            {onMarkOut &&
+              (hasTrait(item.itemType, "perishable") ? (
+                <>
+                  <button
+                    onClick={() => onMarkOut(item, false)}
+                    title="Finished it — add to your shopping list"
+                    className="flex-1 px-3 py-2 rounded-md border border-amber-200 bg-amber-50 text-amber-700 text-[10px] font-bold uppercase tracking-widest hover:bg-amber-100 transition-all"
+                  >
+                    Used it up
+                  </button>
+                  <button
+                    onClick={() => onMarkOut(item, true)}
+                    title="Thrown away — tracked as waste"
+                    className="flex-1 px-3 py-2 rounded-md border border-rose-200 bg-rose-50 text-rose-700 text-[10px] font-bold uppercase tracking-widest hover:bg-rose-100 transition-all"
+                  >
+                    Tossed it
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={() => onMarkOut(item)}
+                  title="Mark as finished and add to your shopping list"
+                  className="flex-1 px-4 py-2 rounded-md border border-amber-200 bg-amber-50 text-amber-700 text-[10px] font-bold uppercase tracking-widest hover:bg-amber-100 transition-all"
+                >
+                  We're out
+                </button>
+              ))}
             {onAddToList && (
               <button
                 onClick={() => onAddToList(item)}

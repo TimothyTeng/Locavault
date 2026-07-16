@@ -447,7 +447,10 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
   if (data._action === "markItemOut") {
     const item = await ensureItemInStore(data.id);
     if (item.quantity > 0) {
-      await createItemLog(item.id, item.storeId, -item.quantity, userId, "out");
+      // "out" = used up (default); "out:wasted" = thrown away — feeds the waste
+      // digest. Both are the same -delta so prediction is unaffected.
+      const note = data.wasted ? "out:wasted" : "out";
+      await createItemLog(item.id, item.storeId, -item.quantity, userId, note);
       await updateItem(item.id, { quantity: 0 });
     }
     const existing = await getPurchaseOrders(params.id!);

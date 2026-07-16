@@ -1,4 +1,4 @@
-import { Package, TrendingDown, Wallet, BarChart3 } from "lucide-react";
+import { Package, TrendingDown, Wallet, BarChart3, Trash2 } from "lucide-react";
 import type { Insights } from "#types/dashboardTypes";
 import { formatMoney } from "#utils/helpers/money.helper";
 import { TYPE_META } from "~/lib/itemTypes";
@@ -11,8 +11,13 @@ import { TypeIcon } from "#components/store/typeIcon";
  * shows a gentle empty state until there's tracked spend to show.
  */
 export function InsightsPanel({ insights }: { insights: Insights }) {
-  const { itemsTracked, runoutsThisWeek, spendThisMonthCents, spendByMonth } =
-    insights;
+  const {
+    itemsTracked,
+    runoutsThisWeek,
+    wasteThisMonth,
+    spendThisMonthCents,
+    spendByMonth,
+  } = insights;
   const hasSpend = spendByMonth.some((m) => m.cents > 0);
   const peak = Math.max(1, ...spendByMonth.map((m) => m.cents));
   const typeTotal = insights.spendByType.reduce((s, t) => s + t.cents, 0);
@@ -65,6 +70,17 @@ export function InsightsPanel({ insights }: { insights: Insights }) {
           );
         })}
       </div>
+
+      {/* Waste nudge — gentle, only when something was thrown away this month */}
+      {wasteThisMonth > 0 && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-rose-100 bg-rose-50/60 px-3 py-2 text-[12px] text-rose-700">
+          <Trash2 size={13} />
+          <span>
+            {wasteThisMonth} item{wasteThisMonth !== 1 ? "s" : ""} thrown away
+            this month — catch the next one with a store's “Use it up” recipes.
+          </span>
+        </div>
+      )}
 
       {/* Spend trend */}
       {hasSpend ? (

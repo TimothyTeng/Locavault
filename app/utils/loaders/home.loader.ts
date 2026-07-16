@@ -15,6 +15,7 @@ import {
   getIncomingOfferCount,
   getSpendLogsByStores,
   getSpendByType,
+  getWasteCountByStores,
   getTemplatesForGallery,
   onboardStoreFromTemplate,
   verifyStoreAccess,
@@ -37,6 +38,12 @@ import {
 import { expiryDateRemainingDays } from "~/utils/helpers/store.helper";
 import { spentCents, bucketSpend } from "~/utils/helpers/money.helper";
 import { monthlySpendSeries } from "~/utils/helpers/insights.helper";
+import { hasTrait } from "~/lib/itemTypes";
+import {
+  warrantyDaysLeft,
+  maintenanceDueDays,
+  describeMaintenance,
+} from "~/utils/helpers/durable.helper";
 import type { Item, ItemStatus, UsageLog } from "~/types/storeTypes";
 import type {
   AttentionItem,
@@ -58,6 +65,7 @@ const SEVERITY: Record<ItemStatus, number> = {
 const EMPTY_INSIGHTS: Insights = {
   itemsTracked: 0,
   runoutsThisWeek: 0,
+  wasteThisMonth: 0,
   spendThisMonthCents: 0,
   spendByMonth: [],
   spendByType: [],
@@ -155,6 +163,40 @@ export async function loader(args: LoaderFunctionArgs) {
     });
   }
 
+  // ── Durable upkeep signals (independent of stock): warranty ending soon or a
+  // service coming due. Surfaced as "expiring" (time-based) with a specific phrase.
+  for (const raw of rawItems) {
+    if (!hasTrait(raw.itemType, "durable")) continue;
+    const w = warrantyDaysLeft(raw, now);
+    const m = maintenanceDueDays(raw, now);
+    const serviceDue = m != null && m <= 7;
+    const warrantyEnding = w != null && w >= 0 && w <= 30;
+    if (!serviceDue && !warrantyEnding) continue;
+
+    const st = storeById.get(raw.storeId);
+    const zone = raw.blockId
+      ? (st?.blocks?.find((b) => b.block_id === raw.blockId)?.label ?? null)
+      : null;
+    attention.push({
+      id: raw.id,
+      name: raw.name,
+      itemType: raw.itemType,
+      quantity: raw.quantity,
+      unit: raw.unit ?? null,
+      storeId: raw.storeId,
+      storeName: st?.name ?? "Store",
+      zoneLabel: zone,
+      status: "expiring",
+      runoutDays: null,
+      runoutPhrase: serviceDue
+        ? (describeMaintenance(raw, now)?.text ?? "Service due")
+        : `Warranty ends in ${w}d`,
+      expiryDays: serviceDue ? m : w,
+      onList: true, // suppress the "add to list" action — upkeep isn't a restock
+      canAdd: false,
+    });
+  }
+
   attention.sort((a, b) => {
     if (SEVERITY[a.status] !== SEVERITY[b.status])
       return SEVERITY[a.status] - SEVERITY[b.status];
@@ -247,9 +289,11 @@ export async function loader(args: LoaderFunctionArgs) {
     now.getMonth() - (INSIGHTS_MONTHS - 1),
     1,
   );
-  const [spendRows, spendByTypeRaw] = await Promise.all([
+  const monthStartForWaste = new Date(now.getFullYear(), now.getMonth(), 1);
+  const [spendRows, spendByTypeRaw, wasteThisMonth] = await Promise.all([
     getSpendLogsByStores(storeIds, insightsSince),
     getSpendByType(storeIds, insightsSince),
+    getWasteCountByStores(storeIds, monthStartForWaste),
   ]);
   const spendByMonth = monthlySpendSeries(
     bucketSpend(spendRows, "month"),
@@ -262,6 +306,7 @@ export async function loader(args: LoaderFunctionArgs) {
     runoutsThisWeek: attention.filter(
       (a) => a.runoutDays != null && a.runoutDays <= 7,
     ).length,
+    wasteThisMonth,
     spendThisMonthCents:
       spendByMonth.find((m) => m.key === monthKey)?.cents ?? 0,
     spendByMonth,

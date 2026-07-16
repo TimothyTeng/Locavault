@@ -52,6 +52,8 @@ export type SpendByType = {
 export type Insights = {
   itemsTracked: number;
   runoutsThisWeek: number;
+  /** Items thrown away this calendar month (waste digest). */
+  wasteThisMonth: number;
   /** Tracked spend (actual snapshots) in the current calendar month, cents. */
   spendThisMonthCents: number;
   /** Continuous last-6-months series (oldest → newest), cents per month. */

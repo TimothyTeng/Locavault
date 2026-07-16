@@ -576,7 +576,7 @@ export default function StorePage() {
 
   // One-tap "we're out": zero the quantity locally, queue a restock, and let the
   // server log the depletion (which trains the usage estimate).
-  const handleMarkItemOut = (item: Item) => {
+  const handleMarkItemOut = (item: Item, wasted = false) => {
     const restockQty = suggestedQty(item);
     setItems((prev) =>
       prev.map((i) => (i.id === item.id ? { ...i, quantity: 0 } : i)),
@@ -586,7 +586,7 @@ export default function StorePage() {
       setPurchaseOrder((prev) => [...prev, optimistic]);
     }
     fetcher.submit(
-      { _action: "markItemOut", id: item.id, restockQty },
+      { _action: "markItemOut", id: item.id, restockQty, wasted },
       { method: "POST", encType: "application/json" },
     );
   };

@@ -946,6 +946,24 @@ export async function getSpendByType(storeIds: string[], since?: Date) {
     .groupBy(items.itemType);
 }
 
+/** Count of "thrown away" events across stores in a window (waste digest). */
+export async function getWasteCountByStores(
+  storeIds: string[],
+  since?: Date,
+): Promise<number> {
+  if (!storeIds.length) return 0;
+  const conds = [
+    inArray(itemLogs.storeId, storeIds),
+    eq(itemLogs.note, "out:wasted"),
+  ];
+  if (since) conds.push(gt(itemLogs.loggedAt, since));
+  const [row] = await db
+    .select({ n: sql<number>`count(*)` })
+    .from(itemLogs)
+    .where(and(...conds));
+  return row?.n ?? 0;
+}
+
 /** An item's restock price points over time (for a price-history sparkline). */
 export async function getItemPriceHistory(itemId: string) {
   return db
