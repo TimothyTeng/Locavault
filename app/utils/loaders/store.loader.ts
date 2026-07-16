@@ -67,8 +67,8 @@ import {
   toPublicItem,
 } from "~/utils/helpers/publicShape.helper";
 import type { UsageLog } from "~/types/storeTypes";
-import type { ItemType, Condition } from "~/types/itemTypeTypes";
-import { ITEM_TYPES, CONDITIONS } from "~/lib/itemTypes";
+import type { ItemType, Condition, Season } from "~/types/itemTypeTypes";
+import { ITEM_TYPES, CONDITIONS, SEASONS } from "~/lib/itemTypes";
 
 // Per-process limiter (see rateLimit.helper for the scaling caveat) — bounds
 // invite-token minting per owner.
@@ -95,6 +95,11 @@ function optCondition(v: unknown): Condition | null {
   return v != null && CONDITIONS.includes(v as Condition)
     ? (v as Condition)
     : null;
+}
+
+/** A valid seasonal bucket, or null when absent/unrecognised. */
+function optSeason(v: unknown): Season | null {
+  return v != null && SEASONS.includes(v as Season) ? (v as Season) : null;
 }
 import { MEAL_TYPES, type MealType } from "~/types/recipeTypes";
 
@@ -374,6 +379,9 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
       condition: optCondition(data.condition),
       maintenanceIntervalDays: optInt(data.maintenanceIntervalDays),
       lastMaintainedAt: optDate(data.lastMaintainedAt),
+      size: optText(data.size),
+      season: optSeason(data.season),
+      variant: optText(data.variant),
     });
     return { ok: true, id: newItem.id, optimisticId: data.optimisticId };
   }
@@ -427,6 +435,9 @@ const runStoreAction = async (args: ActionFunctionArgs) => {
       condition: optCondition(data.condition),
       maintenanceIntervalDays: optInt(data.maintenanceIntervalDays),
       lastMaintainedAt: optDate(data.lastMaintainedAt),
+      size: optText(data.size),
+      season: optSeason(data.season),
+      variant: optText(data.variant),
     });
     const delta = newQty - prev.quantity;
     if (delta !== 0) {

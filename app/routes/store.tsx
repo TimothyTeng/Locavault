@@ -18,7 +18,7 @@ import { StoreToolbar } from "~/components/store/storeToolbar";
 import { PanelRail, type RailPanel } from "~/components/store/panelRail";
 import { StoreTable } from "~/components/store/storeTable";
 import { type Item, type ItemStatus } from "~/types/storeTypes";
-import type { ItemType, Condition } from "~/types/itemTypeTypes";
+import type { ItemType, Condition, Season } from "~/types/itemTypeTypes";
 import type { StoreMember } from "~/types/memberTypes";
 import { handlesForMode } from "~/components/addstore/storeViewFinder/ModeToggle";
 import { useZoom } from "~/utils/useZoom";
@@ -489,6 +489,9 @@ export default function StorePage() {
         lastMaintainedAt: updated.lastMaintainedAt
           ? updated.lastMaintainedAt.toISOString()
           : null,
+        size: updated.size ?? null,
+        season: updated.season ?? null,
+        variant: updated.variant ?? null,
       },
       { method: "POST", encType: "application/json" },
     );
@@ -621,6 +624,9 @@ export default function StorePage() {
     serialNumber?: string | null;
     condition?: Condition | null;
     maintenanceIntervalDays?: number | null;
+    size?: string | null;
+    season?: Season | null;
+    variant?: string | null;
   }) => {
     const optimisticId = crypto.randomUUID();
     const newItem: Item = {
@@ -645,6 +651,9 @@ export default function StorePage() {
       condition: data.condition ?? null,
       maintenanceIntervalDays: data.maintenanceIntervalDays ?? null,
       lastMaintainedAt: null,
+      size: data.size ?? null,
+      season: data.season ?? null,
+      variant: data.variant ?? null,
     };
     setItems((prev) => [...prev, newItem]);
     // Keep the panel open for rapid entry (the form refocuses its name field and
@@ -671,6 +680,9 @@ export default function StorePage() {
         serialNumber: data.serialNumber ?? null,
         condition: data.condition ?? null,
         maintenanceIntervalDays: data.maintenanceIntervalDays ?? null,
+        size: data.size ?? null,
+        season: data.season ?? null,
+        variant: data.variant ?? null,
       },
       { method: "POST", encType: "application/json" },
     );

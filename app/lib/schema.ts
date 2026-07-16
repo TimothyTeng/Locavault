@@ -111,6 +111,14 @@ export const items = sqliteTable("items", {
   }),
   maintenanceIntervalDays: integer("maintenance_interval_days"),
   lastMaintainedAt: integer("last_maintained_at", { mode: "timestamp" }),
+  // ── Sized-trait fields (clothing & other seasonal goods) ──
+  // Free-text `size` ("M", "EU 42"), a `season` bucket driving seasonal-rotation
+  // suggestions, and a `variant` (colour/style) to tell near-duplicates apart.
+  size: text("size"),
+  season: text("season", {
+    enum: ["all", "summer", "winter", "transitional"],
+  }),
+  variant: text("variant"),
 });
 
 // ─── ITEM LOGS ─────────────────────────────────────────────

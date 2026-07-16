@@ -44,6 +44,7 @@ import {
   maintenanceDueDays,
   describeMaintenance,
 } from "~/utils/helpers/durable.helper";
+import { seasonRotation } from "~/utils/helpers/seasons.helper";
 import type { Item, ItemStatus, UsageLog } from "~/types/storeTypes";
 import type {
   AttentionItem,
@@ -193,6 +194,35 @@ export async function loader(args: LoaderFunctionArgs) {
         : `Warranty ends in ${w}d`,
       expiryDays: serviceDue ? m : w,
       onList: true, // suppress the "add to list" action — upkeep isn't a restock
+      canAdd: false,
+    });
+  }
+
+  // ── Seasonal rotation (sized items): as a season turns, nudge to bring the
+  // right clothes out or pack last season's away. Only fires near the boundary.
+  for (const raw of rawItems) {
+    if (!hasTrait(raw.itemType, "sized")) continue;
+    const rot = seasonRotation(raw.season, now);
+    if (!rot) continue;
+
+    const st = storeById.get(raw.storeId);
+    const zone = raw.blockId
+      ? (st?.blocks?.find((b) => b.block_id === raw.blockId)?.label ?? null)
+      : null;
+    attention.push({
+      id: raw.id,
+      name: raw.name,
+      itemType: raw.itemType,
+      quantity: raw.quantity,
+      unit: raw.unit ?? null,
+      storeId: raw.storeId,
+      storeName: st?.name ?? "Store",
+      zoneLabel: zone,
+      status: "expiring",
+      runoutDays: null,
+      runoutPhrase: rot.phrase,
+      expiryDays: rot.days,
+      onList: true, // not a restock — it's a put-away/bring-out nudge
       canAdd: false,
     });
   }

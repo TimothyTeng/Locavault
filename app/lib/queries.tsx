@@ -57,7 +57,7 @@ import type { AccessLevel, StoreRole } from "~/types/memberTypes";
 import type { BlockKind } from "~/types/BlockTypes";
 import type { Wall } from "~/types/wallTypes";
 import { parseWalls, serializeWalls } from "~/utils/helpers/wall.helper";
-import type { ItemType, Condition } from "~/types/itemTypeTypes";
+import type { ItemType, Condition, Season } from "~/types/itemTypeTypes";
 import { computeConsensus } from "~/utils/helpers/poInference.helper";
 
 // ─── Helpers ───────────────────────────────────────────────
@@ -732,6 +732,9 @@ export async function createItem(data: {
   condition?: Condition | null;
   maintenanceIntervalDays?: number | null;
   lastMaintainedAt?: Date | null;
+  size?: string | null;
+  season?: Season | null;
+  variant?: string | null;
 }) {
   const id = crypto.randomUUID();
   await db.insert(items).values({
@@ -754,6 +757,9 @@ export async function createItem(data: {
     condition: data.condition ?? null,
     maintenanceIntervalDays: data.maintenanceIntervalDays ?? null,
     lastMaintainedAt: data.lastMaintainedAt ?? null,
+    size: data.size ?? null,
+    season: data.season ?? null,
+    variant: data.variant ?? null,
   });
   return { id };
 }
@@ -807,6 +813,9 @@ export async function updateItem(
     condition: Condition | null;
     maintenanceIntervalDays: number | null;
     lastMaintainedAt: Date | null;
+    size: string | null;
+    season: Season | null;
+    variant: string | null;
   }>,
 ) {
   return db.update(items).set(data).where(eq(items.id, id));

@@ -23,3 +23,6 @@ export type ItemType =
 
 /** Physical condition of a durable item (equipment etc.). */
 export type Condition = "new" | "good" | "worn" | "broken";
+
+/** Seasonal bucket of a sized item (clothing etc.) — drives rotation nudges. */
+export type Season = "all" | "summer" | "winter" | "transitional";

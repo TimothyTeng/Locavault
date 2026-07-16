@@ -13,8 +13,10 @@ import {
   ITEM_TYPES,
   TYPE_META,
   CONDITIONS,
+  SEASONS,
   type ItemType,
   type Condition,
+  type Season,
 } from "~/lib/itemTypes";
 import { inferItemFields } from "~/utils/helpers/poInference.helper";
 import type { Item } from "~/types/storeTypes";
@@ -47,6 +49,9 @@ type Props = {
     serialNumber?: string | null;
     condition?: Condition | null;
     maintenanceIntervalDays?: number | null;
+    size?: string | null;
+    season?: Season | null;
+    variant?: string | null;
   }) => void;
   /** Restock a matched existing item instead of creating a duplicate. */
   onRestock?: (itemId: string, qty: number) => void;
@@ -102,6 +107,9 @@ export function AddItemForm({
   const [serialNumber, setSerialNumber] = useState("");
   const [condition, setCondition] = useState<Condition | "">("");
   const [maintenanceInterval, setMaintenanceInterval] = useState("");
+  const [size, setSize] = useState("");
+  const [season, setSeason] = useState<Season | "">("");
+  const [variant, setVariant] = useState("");
   const [useRatePeriod, setUseRatePeriod] = useState<"day" | "week" | "month">(
     "week",
   );
@@ -284,6 +292,9 @@ export function AddItemForm({
     setSerialNumber("");
     setCondition("");
     setMaintenanceInterval("");
+    setSize("");
+    setSeason("");
+    setVariant("");
     setShowExtra(false);
     setShowDatePicker(false);
     setLookupNote(null);
@@ -425,6 +436,9 @@ export function AddItemForm({
           condition: condition || null,
           maintenanceIntervalDays:
             maintenanceInterval !== "" ? Number(maintenanceInterval) : null,
+          size: size || null,
+          season: season || null,
+          variant: variant || null,
         });
         resetForm();
         // Rapid entry: keep the panel open, remember what was added, refocus.
@@ -685,6 +699,52 @@ export function AddItemForm({
                 />
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Sized-trait fields (clothing): size, season, variant */}
+      {fields.size && (
+        <div className="flex flex-col gap-4 rounded-md border border-slate-200 bg-slate-50/60 p-3">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+            Size &amp; season
+          </div>
+          <div className="flex gap-3">
+            <div className="flex flex-1 flex-col gap-2">
+              <FieldLabel>Size</FieldLabel>
+              <input
+                type="text"
+                value={size}
+                placeholder="M, EU 42, 32W…"
+                onChange={(e) => setSize(e.target.value)}
+                className={inputClass}
+              />
+            </div>
+            <div className="flex w-36 flex-col gap-2">
+              <FieldLabel>Season</FieldLabel>
+              <select
+                value={season}
+                onChange={(e) => setSeason(e.target.value as Season | "")}
+                className={inputClass}
+              >
+                <option value="">—</option>
+                {SEASONS.map((s) => (
+                  <option key={s} value={s}>
+                    {s[0].toUpperCase() + s.slice(1)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2">
+            <FieldLabel>Variant</FieldLabel>
+            <input
+              type="text"
+              value={variant}
+              placeholder="colour / style, to tell near-duplicates apart"
+              onChange={(e) => setVariant(e.target.value)}
+              className={inputClass}
+            />
           </div>
         </div>
       )}

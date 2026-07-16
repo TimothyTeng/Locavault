@@ -9,8 +9,10 @@ import {
   ITEM_TYPES,
   TYPE_META,
   CONDITIONS,
+  SEASONS,
   type ItemType,
   type Condition,
+  type Season,
 } from "~/lib/itemTypes";
 import { describeMaintenance } from "~/utils/helpers/durable.helper";
 import {
@@ -101,6 +103,9 @@ export function ItemDetailPopup({
       ? String(item.maintenanceIntervalDays)
       : "",
   );
+  const [size, setSize] = useState(item.size ?? "");
+  const [season, setSeason] = useState<Season | "">(item.season ?? "");
+  const [variant, setVariant] = useState(item.variant ?? "");
 
   const expiry = formatExpiry(item.expiryDate);
   const runoutDaysVal = itemRunoutDays(item);
@@ -118,6 +123,11 @@ export function ItemDetailPopup({
     item.serialNumber != null ||
     item.condition != null ||
     item.maintenanceIntervalDays != null;
+  const showSized =
+    fields.size ||
+    item.size != null ||
+    item.season != null ||
+    item.variant != null;
   const maintenance = describeMaintenance(item, new Date());
 
   const handleSave = () => {
@@ -140,6 +150,9 @@ export function ItemDetailPopup({
       condition: condition || null,
       maintenanceIntervalDays:
         maintenanceInterval !== "" ? Number(maintenanceInterval) : null,
+      size: size || null,
+      season: season || null,
+      variant: variant || null,
     });
     setIsEditing(false);
   };
@@ -173,6 +186,9 @@ export function ItemDetailPopup({
         ? String(item.maintenanceIntervalDays)
         : "",
     );
+    setSize(item.size ?? "");
+    setSeason(item.season ?? "");
+    setVariant(item.variant ?? "");
     setIsEditing(false);
   };
 
@@ -525,6 +541,56 @@ export function ItemDetailPopup({
                     value={maintenanceInterval}
                     onChange={(e) => setMaintenanceInterval(e.target.value)}
                     placeholder="service every N days"
+                  />
+                }
+              />
+            </>
+          )}
+          {showSized && (
+            <>
+              <DetailRow
+                label="Size"
+                value={item.size ?? "—"}
+                editContent={
+                  <input
+                    className={inputClass}
+                    value={size}
+                    onChange={(e) => setSize(e.target.value)}
+                    placeholder="M, EU 42, 32W…"
+                  />
+                }
+              />
+              <DetailRow
+                label="Season"
+                value={
+                  item.season
+                    ? item.season[0].toUpperCase() + item.season.slice(1)
+                    : "—"
+                }
+                editContent={
+                  <select
+                    className={inputClass}
+                    value={season}
+                    onChange={(e) => setSeason(e.target.value as Season | "")}
+                  >
+                    <option value="">—</option>
+                    {SEASONS.map((s) => (
+                      <option key={s} value={s}>
+                        {s[0].toUpperCase() + s.slice(1)}
+                      </option>
+                    ))}
+                  </select>
+                }
+              />
+              <DetailRow
+                label="Variant"
+                value={item.variant ?? "—"}
+                editContent={
+                  <input
+                    className={inputClass}
+                    value={variant}
+                    onChange={(e) => setVariant(e.target.value)}
+                    placeholder="colour / style"
                   />
                 }
               />

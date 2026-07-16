@@ -18,6 +18,7 @@ import { EmptyState } from "~/components/common/EmptyState";
 import type { BlocksMap } from "~/types/storeViewFinderTypes";
 import type { Collection, CollectionKind } from "~/types/collectionTypes";
 import { SidePanel } from "~/components/common/SidePanel";
+import { walkOrder, blockCentroid } from "~/utils/helpers/pickPath.helper";
 
 const KIND_LABEL: Record<CollectionKind, string> = {
   packing: "Packing",
@@ -610,7 +611,24 @@ function PutAwayGuide({
       g.items.push(it);
       byZone.set(zoneLabel, g);
     }
-    return { zones: [...byZone.values()], unplaced };
+    // Order the zones into a sensible walk across the floor plan (each zone's
+    // sample item pins it to a block), so "put back" follows the physical route.
+    const zones = [...byZone.values()];
+    const placed = zones
+      .map((z) =>
+        z.sample.blockId && blocks[z.sample.blockId]
+          ? { id: z.label, center: blockCentroid(blocks[z.sample.blockId]) }
+          : null,
+      )
+      .filter(
+        (x): x is { id: string; center: { x: number; y: number } } => !!x,
+      );
+    const rank = new Map(walkOrder(placed).map((label, i) => [label, i]));
+    zones.sort(
+      (a, b) =>
+        (rank.get(a.label) ?? Infinity) - (rank.get(b.label) ?? Infinity),
+    );
+    return { zones, unplaced };
   }, [collection.items, itemById, blocks]);
 
   if (groups.zones.length === 0 && groups.unplaced === 0) return null;
